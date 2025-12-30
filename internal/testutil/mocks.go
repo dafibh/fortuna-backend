@@ -174,3 +174,64 @@ func (m *MockWorkspaceRepository) AddWorkspace(workspace *domain.Workspace, auth
 		m.ByUserAuth0ID[auth0ID] = workspace
 	}
 }
+
+// MockAccountRepository is a mock implementation of domain.AccountRepository
+type MockAccountRepository struct {
+	Accounts      map[int32]*domain.Account
+	ByWorkspace   map[int32][]*domain.Account
+	NextID        int32
+	CreateFn      func(account *domain.Account) (*domain.Account, error)
+	GetByIDFn     func(workspaceID int32, id int32) (*domain.Account, error)
+	GetAllFn      func(workspaceID int32) ([]*domain.Account, error)
+}
+
+// NewMockAccountRepository creates a new MockAccountRepository
+func NewMockAccountRepository() *MockAccountRepository {
+	return &MockAccountRepository{
+		Accounts:    make(map[int32]*domain.Account),
+		ByWorkspace: make(map[int32][]*domain.Account),
+		NextID:      1,
+	}
+}
+
+// Create creates a new account
+func (m *MockAccountRepository) Create(account *domain.Account) (*domain.Account, error) {
+	if m.CreateFn != nil {
+		return m.CreateFn(account)
+	}
+	account.ID = m.NextID
+	m.NextID++
+	m.Accounts[account.ID] = account
+	m.ByWorkspace[account.WorkspaceID] = append(m.ByWorkspace[account.WorkspaceID], account)
+	return account, nil
+}
+
+// GetByID retrieves an account by its ID within a workspace
+func (m *MockAccountRepository) GetByID(workspaceID int32, id int32) (*domain.Account, error) {
+	if m.GetByIDFn != nil {
+		return m.GetByIDFn(workspaceID, id)
+	}
+	account, ok := m.Accounts[id]
+	if !ok || account.WorkspaceID != workspaceID {
+		return nil, domain.ErrAccountNotFound
+	}
+	return account, nil
+}
+
+// GetAllByWorkspace retrieves all accounts for a workspace
+func (m *MockAccountRepository) GetAllByWorkspace(workspaceID int32) ([]*domain.Account, error) {
+	if m.GetAllFn != nil {
+		return m.GetAllFn(workspaceID)
+	}
+	accounts := m.ByWorkspace[workspaceID]
+	if accounts == nil {
+		return []*domain.Account{}, nil
+	}
+	return accounts, nil
+}
+
+// AddAccount adds an account to the mock repository (helper for tests)
+func (m *MockAccountRepository) AddAccount(account *domain.Account) {
+	m.Accounts[account.ID] = account
+	m.ByWorkspace[account.WorkspaceID] = append(m.ByWorkspace[account.WorkspaceID], account)
+}

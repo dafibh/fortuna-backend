@@ -8,6 +8,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Account struct {
+	ID             int32              `json:"id"`
+	WorkspaceID    int32              `json:"workspace_id"`
+	Name           string             `json:"name"`
+	AccountType    string             `json:"account_type"`
+	Template       string             `json:"template"`
+	InitialBalance pgtype.Numeric     `json:"initial_balance"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
 type User struct {
 	ID         pgtype.UUID        `json:"id"`
 	Auth0ID    string             `json:"auth0_id"`

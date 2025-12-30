@@ -6,7 +6,7 @@ import (
 )
 
 // RegisterRoutes sets up all API routes
-func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, authHandler *AuthHandler, profileHandler *ProfileHandler) {
+func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler) {
 	// API version 1
 	api := e.Group("/api/v1")
 
@@ -22,4 +22,10 @@ func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, aut
 	profile.Use(authMiddleware.Authenticate())
 	profile.GET("", profileHandler.GetProfile)
 	profile.PUT("", profileHandler.UpdateProfile)
+
+	// Account routes (protected)
+	accounts := api.Group("/accounts")
+	accounts.Use(authMiddleware.Authenticate())
+	accounts.POST("", accountHandler.CreateAccount)
+	accounts.GET("", accountHandler.GetAccounts)
 }

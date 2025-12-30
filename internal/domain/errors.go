@@ -12,4 +12,7 @@ var (
 	ErrInternalError     = errors.New("internal error")
 	ErrUserNotFound      = errors.New("user not found")
 	ErrWorkspaceNotFound = errors.New("workspace not found")
+	ErrAccountNotFound   = errors.New("account not found")
+	ErrNameRequired      = errors.New("name is required")
+	ErrInvalidTemplate   = errors.New("invalid template")
 )
