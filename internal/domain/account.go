@@ -38,10 +38,14 @@ type Account struct {
 	InitialBalance decimal.Decimal `json:"initialBalance"`
 	CreatedAt      time.Time       `json:"createdAt"`
 	UpdatedAt      time.Time       `json:"updatedAt"`
+	DeletedAt      *time.Time      `json:"deletedAt,omitempty"`
 }
 
 type AccountRepository interface {
 	Create(account *Account) (*Account, error)
 	GetByID(workspaceID int32, id int32) (*Account, error)
-	GetAllByWorkspace(workspaceID int32) ([]*Account, error)
+	GetAllByWorkspace(workspaceID int32, includeArchived bool) ([]*Account, error)
+	Update(workspaceID int32, id int32, name string) (*Account, error)
+	SoftDelete(workspaceID int32, id int32) error
+	HardDelete(workspaceID int32, id int32) error
 }

@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/dafibh/fortuna/fortuna-backend/internal/domain"
@@ -30,16 +31,22 @@ type CreateAccountRequest struct {
 	InitialBalance string `json:"initialBalance,omitempty"`
 }
 
+// UpdateAccountRequest represents the update account request body
+type UpdateAccountRequest struct {
+	Name string `json:"name"`
+}
+
 // AccountResponse represents an account in API responses
 type AccountResponse struct {
-	ID             int32  `json:"id"`
-	WorkspaceID    int32  `json:"workspaceId"`
-	Name           string `json:"name"`
-	AccountType    string `json:"accountType"`
-	Template       string `json:"template"`
-	InitialBalance string `json:"initialBalance"`
-	CreatedAt      string `json:"createdAt"`
-	UpdatedAt      string `json:"updatedAt"`
+	ID             int32   `json:"id"`
+	WorkspaceID    int32   `json:"workspaceId"`
+	Name           string  `json:"name"`
+	AccountType    string  `json:"accountType"`
+	Template       string  `json:"template"`
+	InitialBalance string  `json:"initialBalance"`
+	CreatedAt      string  `json:"createdAt"`
+	UpdatedAt      string  `json:"updatedAt"`
+	DeletedAt      *string `json:"deletedAt,omitempty"`
 }
 
 // CreateAccount handles POST /api/v1/accounts
@@ -100,7 +107,10 @@ func (h *AccountHandler) GetAccounts(c echo.Context) error {
 		return NewUnauthorizedError(c, "Workspace required")
 	}
 
-	accounts, err := h.accountService.GetAccounts(workspaceID)
+	// Check for includeArchived query param
+	includeArchived := c.QueryParam("includeArchived") == "true"
+
+	accounts, err := h.accountService.GetAccounts(workspaceID, includeArchived)
 	if err != nil {
 		log.Error().Err(err).Int32("workspace_id", workspaceID).Msg("Failed to get accounts")
 		return NewInternalError(c, "Failed to get accounts")
@@ -114,9 +124,68 @@ func (h *AccountHandler) GetAccounts(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
+// UpdateAccount handles PUT /api/v1/accounts/:id
+func (h *AccountHandler) UpdateAccount(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return NewValidationError(c, "Invalid account ID", nil)
+	}
+
+	var req UpdateAccountRequest
+	if err := c.Bind(&req); err != nil {
+		return NewValidationError(c, "Invalid request body", nil)
+	}
+
+	account, err := h.accountService.UpdateAccount(workspaceID, int32(id), req.Name)
+	if err != nil {
+		if errors.Is(err, domain.ErrAccountNotFound) {
+			return NewNotFoundError(c, "Account not found")
+		}
+		if errors.Is(err, domain.ErrNameRequired) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "name", Message: "Name is required"},
+			})
+		}
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("account_id", id).Msg("Failed to update account")
+		return NewInternalError(c, "Failed to update account")
+	}
+
+	log.Info().Int32("workspace_id", workspaceID).Int32("account_id", account.ID).Str("name", account.Name).Msg("Account updated")
+	return c.JSON(http.StatusOK, toAccountResponse(account))
+}
+
+// DeleteAccount handles DELETE /api/v1/accounts/:id
+func (h *AccountHandler) DeleteAccount(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return NewValidationError(c, "Invalid account ID", nil)
+	}
+
+	if err := h.accountService.DeleteAccount(workspaceID, int32(id)); err != nil {
+		if errors.Is(err, domain.ErrAccountNotFound) {
+			return NewNotFoundError(c, "Account not found")
+		}
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("account_id", id).Msg("Failed to delete account")
+		return NewInternalError(c, "Failed to delete account")
+	}
+
+	log.Info().Int32("workspace_id", workspaceID).Int("account_id", id).Msg("Account deleted (soft)")
+	return c.NoContent(http.StatusNoContent)
+}
+
 // Helper function to convert domain.Account to AccountResponse
 func toAccountResponse(account *domain.Account) AccountResponse {
-	return AccountResponse{
+	resp := AccountResponse{
 		ID:             account.ID,
 		WorkspaceID:    account.WorkspaceID,
 		Name:           account.Name,
@@ -126,4 +195,9 @@ func toAccountResponse(account *domain.Account) AccountResponse {
 		CreatedAt:      account.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:      account.UpdatedAt.Format(time.RFC3339),
 	}
+	if account.DeletedAt != nil {
+		deletedAt := account.DeletedAt.Format(time.RFC3339)
+		resp.DeletedAt = &deletedAt
+	}
+	return resp
 }

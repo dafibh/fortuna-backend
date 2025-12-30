@@ -17,6 +17,7 @@ type Account struct {
 	InitialBalance pgtype.Numeric     `json:"initial_balance"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt      pgtype.Timestamptz `json:"deleted_at"`
 }
 
 type User struct {

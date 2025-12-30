@@ -14,7 +14,7 @@ import (
 const createAccount = `-- name: CreateAccount :one
 INSERT INTO accounts (workspace_id, name, account_type, template, initial_balance)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, workspace_id, name, account_type, template, initial_balance, created_at, updated_at
+RETURNING id, workspace_id, name, account_type, template, initial_balance, created_at, updated_at, deleted_at
 `
 
 type CreateAccountParams struct {
@@ -43,12 +43,14 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		&i.InitialBalance,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
 
 const getAccountByID = `-- name: GetAccountByID :one
-SELECT id, workspace_id, name, account_type, template, initial_balance, created_at, updated_at FROM accounts WHERE workspace_id = $1 AND id = $2
+SELECT id, workspace_id, name, account_type, template, initial_balance, created_at, updated_at, deleted_at FROM accounts
+WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
 `
 
 type GetAccountByIDParams struct {
@@ -68,12 +70,42 @@ func (q *Queries) GetAccountByID(ctx context.Context, arg GetAccountByIDParams) 
 		&i.InitialBalance,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const getAccountByIDIncludeDeleted = `-- name: GetAccountByIDIncludeDeleted :one
+SELECT id, workspace_id, name, account_type, template, initial_balance, created_at, updated_at, deleted_at FROM accounts
+WHERE workspace_id = $1 AND id = $2
+`
+
+type GetAccountByIDIncludeDeletedParams struct {
+	WorkspaceID int32 `json:"workspace_id"`
+	ID          int32 `json:"id"`
+}
+
+func (q *Queries) GetAccountByIDIncludeDeleted(ctx context.Context, arg GetAccountByIDIncludeDeletedParams) (Account, error) {
+	row := q.db.QueryRow(ctx, getAccountByIDIncludeDeleted, arg.WorkspaceID, arg.ID)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Name,
+		&i.AccountType,
+		&i.Template,
+		&i.InitialBalance,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
 
 const getAccountsByWorkspace = `-- name: GetAccountsByWorkspace :many
-SELECT id, workspace_id, name, account_type, template, initial_balance, created_at, updated_at FROM accounts WHERE workspace_id = $1 ORDER BY created_at DESC
+SELECT id, workspace_id, name, account_type, template, initial_balance, created_at, updated_at, deleted_at FROM accounts
+WHERE workspace_id = $1 AND deleted_at IS NULL
+ORDER BY created_at DESC
 `
 
 func (q *Queries) GetAccountsByWorkspace(ctx context.Context, workspaceID int32) ([]Account, error) {
@@ -94,6 +126,7 @@ func (q *Queries) GetAccountsByWorkspace(ctx context.Context, workspaceID int32)
 			&i.InitialBalance,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -103,4 +136,101 @@ func (q *Queries) GetAccountsByWorkspace(ctx context.Context, workspaceID int32)
 		return nil, err
 	}
 	return items, nil
+}
+
+const getAccountsByWorkspaceAll = `-- name: GetAccountsByWorkspaceAll :many
+SELECT id, workspace_id, name, account_type, template, initial_balance, created_at, updated_at, deleted_at FROM accounts
+WHERE workspace_id = $1
+ORDER BY deleted_at NULLS FIRST, created_at DESC
+`
+
+func (q *Queries) GetAccountsByWorkspaceAll(ctx context.Context, workspaceID int32) ([]Account, error) {
+	rows, err := q.db.Query(ctx, getAccountsByWorkspaceAll, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Account{}
+	for rows.Next() {
+		var i Account
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Name,
+			&i.AccountType,
+			&i.Template,
+			&i.InitialBalance,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const hardDeleteAccount = `-- name: HardDeleteAccount :exec
+DELETE FROM accounts
+WHERE workspace_id = $1 AND id = $2
+`
+
+type HardDeleteAccountParams struct {
+	WorkspaceID int32 `json:"workspace_id"`
+	ID          int32 `json:"id"`
+}
+
+func (q *Queries) HardDeleteAccount(ctx context.Context, arg HardDeleteAccountParams) error {
+	_, err := q.db.Exec(ctx, hardDeleteAccount, arg.WorkspaceID, arg.ID)
+	return err
+}
+
+const softDeleteAccount = `-- name: SoftDeleteAccount :exec
+UPDATE accounts
+SET deleted_at = NOW(), updated_at = NOW()
+WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
+`
+
+type SoftDeleteAccountParams struct {
+	WorkspaceID int32 `json:"workspace_id"`
+	ID          int32 `json:"id"`
+}
+
+func (q *Queries) SoftDeleteAccount(ctx context.Context, arg SoftDeleteAccountParams) error {
+	_, err := q.db.Exec(ctx, softDeleteAccount, arg.WorkspaceID, arg.ID)
+	return err
+}
+
+const updateAccount = `-- name: UpdateAccount :one
+UPDATE accounts
+SET name = $3, updated_at = NOW()
+WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
+RETURNING id, workspace_id, name, account_type, template, initial_balance, created_at, updated_at, deleted_at
+`
+
+type UpdateAccountParams struct {
+	WorkspaceID int32  `json:"workspace_id"`
+	ID          int32  `json:"id"`
+	Name        string `json:"name"`
+}
+
+func (q *Queries) UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error) {
+	row := q.db.QueryRow(ctx, updateAccount, arg.WorkspaceID, arg.ID, arg.Name)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Name,
+		&i.AccountType,
+		&i.Template,
+		&i.InitialBalance,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
 }

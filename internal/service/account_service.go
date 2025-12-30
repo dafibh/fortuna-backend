@@ -50,11 +50,33 @@ func (s *AccountService) CreateAccount(workspaceID int32, input CreateAccountInp
 }
 
 // GetAccounts retrieves all accounts for a workspace
-func (s *AccountService) GetAccounts(workspaceID int32) ([]*domain.Account, error) {
-	return s.accountRepo.GetAllByWorkspace(workspaceID)
+func (s *AccountService) GetAccounts(workspaceID int32, includeArchived bool) ([]*domain.Account, error) {
+	return s.accountRepo.GetAllByWorkspace(workspaceID, includeArchived)
 }
 
 // GetAccountByID retrieves an account by ID within a workspace
 func (s *AccountService) GetAccountByID(workspaceID int32, id int32) (*domain.Account, error) {
 	return s.accountRepo.GetByID(workspaceID, id)
+}
+
+// UpdateAccount updates an account's name (only name is editable)
+func (s *AccountService) UpdateAccount(workspaceID int32, id int32, name string) (*domain.Account, error) {
+	// Validate name
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, domain.ErrNameRequired
+	}
+
+	return s.accountRepo.Update(workspaceID, id, name)
+}
+
+// DeleteAccount soft-deletes an account (sets deleted_at timestamp)
+func (s *AccountService) DeleteAccount(workspaceID int32, id int32) error {
+	// First check if account exists
+	_, err := s.accountRepo.GetByID(workspaceID, id)
+	if err != nil {
+		return err
+	}
+
+	return s.accountRepo.SoftDelete(workspaceID, id)
 }

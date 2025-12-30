@@ -28,4 +28,6 @@ func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, aut
 	accounts.Use(authMiddleware.Authenticate())
 	accounts.POST("", accountHandler.CreateAccount)
 	accounts.GET("", accountHandler.GetAccounts)
+	accounts.PUT("/:id", accountHandler.UpdateAccount)
+	accounts.DELETE("/:id", accountHandler.DeleteAccount)
 }

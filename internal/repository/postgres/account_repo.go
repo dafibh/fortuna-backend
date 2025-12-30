@@ -64,8 +64,21 @@ func (r *AccountRepository) GetByID(workspaceID int32, id int32) (*domain.Accoun
 }
 
 // GetAllByWorkspace retrieves all accounts for a workspace
-func (r *AccountRepository) GetAllByWorkspace(workspaceID int32) ([]*domain.Account, error) {
+func (r *AccountRepository) GetAllByWorkspace(workspaceID int32, includeArchived bool) ([]*domain.Account, error) {
 	ctx := context.Background()
+
+	if includeArchived {
+		accounts, err := r.queries.GetAccountsByWorkspaceAll(ctx, workspaceID)
+		if err != nil {
+			return nil, err
+		}
+		result := make([]*domain.Account, len(accounts))
+		for i, a := range accounts {
+			result[i] = sqlcAccountToDomain(a)
+		}
+		return result, nil
+	}
+
 	accounts, err := r.queries.GetAccountsByWorkspace(ctx, workspaceID)
 	if err != nil {
 		return nil, err
@@ -77,10 +90,45 @@ func (r *AccountRepository) GetAllByWorkspace(workspaceID int32) ([]*domain.Acco
 	return result, nil
 }
 
+// Update updates an account's name
+func (r *AccountRepository) Update(workspaceID int32, id int32, name string) (*domain.Account, error) {
+	ctx := context.Background()
+	account, err := r.queries.UpdateAccount(ctx, sqlc.UpdateAccountParams{
+		WorkspaceID: workspaceID,
+		ID:          id,
+		Name:        name,
+	})
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, domain.ErrAccountNotFound
+		}
+		return nil, err
+	}
+	return sqlcAccountToDomain(account), nil
+}
+
+// SoftDelete marks an account as deleted (sets deleted_at timestamp)
+func (r *AccountRepository) SoftDelete(workspaceID int32, id int32) error {
+	ctx := context.Background()
+	return r.queries.SoftDeleteAccount(ctx, sqlc.SoftDeleteAccountParams{
+		WorkspaceID: workspaceID,
+		ID:          id,
+	})
+}
+
+// HardDelete permanently removes an account from the database
+func (r *AccountRepository) HardDelete(workspaceID int32, id int32) error {
+	ctx := context.Background()
+	return r.queries.HardDeleteAccount(ctx, sqlc.HardDeleteAccountParams{
+		WorkspaceID: workspaceID,
+		ID:          id,
+	})
+}
+
 // Helper functions
 
 func sqlcAccountToDomain(a sqlc.Account) *domain.Account {
-	return &domain.Account{
+	account := &domain.Account{
 		ID:             a.ID,
 		WorkspaceID:    a.WorkspaceID,
 		Name:           a.Name,
@@ -90,6 +138,10 @@ func sqlcAccountToDomain(a sqlc.Account) *domain.Account {
 		CreatedAt:      a.CreatedAt.Time,
 		UpdatedAt:      a.UpdatedAt.Time,
 	}
+	if a.DeletedAt.Valid {
+		account.DeletedAt = &a.DeletedAt.Time
+	}
+	return account
 }
 
 func decimalToPgNumeric(d decimal.Decimal) (pgtype.Numeric, error) {

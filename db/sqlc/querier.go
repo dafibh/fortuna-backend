@@ -17,12 +17,17 @@ type Querier interface {
 	CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams) (Workspace, error)
 	DeleteWorkspace(ctx context.Context, id int32) error
 	GetAccountByID(ctx context.Context, arg GetAccountByIDParams) (Account, error)
+	GetAccountByIDIncludeDeleted(ctx context.Context, arg GetAccountByIDIncludeDeletedParams) (Account, error)
 	GetAccountsByWorkspace(ctx context.Context, workspaceID int32) ([]Account, error)
+	GetAccountsByWorkspaceAll(ctx context.Context, workspaceID int32) ([]Account, error)
 	GetUserByAuth0ID(ctx context.Context, auth0ID string) (User, error)
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	GetWorkspaceByID(ctx context.Context, id int32) (Workspace, error)
 	GetWorkspaceByUserAuth0ID(ctx context.Context, auth0ID string) (Workspace, error)
 	GetWorkspaceByUserID(ctx context.Context, userID pgtype.UUID) (Workspace, error)
+	HardDeleteAccount(ctx context.Context, arg HardDeleteAccountParams) error
+	SoftDeleteAccount(ctx context.Context, arg SoftDeleteAccountParams) error
+	UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
 	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) (User, error)
 	UpdateWorkspace(ctx context.Context, arg UpdateWorkspaceParams) (Workspace, error)

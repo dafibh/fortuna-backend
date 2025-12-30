@@ -231,7 +231,7 @@ func TestGetAccounts_Success(t *testing.T) {
 		Name:        "Account 2",
 	})
 
-	accounts, err := accountService.GetAccounts(workspaceID)
+	accounts, err := accountService.GetAccounts(workspaceID, false)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -247,7 +247,7 @@ func TestGetAccounts_EmptyList(t *testing.T) {
 
 	workspaceID := int32(1)
 
-	accounts, err := accountService.GetAccounts(workspaceID)
+	accounts, err := accountService.GetAccounts(workspaceID, false)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}

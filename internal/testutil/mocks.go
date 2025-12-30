@@ -182,7 +182,10 @@ type MockAccountRepository struct {
 	NextID        int32
 	CreateFn      func(account *domain.Account) (*domain.Account, error)
 	GetByIDFn     func(workspaceID int32, id int32) (*domain.Account, error)
-	GetAllFn      func(workspaceID int32) ([]*domain.Account, error)
+	GetAllFn      func(workspaceID int32, includeArchived bool) ([]*domain.Account, error)
+	UpdateFn      func(workspaceID int32, id int32, name string) (*domain.Account, error)
+	SoftDeleteFn  func(workspaceID int32, id int32) error
+	HardDeleteFn  func(workspaceID int32, id int32) error
 }
 
 // NewMockAccountRepository creates a new MockAccountRepository
@@ -215,19 +218,84 @@ func (m *MockAccountRepository) GetByID(workspaceID int32, id int32) (*domain.Ac
 	if !ok || account.WorkspaceID != workspaceID {
 		return nil, domain.ErrAccountNotFound
 	}
+	// Check if soft-deleted
+	if account.DeletedAt != nil {
+		return nil, domain.ErrAccountNotFound
+	}
 	return account, nil
 }
 
 // GetAllByWorkspace retrieves all accounts for a workspace
-func (m *MockAccountRepository) GetAllByWorkspace(workspaceID int32) ([]*domain.Account, error) {
+func (m *MockAccountRepository) GetAllByWorkspace(workspaceID int32, includeArchived bool) ([]*domain.Account, error) {
 	if m.GetAllFn != nil {
-		return m.GetAllFn(workspaceID)
+		return m.GetAllFn(workspaceID, includeArchived)
 	}
 	accounts := m.ByWorkspace[workspaceID]
 	if accounts == nil {
 		return []*domain.Account{}, nil
 	}
-	return accounts, nil
+	if includeArchived {
+		return accounts, nil
+	}
+	// Filter out soft-deleted accounts
+	var active []*domain.Account
+	for _, acc := range accounts {
+		if acc.DeletedAt == nil {
+			active = append(active, acc)
+		}
+	}
+	if active == nil {
+		return []*domain.Account{}, nil
+	}
+	return active, nil
+}
+
+// Update updates an account's name
+func (m *MockAccountRepository) Update(workspaceID int32, id int32, name string) (*domain.Account, error) {
+	if m.UpdateFn != nil {
+		return m.UpdateFn(workspaceID, id, name)
+	}
+	account, ok := m.Accounts[id]
+	if !ok || account.WorkspaceID != workspaceID || account.DeletedAt != nil {
+		return nil, domain.ErrAccountNotFound
+	}
+	account.Name = name
+	return account, nil
+}
+
+// SoftDelete marks an account as deleted
+func (m *MockAccountRepository) SoftDelete(workspaceID int32, id int32) error {
+	if m.SoftDeleteFn != nil {
+		return m.SoftDeleteFn(workspaceID, id)
+	}
+	account, ok := m.Accounts[id]
+	if !ok || account.WorkspaceID != workspaceID {
+		return nil
+	}
+	now := account.UpdatedAt
+	account.DeletedAt = &now
+	return nil
+}
+
+// HardDelete permanently removes an account
+func (m *MockAccountRepository) HardDelete(workspaceID int32, id int32) error {
+	if m.HardDeleteFn != nil {
+		return m.HardDeleteFn(workspaceID, id)
+	}
+	account, ok := m.Accounts[id]
+	if !ok || account.WorkspaceID != workspaceID {
+		return nil
+	}
+	delete(m.Accounts, id)
+	// Remove from ByWorkspace slice
+	accounts := m.ByWorkspace[workspaceID]
+	for i, acc := range accounts {
+		if acc.ID == id {
+			m.ByWorkspace[workspaceID] = append(accounts[:i], accounts[i+1:]...)
+			break
+		}
+	}
+	return nil
 }
 
 // AddAccount adds an account to the mock repository (helper for tests)
