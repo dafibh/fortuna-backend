@@ -255,6 +255,31 @@ func (h *TransactionHandler) GetTransactions(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
+// TogglePaidStatus handles PATCH /api/v1/transactions/:id/toggle-paid
+func (h *TransactionHandler) TogglePaidStatus(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return NewValidationError(c, "Invalid transaction ID", nil)
+	}
+
+	transaction, err := h.transactionService.TogglePaidStatus(workspaceID, int32(id))
+	if err != nil {
+		if errors.Is(err, domain.ErrTransactionNotFound) {
+			return NewNotFoundError(c, "Transaction not found")
+		}
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("transaction_id", id).Msg("Failed to toggle paid status")
+		return NewInternalError(c, "Failed to toggle paid status")
+	}
+
+	log.Info().Int32("workspace_id", workspaceID).Int32("transaction_id", transaction.ID).Bool("is_paid", transaction.IsPaid).Msg("Transaction paid status toggled")
+	return c.JSON(http.StatusOK, toTransactionResponse(transaction))
+}
+
 // Helper function to parse int query params with overflow protection
 func parseIntParam(s string, out *int32) (bool, error) {
 	if s == "" {

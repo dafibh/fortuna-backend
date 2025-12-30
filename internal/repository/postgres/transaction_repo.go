@@ -171,6 +171,22 @@ func (r *TransactionRepository) GetByWorkspace(workspaceID int32, filters *domai
 	}, nil
 }
 
+// TogglePaid toggles the paid status of a transaction
+func (r *TransactionRepository) TogglePaid(workspaceID int32, id int32) (*domain.Transaction, error) {
+	ctx := context.Background()
+	transaction, err := r.queries.ToggleTransactionPaidStatus(ctx, sqlc.ToggleTransactionPaidStatusParams{
+		WorkspaceID: workspaceID,
+		ID:          id,
+	})
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, domain.ErrTransactionNotFound
+		}
+		return nil, err
+	}
+	return sqlcTransactionToDomain(transaction), nil
+}
+
 // Helper functions
 
 func sqlcTransactionToDomain(t sqlc.Transaction) *domain.Transaction {

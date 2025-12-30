@@ -31,6 +31,7 @@ type Querier interface {
 	GetWorkspaceByUserID(ctx context.Context, userID pgtype.UUID) (Workspace, error)
 	HardDeleteAccount(ctx context.Context, arg HardDeleteAccountParams) error
 	SoftDeleteAccount(ctx context.Context, arg SoftDeleteAccountParams) (int64, error)
+	ToggleTransactionPaidStatus(ctx context.Context, arg ToggleTransactionPaidStatusParams) (Transaction, error)
 	UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
 	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) (User, error)

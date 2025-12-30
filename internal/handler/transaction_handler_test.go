@@ -514,3 +514,214 @@ func TestGetTransactions_WorkspaceIsolation(t *testing.T) {
 		t.Errorf("Expected 'Workspace 1 Transaction', got %s", response.Data[0].Name)
 	}
 }
+
+func TestTogglePaidStatus_Success(t *testing.T) {
+	e := echo.New()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	handler := NewTransactionHandler(transactionService)
+
+	workspaceID := int32(1)
+
+	// Add a paid transaction
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		AccountID:   1,
+		Name:        "Test Transaction",
+		Amount:      decimal.NewFromFloat(100.00),
+		Type:        domain.TransactionTypeExpense,
+		IsPaid:      true,
+	})
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/transactions/1/toggle-paid", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("1")
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	err := handler.TogglePaidStatus(c)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", rec.Code)
+	}
+
+	var response TransactionResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if response.IsPaid {
+		t.Error("Expected is_paid to be false after toggle")
+	}
+}
+
+func TestTogglePaidStatus_UnpaidToPaid(t *testing.T) {
+	e := echo.New()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	handler := NewTransactionHandler(transactionService)
+
+	workspaceID := int32(1)
+
+	// Add an unpaid transaction
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		AccountID:   1,
+		Name:        "Test Transaction",
+		Amount:      decimal.NewFromFloat(100.00),
+		Type:        domain.TransactionTypeExpense,
+		IsPaid:      false,
+	})
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/transactions/1/toggle-paid", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("1")
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	err := handler.TogglePaidStatus(c)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", rec.Code)
+	}
+
+	var response TransactionResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if !response.IsPaid {
+		t.Error("Expected is_paid to be true after toggle")
+	}
+}
+
+func TestTogglePaidStatus_InvalidID(t *testing.T) {
+	e := echo.New()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	handler := NewTransactionHandler(transactionService)
+
+	workspaceID := int32(1)
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/transactions/invalid/toggle-paid", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("invalid")
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	err := handler.TogglePaidStatus(c)
+	if err != nil {
+		t.Fatalf("Expected JSON response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestTogglePaidStatus_NotFound(t *testing.T) {
+	e := echo.New()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	handler := NewTransactionHandler(transactionService)
+
+	workspaceID := int32(1)
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/transactions/999/toggle-paid", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("999")
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	err := handler.TogglePaidStatus(c)
+	if err != nil {
+		t.Fatalf("Expected JSON response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d", rec.Code)
+	}
+}
+
+func TestTogglePaidStatus_MissingWorkspaceID(t *testing.T) {
+	e := echo.New()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	handler := NewTransactionHandler(transactionService)
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/transactions/1/toggle-paid", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("1")
+
+	// No workspace ID set
+	setupAuthContext(c, "auth0|test", "test@example.com", "Test User", "")
+
+	err := handler.TogglePaidStatus(c)
+	if err != nil {
+		t.Fatalf("Expected JSON response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401, got %d", rec.Code)
+	}
+}
+
+func TestTogglePaidStatus_WorkspaceIsolation(t *testing.T) {
+	e := echo.New()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	handler := NewTransactionHandler(transactionService)
+
+	// Transaction belongs to workspace 1
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:          1,
+		WorkspaceID: 1,
+		AccountID:   1,
+		Name:        "Test Transaction",
+		Amount:      decimal.NewFromFloat(100.00),
+		Type:        domain.TransactionTypeExpense,
+		IsPaid:      true,
+	})
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/transactions/1/toggle-paid", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("1")
+
+	// Request from workspace 2 - should not be able to toggle workspace 1's transaction
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", 2)
+
+	err := handler.TogglePaidStatus(c)
+	if err != nil {
+		t.Fatalf("Expected JSON response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404 for workspace isolation, got %d", rec.Code)
+	}
+}

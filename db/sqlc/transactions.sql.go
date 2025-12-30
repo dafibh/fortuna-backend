@@ -188,3 +188,36 @@ func (q *Queries) GetTransactionsByWorkspace(ctx context.Context, arg GetTransac
 	}
 	return items, nil
 }
+
+const toggleTransactionPaidStatus = `-- name: ToggleTransactionPaidStatus :one
+UPDATE transactions
+SET is_paid = NOT is_paid, updated_at = NOW()
+WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
+RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at
+`
+
+type ToggleTransactionPaidStatusParams struct {
+	WorkspaceID int32 `json:"workspace_id"`
+	ID          int32 `json:"id"`
+}
+
+func (q *Queries) ToggleTransactionPaidStatus(ctx context.Context, arg ToggleTransactionPaidStatusParams) (Transaction, error) {
+	row := q.db.QueryRow(ctx, toggleTransactionPaidStatus, arg.WorkspaceID, arg.ID)
+	var i Transaction
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.AccountID,
+		&i.Name,
+		&i.Amount,
+		&i.Type,
+		&i.TransactionDate,
+		&i.IsPaid,
+		&i.CcSettlementIntent,
+		&i.Notes,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}

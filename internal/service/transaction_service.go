@@ -109,3 +109,8 @@ func (s *TransactionService) GetTransactions(workspaceID int32, filters *domain.
 func (s *TransactionService) GetTransactionByID(workspaceID int32, id int32) (*domain.Transaction, error) {
 	return s.transactionRepo.GetByID(workspaceID, id)
 }
+
+// TogglePaidStatus toggles the paid status of a transaction
+func (s *TransactionService) TogglePaidStatus(workspaceID int32, id int32) (*domain.Transaction, error) {
+	return s.transactionRepo.TogglePaid(workspaceID, id)
+}

@@ -657,3 +657,97 @@ func TestGetTransactionByID_WrongWorkspace(t *testing.T) {
 		t.Errorf("Expected ErrTransactionNotFound for wrong workspace, got %v", err)
 	}
 }
+
+func TestTogglePaidStatus_PaidToUnpaid(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo)
+
+	workspaceID := int32(1)
+	transactionID := int32(1)
+
+	// Add a paid transaction
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:          transactionID,
+		WorkspaceID: workspaceID,
+		AccountID:   1,
+		Name:        "Paid Transaction",
+		Amount:      decimal.NewFromFloat(100.00),
+		Type:        domain.TransactionTypeExpense,
+		IsPaid:      true,
+	})
+
+	transaction, err := transactionService.TogglePaidStatus(workspaceID, transactionID)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if transaction.IsPaid {
+		t.Error("Expected is_paid to be false after toggle")
+	}
+}
+
+func TestTogglePaidStatus_UnpaidToPaid(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo)
+
+	workspaceID := int32(1)
+	transactionID := int32(1)
+
+	// Add an unpaid transaction
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:          transactionID,
+		WorkspaceID: workspaceID,
+		AccountID:   1,
+		Name:        "Unpaid Transaction",
+		Amount:      decimal.NewFromFloat(100.00),
+		Type:        domain.TransactionTypeExpense,
+		IsPaid:      false,
+	})
+
+	transaction, err := transactionService.TogglePaidStatus(workspaceID, transactionID)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if !transaction.IsPaid {
+		t.Error("Expected is_paid to be true after toggle")
+	}
+}
+
+func TestTogglePaidStatus_NotFound(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo)
+
+	workspaceID := int32(1)
+
+	_, err := transactionService.TogglePaidStatus(workspaceID, 999)
+	if err != domain.ErrTransactionNotFound {
+		t.Errorf("Expected ErrTransactionNotFound, got %v", err)
+	}
+}
+
+func TestTogglePaidStatus_WrongWorkspace(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo)
+
+	// Transaction belongs to workspace 1
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:          1,
+		WorkspaceID: 1,
+		AccountID:   1,
+		Name:        "Test Transaction",
+		Amount:      decimal.NewFromFloat(100.00),
+		Type:        domain.TransactionTypeExpense,
+		IsPaid:      true,
+	})
+
+	// Try to toggle from workspace 2
+	_, err := transactionService.TogglePaidStatus(2, 1)
+	if err != domain.ErrTransactionNotFound {
+		t.Errorf("Expected ErrTransactionNotFound for wrong workspace, got %v", err)
+	}
+}

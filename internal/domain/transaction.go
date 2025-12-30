@@ -62,4 +62,5 @@ type TransactionRepository interface {
 	Create(transaction *Transaction) (*Transaction, error)
 	GetByID(workspaceID int32, id int32) (*Transaction, error)
 	GetByWorkspace(workspaceID int32, filters *TransactionFilters) (*PaginatedTransactions, error)
+	TogglePaid(workspaceID int32, id int32) (*Transaction, error)
 }

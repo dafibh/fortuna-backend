@@ -312,6 +312,7 @@ type MockTransactionRepository struct {
 	CreateFn      func(transaction *domain.Transaction) (*domain.Transaction, error)
 	GetByIDFn     func(workspaceID int32, id int32) (*domain.Transaction, error)
 	GetByWSFn     func(workspaceID int32, filters *domain.TransactionFilters) (*domain.PaginatedTransactions, error)
+	TogglePaidFn  func(workspaceID int32, id int32) (*domain.Transaction, error)
 }
 
 // NewMockTransactionRepository creates a new MockTransactionRepository
@@ -423,6 +424,22 @@ func (m *MockTransactionRepository) GetByWorkspace(workspaceID int32, filters *d
 		TotalItems: totalItems,
 		TotalPages: totalPages,
 	}, nil
+}
+
+// TogglePaid toggles the paid status of a transaction
+func (m *MockTransactionRepository) TogglePaid(workspaceID int32, id int32) (*domain.Transaction, error) {
+	if m.TogglePaidFn != nil {
+		return m.TogglePaidFn(workspaceID, id)
+	}
+	transaction, ok := m.Transactions[id]
+	if !ok || transaction.WorkspaceID != workspaceID {
+		return nil, domain.ErrTransactionNotFound
+	}
+	if transaction.DeletedAt != nil {
+		return nil, domain.ErrTransactionNotFound
+	}
+	transaction.IsPaid = !transaction.IsPaid
+	return transaction, nil
 }
 
 // AddTransaction adds a transaction to the mock repository (helper for tests)

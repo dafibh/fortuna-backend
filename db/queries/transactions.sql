@@ -29,3 +29,9 @@ WHERE workspace_id = $1
   AND ($3::DATE IS NULL OR transaction_date >= $3)
   AND ($4::DATE IS NULL OR transaction_date <= $4)
   AND ($5::VARCHAR IS NULL OR type = $5);
+
+-- name: ToggleTransactionPaidStatus :one
+UPDATE transactions
+SET is_paid = NOT is_paid, updated_at = NOW()
+WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
+RETURNING *;
