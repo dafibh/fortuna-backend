@@ -303,3 +303,130 @@ func (m *MockAccountRepository) AddAccount(account *domain.Account) {
 	m.Accounts[account.ID] = account
 	m.ByWorkspace[account.WorkspaceID] = append(m.ByWorkspace[account.WorkspaceID], account)
 }
+
+// MockTransactionRepository is a mock implementation of domain.TransactionRepository
+type MockTransactionRepository struct {
+	Transactions  map[int32]*domain.Transaction
+	ByWorkspace   map[int32][]*domain.Transaction
+	NextID        int32
+	CreateFn      func(transaction *domain.Transaction) (*domain.Transaction, error)
+	GetByIDFn     func(workspaceID int32, id int32) (*domain.Transaction, error)
+	GetByWSFn     func(workspaceID int32, filters *domain.TransactionFilters) (*domain.PaginatedTransactions, error)
+}
+
+// NewMockTransactionRepository creates a new MockTransactionRepository
+func NewMockTransactionRepository() *MockTransactionRepository {
+	return &MockTransactionRepository{
+		Transactions: make(map[int32]*domain.Transaction),
+		ByWorkspace:  make(map[int32][]*domain.Transaction),
+		NextID:       1,
+	}
+}
+
+// Create creates a new transaction
+func (m *MockTransactionRepository) Create(transaction *domain.Transaction) (*domain.Transaction, error) {
+	if m.CreateFn != nil {
+		return m.CreateFn(transaction)
+	}
+	transaction.ID = m.NextID
+	m.NextID++
+	m.Transactions[transaction.ID] = transaction
+	m.ByWorkspace[transaction.WorkspaceID] = append(m.ByWorkspace[transaction.WorkspaceID], transaction)
+	return transaction, nil
+}
+
+// GetByID retrieves a transaction by its ID within a workspace
+func (m *MockTransactionRepository) GetByID(workspaceID int32, id int32) (*domain.Transaction, error) {
+	if m.GetByIDFn != nil {
+		return m.GetByIDFn(workspaceID, id)
+	}
+	transaction, ok := m.Transactions[id]
+	if !ok || transaction.WorkspaceID != workspaceID {
+		return nil, domain.ErrTransactionNotFound
+	}
+	if transaction.DeletedAt != nil {
+		return nil, domain.ErrTransactionNotFound
+	}
+	return transaction, nil
+}
+
+// GetByWorkspace retrieves all transactions for a workspace with optional filters and pagination
+func (m *MockTransactionRepository) GetByWorkspace(workspaceID int32, filters *domain.TransactionFilters) (*domain.PaginatedTransactions, error) {
+	if m.GetByWSFn != nil {
+		return m.GetByWSFn(workspaceID, filters)
+	}
+	transactions := m.ByWorkspace[workspaceID]
+	if transactions == nil {
+		transactions = []*domain.Transaction{}
+	}
+
+	// Filter out soft-deleted and apply filters
+	var filtered []*domain.Transaction
+	for _, t := range transactions {
+		if t.DeletedAt != nil {
+			continue
+		}
+		if filters != nil {
+			if filters.AccountID != nil && t.AccountID != *filters.AccountID {
+				continue
+			}
+			if filters.StartDate != nil && t.TransactionDate.Before(*filters.StartDate) {
+				continue
+			}
+			if filters.EndDate != nil && t.TransactionDate.After(*filters.EndDate) {
+				continue
+			}
+			if filters.Type != nil && t.Type != *filters.Type {
+				continue
+			}
+		}
+		filtered = append(filtered, t)
+	}
+	if filtered == nil {
+		filtered = []*domain.Transaction{}
+	}
+
+	// Apply pagination
+	page := int32(1)
+	pageSize := int32(domain.DefaultPageSize)
+	if filters != nil {
+		if filters.Page > 0 {
+			page = filters.Page
+		}
+		if filters.PageSize > 0 {
+			pageSize = filters.PageSize
+		}
+	}
+
+	totalItems := int64(len(filtered))
+	totalPages := int32(totalItems / int64(pageSize))
+	if totalItems%int64(pageSize) > 0 {
+		totalPages++
+	}
+
+	// Apply offset and limit
+	start := (page - 1) * pageSize
+	end := start + pageSize
+	if start >= int32(len(filtered)) {
+		filtered = []*domain.Transaction{}
+	} else {
+		if end > int32(len(filtered)) {
+			end = int32(len(filtered))
+		}
+		filtered = filtered[start:end]
+	}
+
+	return &domain.PaginatedTransactions{
+		Data:       filtered,
+		Page:       page,
+		PageSize:   pageSize,
+		TotalItems: totalItems,
+		TotalPages: totalPages,
+	}, nil
+}
+
+// AddTransaction adds a transaction to the mock repository (helper for tests)
+func (m *MockTransactionRepository) AddTransaction(transaction *domain.Transaction) {
+	m.Transactions[transaction.ID] = transaction
+	m.ByWorkspace[transaction.WorkspaceID] = append(m.ByWorkspace[transaction.WorkspaceID], transaction)
+}

@@ -14,11 +14,17 @@ var (
 	ErrWorkspaceNotFound = errors.New("workspace not found")
 	ErrAccountNotFound   = errors.New("account not found")
 	ErrNameRequired      = errors.New("name is required")
-	ErrNameTooLong       = errors.New("name exceeds maximum length")
-	ErrInvalidTemplate   = errors.New("invalid template")
+	ErrNameTooLong            = errors.New("name exceeds maximum length")
+	ErrInvalidTemplate        = errors.New("invalid template")
+	ErrTransactionNotFound    = errors.New("transaction not found")
+	ErrInvalidTransactionType = errors.New("invalid transaction type")
+	ErrInvalidAmount          = errors.New("amount must be positive")
+	ErrNotesTooLong           = errors.New("notes exceed maximum length")
 )
 
 // Validation constants
 const (
-	MaxAccountNameLength = 255
+	MaxAccountNameLength      = 255
+	MaxTransactionNameLength  = 255
+	MaxTransactionNotesLength = 1000
 )

@@ -20,6 +20,22 @@ type Account struct {
 	DeletedAt      pgtype.Timestamptz `json:"deleted_at"`
 }
 
+type Transaction struct {
+	ID                 int32              `json:"id"`
+	WorkspaceID        int32              `json:"workspace_id"`
+	AccountID          int32              `json:"account_id"`
+	Name               string             `json:"name"`
+	Amount             pgtype.Numeric     `json:"amount"`
+	Type               string             `json:"type"`
+	TransactionDate    pgtype.Date        `json:"transaction_date"`
+	IsPaid             bool               `json:"is_paid"`
+	CcSettlementIntent pgtype.Text        `json:"cc_settlement_intent"`
+	Notes              pgtype.Text        `json:"notes"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt          pgtype.Timestamptz `json:"deleted_at"`
+}
+
 type User struct {
 	ID         pgtype.UUID        `json:"id"`
 	Auth0ID    string             `json:"auth0_id"`
