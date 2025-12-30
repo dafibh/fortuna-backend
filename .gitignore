@@ -1,0 +1,46 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/cmd/api/api
+/tmp
+
+# Test binary
+*.test
+
+# Output of coverage
+*.out
+coverage.html
+
+# Dependency directories
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+/bin/
+/dist/
+
+# Air (hot reload)
+tmp/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Generated sqlc code (optional - you may want to commit these)
+# db/sqlc/
+
+# Debug
+__debug_bin
