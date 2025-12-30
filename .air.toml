@@ -1,0 +1,50 @@
+# Air configuration for hot reload during development
+# See https://github.com/air-verse/air for documentation
+
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  # Build command
+  cmd = "go build -o ./tmp/main ./cmd/api"
+  # Binary file to execute
+  bin = "./tmp/main"
+  # Watch these directories
+  include_dir = ["cmd", "internal", "db"]
+  # Watch these file extensions
+  include_ext = ["go", "sql"]
+  # Exclude directories
+  exclude_dir = ["tmp", "vendor", "node_modules"]
+  # Exclude files
+  exclude_file = []
+  # Exclude regex patterns
+  exclude_regex = ["_test.go"]
+  # Enable polling for file changes (useful for Docker/VM)
+  poll = false
+  # Polling interval in milliseconds
+  poll_interval = 500
+  # Build delay in milliseconds
+  delay = 1000
+  # Stop running old binary on build error
+  stop_on_error = true
+  # Send interrupt signal before killing process
+  send_interrupt = true
+  # Kill delay in milliseconds
+  kill_delay = 500
+
+[log]
+  # Log time format
+  time = true
+  # Main log output (stdout)
+  main_only = false
+
+[color]
+  # Customize colors for different output types
+  main = "magenta"
+  watcher = "cyan"
+  build = "yellow"
+  runner = "green"
+
+[misc]
+  # Delete tmp directory on exit
+  clean_on_exit = true
