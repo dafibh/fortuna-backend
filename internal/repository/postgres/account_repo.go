@@ -110,10 +110,17 @@ func (r *AccountRepository) Update(workspaceID int32, id int32, name string) (*d
 // SoftDelete marks an account as deleted (sets deleted_at timestamp)
 func (r *AccountRepository) SoftDelete(workspaceID int32, id int32) error {
 	ctx := context.Background()
-	return r.queries.SoftDeleteAccount(ctx, sqlc.SoftDeleteAccountParams{
+	rowsAffected, err := r.queries.SoftDeleteAccount(ctx, sqlc.SoftDeleteAccountParams{
 		WorkspaceID: workspaceID,
 		ID:          id,
 	})
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return domain.ErrAccountNotFound
+	}
+	return nil
 }
 
 // HardDelete permanently removes an account from the database

@@ -189,7 +189,7 @@ func (q *Queries) HardDeleteAccount(ctx context.Context, arg HardDeleteAccountPa
 	return err
 }
 
-const softDeleteAccount = `-- name: SoftDeleteAccount :exec
+const softDeleteAccount = `-- name: SoftDeleteAccount :execrows
 UPDATE accounts
 SET deleted_at = NOW(), updated_at = NOW()
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
@@ -200,9 +200,12 @@ type SoftDeleteAccountParams struct {
 	ID          int32 `json:"id"`
 }
 
-func (q *Queries) SoftDeleteAccount(ctx context.Context, arg SoftDeleteAccountParams) error {
-	_, err := q.db.Exec(ctx, softDeleteAccount, arg.WorkspaceID, arg.ID)
-	return err
+func (q *Queries) SoftDeleteAccount(ctx context.Context, arg SoftDeleteAccountParams) (int64, error) {
+	result, err := q.db.Exec(ctx, softDeleteAccount, arg.WorkspaceID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateAccount = `-- name: UpdateAccount :one

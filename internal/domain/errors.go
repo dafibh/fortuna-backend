@@ -14,5 +14,11 @@ var (
 	ErrWorkspaceNotFound = errors.New("workspace not found")
 	ErrAccountNotFound   = errors.New("account not found")
 	ErrNameRequired      = errors.New("name is required")
+	ErrNameTooLong       = errors.New("name exceeds maximum length")
 	ErrInvalidTemplate   = errors.New("invalid template")
+)
+
+// Validation constants
+const (
+	MaxAccountNameLength = 255
 )

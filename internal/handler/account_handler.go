@@ -86,6 +86,11 @@ func (h *AccountHandler) CreateAccount(c echo.Context) error {
 				{Field: "name", Message: "Name is required"},
 			})
 		}
+		if errors.Is(err, domain.ErrNameTooLong) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "name", Message: "Name must be 255 characters or less"},
+			})
+		}
 		if errors.Is(err, domain.ErrInvalidTemplate) {
 			return NewValidationError(c, "Validation failed", []ValidationError{
 				{Field: "template", Message: "Template must be one of: bank, cash, ewallet, credit_card"},
@@ -149,6 +154,11 @@ func (h *AccountHandler) UpdateAccount(c echo.Context) error {
 		if errors.Is(err, domain.ErrNameRequired) {
 			return NewValidationError(c, "Validation failed", []ValidationError{
 				{Field: "name", Message: "Name is required"},
+			})
+		}
+		if errors.Is(err, domain.ErrNameTooLong) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "name", Message: "Name must be 255 characters or less"},
 			})
 		}
 		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("account_id", id).Msg("Failed to update account")

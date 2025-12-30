@@ -27,7 +27,7 @@ SET name = $3, updated_at = NOW()
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
 RETURNING *;
 
--- name: SoftDeleteAccount :exec
+-- name: SoftDeleteAccount :execrows
 UPDATE accounts
 SET deleted_at = NOW(), updated_at = NOW()
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL;

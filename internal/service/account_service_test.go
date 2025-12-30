@@ -309,3 +309,213 @@ func TestGetAccountByID_WrongWorkspace(t *testing.T) {
 		t.Errorf("Expected ErrAccountNotFound for wrong workspace, got %v", err)
 	}
 }
+
+// UpdateAccount tests
+
+func TestUpdateAccount_Success(t *testing.T) {
+	accountRepo := testutil.NewMockAccountRepository()
+	accountService := NewAccountService(accountRepo)
+
+	workspaceID := int32(1)
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Old Name",
+	})
+
+	account, err := accountService.UpdateAccount(workspaceID, 1, "New Name")
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if account.Name != "New Name" {
+		t.Errorf("Expected name 'New Name', got %s", account.Name)
+	}
+}
+
+func TestUpdateAccount_TrimsName(t *testing.T) {
+	accountRepo := testutil.NewMockAccountRepository()
+	accountService := NewAccountService(accountRepo)
+
+	workspaceID := int32(1)
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Old Name",
+	})
+
+	account, err := accountService.UpdateAccount(workspaceID, 1, "  New Name  ")
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if account.Name != "New Name" {
+		t.Errorf("Expected trimmed name 'New Name', got '%s'", account.Name)
+	}
+}
+
+func TestUpdateAccount_EmptyName(t *testing.T) {
+	accountRepo := testutil.NewMockAccountRepository()
+	accountService := NewAccountService(accountRepo)
+
+	workspaceID := int32(1)
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Old Name",
+	})
+
+	_, err := accountService.UpdateAccount(workspaceID, 1, "")
+	if err != domain.ErrNameRequired {
+		t.Errorf("Expected ErrNameRequired, got %v", err)
+	}
+}
+
+func TestUpdateAccount_WhitespaceOnlyName(t *testing.T) {
+	accountRepo := testutil.NewMockAccountRepository()
+	accountService := NewAccountService(accountRepo)
+
+	workspaceID := int32(1)
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Old Name",
+	})
+
+	_, err := accountService.UpdateAccount(workspaceID, 1, "   ")
+	if err != domain.ErrNameRequired {
+		t.Errorf("Expected ErrNameRequired, got %v", err)
+	}
+}
+
+func TestUpdateAccount_NameTooLong(t *testing.T) {
+	accountRepo := testutil.NewMockAccountRepository()
+	accountService := NewAccountService(accountRepo)
+
+	workspaceID := int32(1)
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Old Name",
+	})
+
+	// Create a name longer than MaxAccountNameLength (255)
+	longName := ""
+	for i := 0; i < 256; i++ {
+		longName += "a"
+	}
+
+	_, err := accountService.UpdateAccount(workspaceID, 1, longName)
+	if err != domain.ErrNameTooLong {
+		t.Errorf("Expected ErrNameTooLong, got %v", err)
+	}
+}
+
+func TestUpdateAccount_NotFound(t *testing.T) {
+	accountRepo := testutil.NewMockAccountRepository()
+	accountService := NewAccountService(accountRepo)
+
+	workspaceID := int32(1)
+
+	_, err := accountService.UpdateAccount(workspaceID, 999, "New Name")
+	if err != domain.ErrAccountNotFound {
+		t.Errorf("Expected ErrAccountNotFound, got %v", err)
+	}
+}
+
+func TestUpdateAccount_WrongWorkspace(t *testing.T) {
+	accountRepo := testutil.NewMockAccountRepository()
+	accountService := NewAccountService(accountRepo)
+
+	// Account belongs to workspace 1
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: 1,
+		Name:        "Test Account",
+	})
+
+	// Try to update it from workspace 2
+	_, err := accountService.UpdateAccount(2, 1, "New Name")
+	if err != domain.ErrAccountNotFound {
+		t.Errorf("Expected ErrAccountNotFound for wrong workspace, got %v", err)
+	}
+}
+
+// DeleteAccount tests
+
+func TestDeleteAccount_Success(t *testing.T) {
+	accountRepo := testutil.NewMockAccountRepository()
+	accountService := NewAccountService(accountRepo)
+
+	workspaceID := int32(1)
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Test Account",
+	})
+
+	err := accountService.DeleteAccount(workspaceID, 1)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// Verify account is soft-deleted (not found when querying active accounts)
+	_, err = accountService.GetAccountByID(workspaceID, 1)
+	if err != domain.ErrAccountNotFound {
+		t.Errorf("Expected ErrAccountNotFound after soft delete, got %v", err)
+	}
+}
+
+func TestDeleteAccount_NotFound(t *testing.T) {
+	accountRepo := testutil.NewMockAccountRepository()
+	accountService := NewAccountService(accountRepo)
+
+	workspaceID := int32(1)
+
+	err := accountService.DeleteAccount(workspaceID, 999)
+	if err != domain.ErrAccountNotFound {
+		t.Errorf("Expected ErrAccountNotFound, got %v", err)
+	}
+}
+
+func TestDeleteAccount_WrongWorkspace(t *testing.T) {
+	accountRepo := testutil.NewMockAccountRepository()
+	accountService := NewAccountService(accountRepo)
+
+	// Account belongs to workspace 1
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: 1,
+		Name:        "Test Account",
+	})
+
+	// Try to delete it from workspace 2
+	err := accountService.DeleteAccount(2, 1)
+	if err != domain.ErrAccountNotFound {
+		t.Errorf("Expected ErrAccountNotFound for wrong workspace, got %v", err)
+	}
+}
+
+func TestDeleteAccount_AlreadyDeleted(t *testing.T) {
+	accountRepo := testutil.NewMockAccountRepository()
+	accountService := NewAccountService(accountRepo)
+
+	workspaceID := int32(1)
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Test Account",
+	})
+
+	// First delete should succeed
+	err := accountService.DeleteAccount(workspaceID, 1)
+	if err != nil {
+		t.Fatalf("First delete failed: %v", err)
+	}
+
+	// Second delete should fail (already deleted)
+	err = accountService.DeleteAccount(workspaceID, 1)
+	if err != domain.ErrAccountNotFound {
+		t.Errorf("Expected ErrAccountNotFound for already deleted account, got %v", err)
+	}
+}

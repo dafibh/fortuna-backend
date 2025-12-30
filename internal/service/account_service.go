@@ -31,6 +31,9 @@ func (s *AccountService) CreateAccount(workspaceID int32, input CreateAccountInp
 	if name == "" {
 		return nil, domain.ErrNameRequired
 	}
+	if len(name) > domain.MaxAccountNameLength {
+		return nil, domain.ErrNameTooLong
+	}
 
 	// Determine account type from template
 	accountType, ok := domain.TemplateToType[input.Template]
@@ -66,17 +69,16 @@ func (s *AccountService) UpdateAccount(workspaceID int32, id int32, name string)
 	if name == "" {
 		return nil, domain.ErrNameRequired
 	}
+	if len(name) > domain.MaxAccountNameLength {
+		return nil, domain.ErrNameTooLong
+	}
 
 	return s.accountRepo.Update(workspaceID, id, name)
 }
 
 // DeleteAccount soft-deletes an account (sets deleted_at timestamp)
+// TODO: When transactions table exists (Epic 2), add option to hard-delete accounts with no transactions
 func (s *AccountService) DeleteAccount(workspaceID int32, id int32) error {
-	// First check if account exists
-	_, err := s.accountRepo.GetByID(workspaceID, id)
-	if err != nil {
-		return err
-	}
-
+	// SoftDelete atomically checks existence and deletes, returning ErrAccountNotFound if not found
 	return s.accountRepo.SoftDelete(workspaceID, id)
 }

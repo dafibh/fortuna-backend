@@ -269,8 +269,8 @@ func (m *MockAccountRepository) SoftDelete(workspaceID int32, id int32) error {
 		return m.SoftDeleteFn(workspaceID, id)
 	}
 	account, ok := m.Accounts[id]
-	if !ok || account.WorkspaceID != workspaceID {
-		return nil
+	if !ok || account.WorkspaceID != workspaceID || account.DeletedAt != nil {
+		return domain.ErrAccountNotFound
 	}
 	now := account.UpdatedAt
 	account.DeletedAt = &now
