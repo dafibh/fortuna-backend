@@ -6,7 +6,7 @@ import (
 )
 
 // RegisterRoutes sets up all API routes
-func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler) {
+func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler) {
 	// API version 1
 	api := e.Group("/api/v1")
 
@@ -36,5 +36,16 @@ func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, aut
 	transactions.Use(authMiddleware.Authenticate())
 	transactions.POST("", transactionHandler.CreateTransaction)
 	transactions.GET("", transactionHandler.GetTransactions)
+	transactions.PUT("/:id", transactionHandler.UpdateTransaction)
+	transactions.DELETE("/:id", transactionHandler.DeleteTransaction)
 	transactions.PATCH("/:id/toggle-paid", transactionHandler.TogglePaidStatus)
+	transactions.PATCH("/:id/settlement-intent", transactionHandler.UpdateSettlementIntent)
+	transactions.POST("/transfers", transactionHandler.CreateTransfer)
+
+	// Month routes (protected)
+	months := api.Group("/months")
+	months.Use(authMiddleware.Authenticate())
+	months.GET("/current", monthHandler.GetCurrent)
+	months.GET("/:year/:month", monthHandler.GetByYearMonth)
+	months.GET("", monthHandler.GetAllMonths)
 }

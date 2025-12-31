@@ -51,12 +51,15 @@ func main() {
 	workspaceRepo := postgres.NewWorkspaceRepository(pool)
 	accountRepo := postgres.NewAccountRepository(pool)
 	transactionRepo := postgres.NewTransactionRepository(pool)
+	monthRepo := postgres.NewMonthRepository(pool)
 
 	// Initialize services
 	authService := service.NewAuthService(userRepo, workspaceRepo)
 	profileService := service.NewProfileService(userRepo)
 	accountService := service.NewAccountService(accountRepo)
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	calculationService := service.NewCalculationService(accountRepo, transactionRepo)
+	monthService := service.NewMonthService(monthRepo, transactionRepo, calculationService)
 
 	// Create workspace provider adapter for auth middleware
 	workspaceProvider := &workspaceProviderAdapter{authService: authService}
@@ -70,8 +73,9 @@ func main() {
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(authService)
 	profileHandler := handler.NewProfileHandler(profileService)
-	accountHandler := handler.NewAccountHandler(accountService)
+	accountHandler := handler.NewAccountHandler(accountService, calculationService)
 	transactionHandler := handler.NewTransactionHandler(transactionService)
+	monthHandler := handler.NewMonthHandler(monthService)
 
 	// Create Echo instance
 	e := echo.New()
@@ -112,7 +116,7 @@ func main() {
 	})
 
 	// Register API routes
-	handler.RegisterRoutes(e, authMiddleware, authHandler, profileHandler, accountHandler, transactionHandler)
+	handler.RegisterRoutes(e, authMiddleware, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler)
 
 	// Start server in goroutine
 	go func() {

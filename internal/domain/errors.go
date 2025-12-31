@@ -17,9 +17,15 @@ var (
 	ErrNameTooLong            = errors.New("name exceeds maximum length")
 	ErrInvalidTemplate        = errors.New("invalid template")
 	ErrTransactionNotFound    = errors.New("transaction not found")
-	ErrInvalidTransactionType = errors.New("invalid transaction type")
-	ErrInvalidAmount          = errors.New("amount must be positive")
-	ErrNotesTooLong           = errors.New("notes exceed maximum length")
+	ErrInvalidTransactionType       = errors.New("invalid transaction type")
+	ErrInvalidAmount                = errors.New("amount must be positive")
+	ErrNotesTooLong                 = errors.New("notes exceed maximum length")
+	ErrInvalidSettlementIntent      = errors.New("invalid settlement intent")
+	ErrSettlementIntentNotApplicable = errors.New("settlement intent only applies to credit card transactions")
+	ErrTransactionAlreadyPaid       = errors.New("cannot change settlement intent for paid transactions")
+	ErrSameAccountTransfer          = errors.New("cannot transfer to the same account")
+	ErrMonthNotFound                = errors.New("month not found")
+	ErrMonthAlreadyExists           = errors.New("month already exists")
 )
 
 // Validation constants
