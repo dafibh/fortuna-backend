@@ -20,6 +20,18 @@ type Account struct {
 	DeletedAt      pgtype.Timestamptz `json:"deleted_at"`
 }
 
+type Month struct {
+	ID              int32              `json:"id"`
+	WorkspaceID     int32              `json:"workspace_id"`
+	Year            int32              `json:"year"`
+	Month           int32              `json:"month"`
+	StartDate       pgtype.Date        `json:"start_date"`
+	EndDate         pgtype.Date        `json:"end_date"`
+	StartingBalance pgtype.Numeric     `json:"starting_balance"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Transaction struct {
 	ID                 int32              `json:"id"`
 	WorkspaceID        int32              `json:"workspace_id"`
@@ -34,6 +46,7 @@ type Transaction struct {
 	CreatedAt          pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
 	DeletedAt          pgtype.Timestamptz `json:"deleted_at"`
+	TransferPairID     pgtype.UUID        `json:"transfer_pair_id"`
 }
 
 type User struct {

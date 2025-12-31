@@ -45,10 +45,10 @@ func (q *Queries) CountTransactionsByWorkspace(ctx context.Context, arg CountTra
 const createTransaction = `-- name: CreateTransaction :one
 INSERT INTO transactions (
     workspace_id, account_id, name, amount, type,
-    transaction_date, is_paid, cc_settlement_intent, notes
+    transaction_date, is_paid, cc_settlement_intent, notes, transfer_pair_id
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9
-) RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+) RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id
 `
 
 type CreateTransactionParams struct {
@@ -61,6 +61,7 @@ type CreateTransactionParams struct {
 	IsPaid             bool           `json:"is_paid"`
 	CcSettlementIntent pgtype.Text    `json:"cc_settlement_intent"`
 	Notes              pgtype.Text    `json:"notes"`
+	TransferPairID     pgtype.UUID    `json:"transfer_pair_id"`
 }
 
 func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionParams) (Transaction, error) {
@@ -74,6 +75,7 @@ func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionPa
 		arg.IsPaid,
 		arg.CcSettlementIntent,
 		arg.Notes,
+		arg.TransferPairID,
 	)
 	var i Transaction
 	err := row.Scan(
@@ -90,12 +92,102 @@ func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionPa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.TransferPairID,
 	)
 	return i, err
 }
 
+const getAccountTransactionSummaries = `-- name: GetAccountTransactionSummaries :many
+SELECT
+    account_id,
+    COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) AS sum_income,
+    COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) AS sum_expenses,
+    COALESCE(SUM(CASE WHEN type = 'expense' AND is_paid = false THEN amount ELSE 0 END), 0) AS sum_unpaid_expenses
+FROM transactions
+WHERE workspace_id = $1 AND deleted_at IS NULL
+GROUP BY account_id
+`
+
+type GetAccountTransactionSummariesRow struct {
+	AccountID         int32       `json:"account_id"`
+	SumIncome         interface{} `json:"sum_income"`
+	SumExpenses       interface{} `json:"sum_expenses"`
+	SumUnpaidExpenses interface{} `json:"sum_unpaid_expenses"`
+}
+
+func (q *Queries) GetAccountTransactionSummaries(ctx context.Context, workspaceID int32) ([]GetAccountTransactionSummariesRow, error) {
+	rows, err := q.db.Query(ctx, getAccountTransactionSummaries, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetAccountTransactionSummariesRow{}
+	for rows.Next() {
+		var i GetAccountTransactionSummariesRow
+		if err := rows.Scan(
+			&i.AccountID,
+			&i.SumIncome,
+			&i.SumExpenses,
+			&i.SumUnpaidExpenses,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getMonthlyTransactionSummaries = `-- name: GetMonthlyTransactionSummaries :many
+SELECT
+    EXTRACT(YEAR FROM transaction_date)::INTEGER AS year,
+    EXTRACT(MONTH FROM transaction_date)::INTEGER AS month,
+    COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0)::NUMERIC(12,2) AS total_income,
+    COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0)::NUMERIC(12,2) AS total_expenses
+FROM transactions
+WHERE workspace_id = $1
+  AND deleted_at IS NULL
+GROUP BY EXTRACT(YEAR FROM transaction_date), EXTRACT(MONTH FROM transaction_date)
+ORDER BY year DESC, month DESC
+`
+
+type GetMonthlyTransactionSummariesRow struct {
+	Year          int32          `json:"year"`
+	Month         int32          `json:"month"`
+	TotalIncome   pgtype.Numeric `json:"total_income"`
+	TotalExpenses pgtype.Numeric `json:"total_expenses"`
+}
+
+// Batch query to get income/expense totals grouped by year/month for N+1 prevention
+func (q *Queries) GetMonthlyTransactionSummaries(ctx context.Context, workspaceID int32) ([]GetMonthlyTransactionSummariesRow, error) {
+	rows, err := q.db.Query(ctx, getMonthlyTransactionSummaries, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetMonthlyTransactionSummariesRow{}
+	for rows.Next() {
+		var i GetMonthlyTransactionSummariesRow
+		if err := rows.Scan(
+			&i.Year,
+			&i.Month,
+			&i.TotalIncome,
+			&i.TotalExpenses,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getTransactionByID = `-- name: GetTransactionByID :one
-SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at FROM transactions
+SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id FROM transactions
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
 `
 
@@ -121,12 +213,13 @@ func (q *Queries) GetTransactionByID(ctx context.Context, arg GetTransactionByID
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.TransferPairID,
 	)
 	return i, err
 }
 
 const getTransactionsByWorkspace = `-- name: GetTransactionsByWorkspace :many
-SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at FROM transactions
+SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id FROM transactions
 WHERE workspace_id = $1
   AND deleted_at IS NULL
   AND ($2::INTEGER IS NULL OR account_id = $2)
@@ -178,6 +271,7 @@ func (q *Queries) GetTransactionsByWorkspace(ctx context.Context, arg GetTransac
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.TransferPairID,
 		); err != nil {
 			return nil, err
 		}
@@ -189,11 +283,78 @@ func (q *Queries) GetTransactionsByWorkspace(ctx context.Context, arg GetTransac
 	return items, nil
 }
 
+const softDeleteTransaction = `-- name: SoftDeleteTransaction :execrows
+UPDATE transactions
+SET deleted_at = NOW(), updated_at = NOW()
+WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
+`
+
+type SoftDeleteTransactionParams struct {
+	WorkspaceID int32 `json:"workspace_id"`
+	ID          int32 `json:"id"`
+}
+
+func (q *Queries) SoftDeleteTransaction(ctx context.Context, arg SoftDeleteTransactionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, softDeleteTransaction, arg.WorkspaceID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const softDeleteTransferPair = `-- name: SoftDeleteTransferPair :execrows
+UPDATE transactions
+SET deleted_at = NOW(), updated_at = NOW()
+WHERE workspace_id = $1 AND transfer_pair_id = $2 AND deleted_at IS NULL
+`
+
+type SoftDeleteTransferPairParams struct {
+	WorkspaceID    int32       `json:"workspace_id"`
+	TransferPairID pgtype.UUID `json:"transfer_pair_id"`
+}
+
+func (q *Queries) SoftDeleteTransferPair(ctx context.Context, arg SoftDeleteTransferPairParams) (int64, error) {
+	result, err := q.db.Exec(ctx, softDeleteTransferPair, arg.WorkspaceID, arg.TransferPairID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const sumTransactionsByTypeAndDateRange = `-- name: SumTransactionsByTypeAndDateRange :one
+SELECT COALESCE(SUM(amount), 0)::NUMERIC(12,2) as total
+FROM transactions
+WHERE workspace_id = $1
+  AND transaction_date >= $2
+  AND transaction_date <= $3
+  AND type = $4
+  AND deleted_at IS NULL
+`
+
+type SumTransactionsByTypeAndDateRangeParams struct {
+	WorkspaceID       int32       `json:"workspace_id"`
+	TransactionDate   pgtype.Date `json:"transaction_date"`
+	TransactionDate_2 pgtype.Date `json:"transaction_date_2"`
+	Type              string      `json:"type"`
+}
+
+func (q *Queries) SumTransactionsByTypeAndDateRange(ctx context.Context, arg SumTransactionsByTypeAndDateRangeParams) (pgtype.Numeric, error) {
+	row := q.db.QueryRow(ctx, sumTransactionsByTypeAndDateRange,
+		arg.WorkspaceID,
+		arg.TransactionDate,
+		arg.TransactionDate_2,
+		arg.Type,
+	)
+	var total pgtype.Numeric
+	err := row.Scan(&total)
+	return total, err
+}
+
 const toggleTransactionPaidStatus = `-- name: ToggleTransactionPaidStatus :one
 UPDATE transactions
 SET is_paid = NOT is_paid, updated_at = NOW()
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
-RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at
+RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id
 `
 
 type ToggleTransactionPaidStatusParams struct {
@@ -218,6 +379,101 @@ func (q *Queries) ToggleTransactionPaidStatus(ctx context.Context, arg ToggleTra
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.TransferPairID,
+	)
+	return i, err
+}
+
+const updateTransaction = `-- name: UpdateTransaction :one
+UPDATE transactions
+SET
+    name = $3,
+    amount = $4,
+    type = $5,
+    transaction_date = $6,
+    account_id = $7,
+    cc_settlement_intent = $8,
+    notes = $9,
+    updated_at = NOW()
+WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
+RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id
+`
+
+type UpdateTransactionParams struct {
+	WorkspaceID        int32          `json:"workspace_id"`
+	ID                 int32          `json:"id"`
+	Name               string         `json:"name"`
+	Amount             pgtype.Numeric `json:"amount"`
+	Type               string         `json:"type"`
+	TransactionDate    pgtype.Date    `json:"transaction_date"`
+	AccountID          int32          `json:"account_id"`
+	CcSettlementIntent pgtype.Text    `json:"cc_settlement_intent"`
+	Notes              pgtype.Text    `json:"notes"`
+}
+
+func (q *Queries) UpdateTransaction(ctx context.Context, arg UpdateTransactionParams) (Transaction, error) {
+	row := q.db.QueryRow(ctx, updateTransaction,
+		arg.WorkspaceID,
+		arg.ID,
+		arg.Name,
+		arg.Amount,
+		arg.Type,
+		arg.TransactionDate,
+		arg.AccountID,
+		arg.CcSettlementIntent,
+		arg.Notes,
+	)
+	var i Transaction
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.AccountID,
+		&i.Name,
+		&i.Amount,
+		&i.Type,
+		&i.TransactionDate,
+		&i.IsPaid,
+		&i.CcSettlementIntent,
+		&i.Notes,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.TransferPairID,
+	)
+	return i, err
+}
+
+const updateTransactionSettlementIntent = `-- name: UpdateTransactionSettlementIntent :one
+UPDATE transactions
+SET cc_settlement_intent = $3, updated_at = NOW()
+WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL AND is_paid = false
+RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id
+`
+
+type UpdateTransactionSettlementIntentParams struct {
+	WorkspaceID        int32       `json:"workspace_id"`
+	ID                 int32       `json:"id"`
+	CcSettlementIntent pgtype.Text `json:"cc_settlement_intent"`
+}
+
+func (q *Queries) UpdateTransactionSettlementIntent(ctx context.Context, arg UpdateTransactionSettlementIntentParams) (Transaction, error) {
+	row := q.db.QueryRow(ctx, updateTransactionSettlementIntent, arg.WorkspaceID, arg.ID, arg.CcSettlementIntent)
+	var i Transaction
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.AccountID,
+		&i.Name,
+		&i.Amount,
+		&i.Type,
+		&i.TransactionDate,
+		&i.IsPaid,
+		&i.CcSettlementIntent,
+		&i.Notes,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.TransferPairID,
 	)
 	return i, err
 }

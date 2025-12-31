@@ -13,6 +13,7 @@ import (
 type Querier interface {
 	CountTransactionsByWorkspace(ctx context.Context, arg CountTransactionsByWorkspaceParams) (int64, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
+	CreateMonth(ctx context.Context, arg CreateMonthParams) (Month, error)
 	CreateOrGetUserByAuth0ID(ctx context.Context, arg CreateOrGetUserByAuth0IDParams) (User, error)
 	CreateTransaction(ctx context.Context, arg CreateTransactionParams) (Transaction, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
@@ -20,8 +21,14 @@ type Querier interface {
 	DeleteWorkspace(ctx context.Context, id int32) error
 	GetAccountByID(ctx context.Context, arg GetAccountByIDParams) (Account, error)
 	GetAccountByIDIncludeDeleted(ctx context.Context, arg GetAccountByIDIncludeDeletedParams) (Account, error)
+	GetAccountTransactionSummaries(ctx context.Context, workspaceID int32) ([]GetAccountTransactionSummariesRow, error)
 	GetAccountsByWorkspace(ctx context.Context, workspaceID int32) ([]Account, error)
 	GetAccountsByWorkspaceAll(ctx context.Context, workspaceID int32) ([]Account, error)
+	GetAllMonths(ctx context.Context, workspaceID int32) ([]Month, error)
+	GetLatestMonth(ctx context.Context, workspaceID int32) (Month, error)
+	GetMonthByYearMonth(ctx context.Context, arg GetMonthByYearMonthParams) (Month, error)
+	// Batch query to get income/expense totals grouped by year/month for N+1 prevention
+	GetMonthlyTransactionSummaries(ctx context.Context, workspaceID int32) ([]GetMonthlyTransactionSummariesRow, error)
 	GetTransactionByID(ctx context.Context, arg GetTransactionByIDParams) (Transaction, error)
 	GetTransactionsByWorkspace(ctx context.Context, arg GetTransactionsByWorkspaceParams) ([]Transaction, error)
 	GetUserByAuth0ID(ctx context.Context, auth0ID string) (User, error)
@@ -31,8 +38,14 @@ type Querier interface {
 	GetWorkspaceByUserID(ctx context.Context, userID pgtype.UUID) (Workspace, error)
 	HardDeleteAccount(ctx context.Context, arg HardDeleteAccountParams) error
 	SoftDeleteAccount(ctx context.Context, arg SoftDeleteAccountParams) (int64, error)
+	SoftDeleteTransaction(ctx context.Context, arg SoftDeleteTransactionParams) (int64, error)
+	SoftDeleteTransferPair(ctx context.Context, arg SoftDeleteTransferPairParams) (int64, error)
+	SumTransactionsByTypeAndDateRange(ctx context.Context, arg SumTransactionsByTypeAndDateRangeParams) (pgtype.Numeric, error)
 	ToggleTransactionPaidStatus(ctx context.Context, arg ToggleTransactionPaidStatusParams) (Transaction, error)
 	UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error)
+	UpdateMonthStartingBalance(ctx context.Context, arg UpdateMonthStartingBalanceParams) error
+	UpdateTransaction(ctx context.Context, arg UpdateTransactionParams) (Transaction, error)
+	UpdateTransactionSettlementIntent(ctx context.Context, arg UpdateTransactionSettlementIntentParams) (Transaction, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
 	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) (User, error)
 	UpdateWorkspace(ctx context.Context, arg UpdateWorkspaceParams) (Workspace, error)

@@ -1,8 +1,12 @@
 package testutil
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/dafibh/fortuna/fortuna-backend/internal/domain"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 )
 
 // MockUserRepository is a mock implementation of domain.UserRepository
@@ -306,21 +310,30 @@ func (m *MockAccountRepository) AddAccount(account *domain.Account) {
 
 // MockTransactionRepository is a mock implementation of domain.TransactionRepository
 type MockTransactionRepository struct {
-	Transactions  map[int32]*domain.Transaction
-	ByWorkspace   map[int32][]*domain.Transaction
-	NextID        int32
-	CreateFn      func(transaction *domain.Transaction) (*domain.Transaction, error)
-	GetByIDFn     func(workspaceID int32, id int32) (*domain.Transaction, error)
-	GetByWSFn     func(workspaceID int32, filters *domain.TransactionFilters) (*domain.PaginatedTransactions, error)
-	TogglePaidFn  func(workspaceID int32, id int32) (*domain.Transaction, error)
+	Transactions               map[int32]*domain.Transaction
+	ByWorkspace                map[int32][]*domain.Transaction
+	ByTransferPairID           map[uuid.UUID][]*domain.Transaction
+	NextID                     int32
+	CreateFn                   func(transaction *domain.Transaction) (*domain.Transaction, error)
+	GetByIDFn                  func(workspaceID int32, id int32) (*domain.Transaction, error)
+	GetByWSFn                  func(workspaceID int32, filters *domain.TransactionFilters) (*domain.PaginatedTransactions, error)
+	TogglePaidFn               func(workspaceID int32, id int32) (*domain.Transaction, error)
+	UpdateSettlementIntentFn   func(workspaceID int32, id int32, intent domain.CCSettlementIntent) (*domain.Transaction, error)
+	UpdateFn                   func(workspaceID int32, id int32, data *domain.UpdateTransactionData) (*domain.Transaction, error)
+	SoftDeleteFn                      func(workspaceID int32, id int32) error
+	CreateTransferPairFn              func(fromTx, toTx *domain.Transaction) (*domain.TransferResult, error)
+	SoftDeleteTransferPairFn          func(workspaceID int32, pairID uuid.UUID) error
+	GetAccountTransactionSummariesFn  func(workspaceID int32) ([]*domain.TransactionSummary, error)
+	SumByTypeAndDateRangeFn           func(workspaceID int32, startDate, endDate time.Time, txType domain.TransactionType) (decimal.Decimal, error)
 }
 
 // NewMockTransactionRepository creates a new MockTransactionRepository
 func NewMockTransactionRepository() *MockTransactionRepository {
 	return &MockTransactionRepository{
-		Transactions: make(map[int32]*domain.Transaction),
-		ByWorkspace:  make(map[int32][]*domain.Transaction),
-		NextID:       1,
+		Transactions:     make(map[int32]*domain.Transaction),
+		ByWorkspace:      make(map[int32][]*domain.Transaction),
+		ByTransferPairID: make(map[uuid.UUID][]*domain.Transaction),
+		NextID:           1,
 	}
 }
 
@@ -442,8 +455,322 @@ func (m *MockTransactionRepository) TogglePaid(workspaceID int32, id int32) (*do
 	return transaction, nil
 }
 
+// UpdateSettlementIntent updates the CC settlement intent for an unpaid transaction
+func (m *MockTransactionRepository) UpdateSettlementIntent(workspaceID int32, id int32, intent domain.CCSettlementIntent) (*domain.Transaction, error) {
+	if m.UpdateSettlementIntentFn != nil {
+		return m.UpdateSettlementIntentFn(workspaceID, id, intent)
+	}
+	transaction, ok := m.Transactions[id]
+	if !ok || transaction.WorkspaceID != workspaceID {
+		return nil, domain.ErrTransactionNotFound
+	}
+	if transaction.DeletedAt != nil {
+		return nil, domain.ErrTransactionNotFound
+	}
+	// Simulate the SQL constraint: is_paid = false
+	if transaction.IsPaid {
+		return nil, domain.ErrTransactionNotFound
+	}
+	transaction.CCSettlementIntent = &intent
+	return transaction, nil
+}
+
+// Update updates a transaction
+func (m *MockTransactionRepository) Update(workspaceID int32, id int32, data *domain.UpdateTransactionData) (*domain.Transaction, error) {
+	if m.UpdateFn != nil {
+		return m.UpdateFn(workspaceID, id, data)
+	}
+	transaction, ok := m.Transactions[id]
+	if !ok || transaction.WorkspaceID != workspaceID {
+		return nil, domain.ErrTransactionNotFound
+	}
+	if transaction.DeletedAt != nil {
+		return nil, domain.ErrTransactionNotFound
+	}
+	transaction.Name = data.Name
+	transaction.Amount = data.Amount
+	transaction.Type = data.Type
+	transaction.TransactionDate = data.TransactionDate
+	transaction.AccountID = data.AccountID
+	transaction.CCSettlementIntent = data.CCSettlementIntent
+	transaction.Notes = data.Notes
+	return transaction, nil
+}
+
+// SoftDelete soft deletes a transaction
+func (m *MockTransactionRepository) SoftDelete(workspaceID int32, id int32) error {
+	if m.SoftDeleteFn != nil {
+		return m.SoftDeleteFn(workspaceID, id)
+	}
+	transaction, ok := m.Transactions[id]
+	if !ok || transaction.WorkspaceID != workspaceID {
+		return domain.ErrTransactionNotFound
+	}
+	if transaction.DeletedAt != nil {
+		return domain.ErrTransactionNotFound
+	}
+	now := time.Now()
+	transaction.DeletedAt = &now
+	return nil
+}
+
 // AddTransaction adds a transaction to the mock repository (helper for tests)
 func (m *MockTransactionRepository) AddTransaction(transaction *domain.Transaction) {
 	m.Transactions[transaction.ID] = transaction
 	m.ByWorkspace[transaction.WorkspaceID] = append(m.ByWorkspace[transaction.WorkspaceID], transaction)
+	if transaction.TransferPairID != nil {
+		m.ByTransferPairID[*transaction.TransferPairID] = append(m.ByTransferPairID[*transaction.TransferPairID], transaction)
+	}
+}
+
+// CreateTransferPair creates two linked transactions atomically
+func (m *MockTransactionRepository) CreateTransferPair(fromTx, toTx *domain.Transaction) (*domain.TransferResult, error) {
+	if m.CreateTransferPairFn != nil {
+		return m.CreateTransferPairFn(fromTx, toTx)
+	}
+	// Assign IDs
+	fromTx.ID = m.NextID
+	m.NextID++
+	toTx.ID = m.NextID
+	m.NextID++
+
+	// Store transactions
+	m.Transactions[fromTx.ID] = fromTx
+	m.Transactions[toTx.ID] = toTx
+	m.ByWorkspace[fromTx.WorkspaceID] = append(m.ByWorkspace[fromTx.WorkspaceID], fromTx)
+	m.ByWorkspace[toTx.WorkspaceID] = append(m.ByWorkspace[toTx.WorkspaceID], toTx)
+	if fromTx.TransferPairID != nil {
+		m.ByTransferPairID[*fromTx.TransferPairID] = append(m.ByTransferPairID[*fromTx.TransferPairID], fromTx, toTx)
+	}
+
+	return &domain.TransferResult{
+		FromTransaction: fromTx,
+		ToTransaction:   toTx,
+	}, nil
+}
+
+// SoftDeleteTransferPair soft deletes both transactions in a transfer pair
+func (m *MockTransactionRepository) SoftDeleteTransferPair(workspaceID int32, pairID uuid.UUID) error {
+	if m.SoftDeleteTransferPairFn != nil {
+		return m.SoftDeleteTransferPairFn(workspaceID, pairID)
+	}
+	transactions, ok := m.ByTransferPairID[pairID]
+	if !ok || len(transactions) == 0 {
+		return domain.ErrTransactionNotFound
+	}
+	now := time.Now()
+	for _, tx := range transactions {
+		if tx.WorkspaceID == workspaceID && tx.DeletedAt == nil {
+			tx.DeletedAt = &now
+		}
+	}
+	return nil
+}
+
+// GetAccountTransactionSummaries returns aggregated transaction data for balance calculations
+func (m *MockTransactionRepository) GetAccountTransactionSummaries(workspaceID int32) ([]*domain.TransactionSummary, error) {
+	if m.GetAccountTransactionSummariesFn != nil {
+		return m.GetAccountTransactionSummariesFn(workspaceID)
+	}
+
+	// Aggregate transactions by account
+	summaryMap := make(map[int32]*domain.TransactionSummary)
+	for _, tx := range m.ByWorkspace[workspaceID] {
+		if tx.DeletedAt != nil {
+			continue
+		}
+		summary, ok := summaryMap[tx.AccountID]
+		if !ok {
+			summary = &domain.TransactionSummary{AccountID: tx.AccountID}
+			summaryMap[tx.AccountID] = summary
+		}
+		if tx.Type == domain.TransactionTypeIncome {
+			summary.SumIncome = summary.SumIncome.Add(tx.Amount)
+		} else if tx.Type == domain.TransactionTypeExpense {
+			summary.SumExpenses = summary.SumExpenses.Add(tx.Amount)
+			if !tx.IsPaid {
+				summary.SumUnpaidExpenses = summary.SumUnpaidExpenses.Add(tx.Amount)
+			}
+		}
+	}
+
+	summaries := make([]*domain.TransactionSummary, 0, len(summaryMap))
+	for _, s := range summaryMap {
+		summaries = append(summaries, s)
+	}
+	return summaries, nil
+}
+
+// SumByTypeAndDateRange sums transactions by type within a date range
+func (m *MockTransactionRepository) SumByTypeAndDateRange(workspaceID int32, startDate, endDate time.Time, txType domain.TransactionType) (decimal.Decimal, error) {
+	if m.SumByTypeAndDateRangeFn != nil {
+		return m.SumByTypeAndDateRangeFn(workspaceID, startDate, endDate, txType)
+	}
+
+	total := decimal.Zero
+	for _, tx := range m.ByWorkspace[workspaceID] {
+		if tx.DeletedAt != nil {
+			continue
+		}
+		if tx.Type != txType {
+			continue
+		}
+		// Check if transaction date is within range (inclusive)
+		if (tx.TransactionDate.Equal(startDate) || tx.TransactionDate.After(startDate)) &&
+			(tx.TransactionDate.Equal(endDate) || tx.TransactionDate.Before(endDate)) {
+			total = total.Add(tx.Amount)
+		}
+	}
+	return total, nil
+}
+
+// GetMonthlyTransactionSummaries returns income/expense totals grouped by year/month
+func (m *MockTransactionRepository) GetMonthlyTransactionSummaries(workspaceID int32) ([]*domain.MonthlyTransactionSummary, error) {
+	// Aggregate transactions by year/month
+	type monthKey struct {
+		year  int
+		month int
+	}
+	summaryMap := make(map[monthKey]*domain.MonthlyTransactionSummary)
+
+	for _, tx := range m.ByWorkspace[workspaceID] {
+		if tx.DeletedAt != nil {
+			continue
+		}
+		key := monthKey{year: tx.TransactionDate.Year(), month: int(tx.TransactionDate.Month())}
+		summary, ok := summaryMap[key]
+		if !ok {
+			summary = &domain.MonthlyTransactionSummary{Year: key.year, Month: key.month}
+			summaryMap[key] = summary
+		}
+		if tx.Type == domain.TransactionTypeIncome {
+			summary.TotalIncome = summary.TotalIncome.Add(tx.Amount)
+		} else if tx.Type == domain.TransactionTypeExpense {
+			summary.TotalExpenses = summary.TotalExpenses.Add(tx.Amount)
+		}
+	}
+
+	summaries := make([]*domain.MonthlyTransactionSummary, 0, len(summaryMap))
+	for _, s := range summaryMap {
+		summaries = append(summaries, s)
+	}
+	return summaries, nil
+}
+
+// MockMonthRepository is a mock implementation of domain.MonthRepository
+type MockMonthRepository struct {
+	Months                             map[int32]*domain.Month
+	ByWorkspaceYearMonth               map[string]*domain.Month
+	NextID                             int32
+	CreateFn                           func(workspaceID int32, year, month int, startDate, endDate time.Time, startingBalance decimal.Decimal) (*domain.Month, error)
+	GetByYearMonthFn                   func(workspaceID int32, year, month int) (*domain.Month, error)
+	GetLatestFn                        func(workspaceID int32) (*domain.Month, error)
+	GetAllFn                           func(workspaceID int32) ([]*domain.Month, error)
+	UpdateStartingBalanceFn            func(workspaceID, id int32, balance decimal.Decimal) error
+}
+
+// NewMockMonthRepository creates a new MockMonthRepository
+func NewMockMonthRepository() *MockMonthRepository {
+	return &MockMonthRepository{
+		Months:               make(map[int32]*domain.Month),
+		ByWorkspaceYearMonth: make(map[string]*domain.Month),
+		NextID:               1,
+	}
+}
+
+func monthKey(workspaceID int32, year, month int) string {
+	return fmt.Sprintf("%d-%d-%d", workspaceID, year, month)
+}
+
+// Create creates a new month
+func (m *MockMonthRepository) Create(workspaceID int32, year, month int, startDate, endDate time.Time, startingBalance decimal.Decimal) (*domain.Month, error) {
+	if m.CreateFn != nil {
+		return m.CreateFn(workspaceID, year, month, startDate, endDate, startingBalance)
+	}
+	key := monthKey(workspaceID, year, month)
+	if _, exists := m.ByWorkspaceYearMonth[key]; exists {
+		return nil, domain.ErrMonthAlreadyExists
+	}
+	newMonth := &domain.Month{
+		ID:              m.NextID,
+		WorkspaceID:     workspaceID,
+		Year:            year,
+		Month:           month,
+		StartDate:       startDate,
+		EndDate:         endDate,
+		StartingBalance: startingBalance,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+	}
+	m.NextID++
+	m.Months[newMonth.ID] = newMonth
+	m.ByWorkspaceYearMonth[key] = newMonth
+	return newMonth, nil
+}
+
+// GetByYearMonth retrieves a month by year and month number
+func (m *MockMonthRepository) GetByYearMonth(workspaceID int32, year, month int) (*domain.Month, error) {
+	if m.GetByYearMonthFn != nil {
+		return m.GetByYearMonthFn(workspaceID, year, month)
+	}
+	key := monthKey(workspaceID, year, month)
+	if mon, ok := m.ByWorkspaceYearMonth[key]; ok {
+		return mon, nil
+	}
+	return nil, domain.ErrMonthNotFound
+}
+
+// GetLatest retrieves the most recent month for a workspace
+func (m *MockMonthRepository) GetLatest(workspaceID int32) (*domain.Month, error) {
+	if m.GetLatestFn != nil {
+		return m.GetLatestFn(workspaceID)
+	}
+	var latest *domain.Month
+	for _, mon := range m.Months {
+		if mon.WorkspaceID != workspaceID {
+			continue
+		}
+		if latest == nil || (mon.Year > latest.Year) || (mon.Year == latest.Year && mon.Month > latest.Month) {
+			latest = mon
+		}
+	}
+	if latest == nil {
+		return nil, domain.ErrMonthNotFound
+	}
+	return latest, nil
+}
+
+// GetAll retrieves all months for a workspace
+func (m *MockMonthRepository) GetAll(workspaceID int32) ([]*domain.Month, error) {
+	if m.GetAllFn != nil {
+		return m.GetAllFn(workspaceID)
+	}
+	var result []*domain.Month
+	for _, mon := range m.Months {
+		if mon.WorkspaceID == workspaceID {
+			result = append(result, mon)
+		}
+	}
+	return result, nil
+}
+
+// UpdateStartingBalance updates the starting balance of a month
+func (m *MockMonthRepository) UpdateStartingBalance(workspaceID, id int32, balance decimal.Decimal) error {
+	if m.UpdateStartingBalanceFn != nil {
+		return m.UpdateStartingBalanceFn(workspaceID, id, balance)
+	}
+	mon, ok := m.Months[id]
+	if !ok || mon.WorkspaceID != workspaceID {
+		return domain.ErrMonthNotFound
+	}
+	mon.StartingBalance = balance
+	mon.UpdatedAt = time.Now()
+	return nil
+}
+
+// AddMonth adds a month to the mock repository (helper for tests)
+func (m *MockMonthRepository) AddMonth(month *domain.Month) {
+	m.Months[month.ID] = month
+	key := monthKey(month.WorkspaceID, month.Year, month.Month)
+	m.ByWorkspaceYearMonth[key] = month
 }
