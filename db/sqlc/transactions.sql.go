@@ -321,6 +321,31 @@ func (q *Queries) SoftDeleteTransferPair(ctx context.Context, arg SoftDeleteTran
 	return result.RowsAffected(), nil
 }
 
+const sumPaidExpensesByDateRange = `-- name: SumPaidExpensesByDateRange :one
+SELECT COALESCE(SUM(amount), 0)::NUMERIC(12,2) as total
+FROM transactions
+WHERE workspace_id = $1
+  AND transaction_date >= $2
+  AND transaction_date <= $3
+  AND type = 'expense'
+  AND is_paid = true
+  AND deleted_at IS NULL
+`
+
+type SumPaidExpensesByDateRangeParams struct {
+	WorkspaceID       int32       `json:"workspace_id"`
+	TransactionDate   pgtype.Date `json:"transaction_date"`
+	TransactionDate_2 pgtype.Date `json:"transaction_date_2"`
+}
+
+// Sum paid expenses within a date range for in-hand balance calculation
+func (q *Queries) SumPaidExpensesByDateRange(ctx context.Context, arg SumPaidExpensesByDateRangeParams) (pgtype.Numeric, error) {
+	row := q.db.QueryRow(ctx, sumPaidExpensesByDateRange, arg.WorkspaceID, arg.TransactionDate, arg.TransactionDate_2)
+	var total pgtype.Numeric
+	err := row.Scan(&total)
+	return total, err
+}
+
 const sumTransactionsByTypeAndDateRange = `-- name: SumTransactionsByTypeAndDateRange :one
 SELECT COALESCE(SUM(amount), 0)::NUMERIC(12,2) as total
 FROM transactions

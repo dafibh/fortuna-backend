@@ -325,6 +325,7 @@ type MockTransactionRepository struct {
 	SoftDeleteTransferPairFn          func(workspaceID int32, pairID uuid.UUID) error
 	GetAccountTransactionSummariesFn  func(workspaceID int32) ([]*domain.TransactionSummary, error)
 	SumByTypeAndDateRangeFn           func(workspaceID int32, startDate, endDate time.Time, txType domain.TransactionType) (decimal.Decimal, error)
+	SumPaidExpensesByDateRangeFn      func(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
 }
 
 // NewMockTransactionRepository creates a new MockTransactionRepository
@@ -655,6 +656,32 @@ func (m *MockTransactionRepository) GetMonthlyTransactionSummaries(workspaceID i
 		summaries = append(summaries, s)
 	}
 	return summaries, nil
+}
+
+// SumPaidExpensesByDateRange sums paid expenses within a date range
+func (m *MockTransactionRepository) SumPaidExpensesByDateRange(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error) {
+	if m.SumPaidExpensesByDateRangeFn != nil {
+		return m.SumPaidExpensesByDateRangeFn(workspaceID, startDate, endDate)
+	}
+
+	total := decimal.Zero
+	for _, tx := range m.ByWorkspace[workspaceID] {
+		if tx.DeletedAt != nil {
+			continue
+		}
+		if tx.Type != domain.TransactionTypeExpense {
+			continue
+		}
+		if !tx.IsPaid {
+			continue
+		}
+		// Check if transaction date is within range (inclusive)
+		if (tx.TransactionDate.Equal(startDate) || tx.TransactionDate.After(startDate)) &&
+			(tx.TransactionDate.Equal(endDate) || tx.TransactionDate.Before(endDate)) {
+			total = total.Add(tx.Amount)
+		}
+	}
+	return total, nil
 }
 
 // MockMonthRepository is a mock implementation of domain.MonthRepository

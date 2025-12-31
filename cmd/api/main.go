@@ -60,6 +60,7 @@ func main() {
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
 	calculationService := service.NewCalculationService(accountRepo, transactionRepo)
 	monthService := service.NewMonthService(monthRepo, transactionRepo, calculationService)
+	dashboardService := service.NewDashboardService(accountRepo, transactionRepo, monthService, calculationService)
 
 	// Create workspace provider adapter for auth middleware
 	workspaceProvider := &workspaceProviderAdapter{authService: authService}
@@ -76,6 +77,7 @@ func main() {
 	accountHandler := handler.NewAccountHandler(accountService, calculationService)
 	transactionHandler := handler.NewTransactionHandler(transactionService)
 	monthHandler := handler.NewMonthHandler(monthService)
+	dashboardHandler := handler.NewDashboardHandler(dashboardService)
 
 	// Create Echo instance
 	e := echo.New()
@@ -116,7 +118,7 @@ func main() {
 	})
 
 	// Register API routes
-	handler.RegisterRoutes(e, authMiddleware, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler)
+	handler.RegisterRoutes(e, authMiddleware, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler, dashboardHandler)
 
 	// Start server in goroutine
 	go func() {

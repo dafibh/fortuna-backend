@@ -6,7 +6,7 @@ import (
 )
 
 // RegisterRoutes sets up all API routes
-func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler) {
+func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler) {
 	// API version 1
 	api := e.Group("/api/v1")
 
@@ -48,4 +48,9 @@ func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, aut
 	months.GET("/current", monthHandler.GetCurrent)
 	months.GET("/:year/:month", monthHandler.GetByYearMonth)
 	months.GET("", monthHandler.GetAllMonths)
+
+	// Dashboard routes (protected)
+	dashboard := api.Group("/dashboard")
+	dashboard.Use(authMiddleware.Authenticate())
+	dashboard.GET("/summary", dashboardHandler.GetSummary)
 }

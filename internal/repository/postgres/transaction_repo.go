@@ -460,6 +460,21 @@ func (r *TransactionRepository) GetMonthlyTransactionSummaries(workspaceID int32
 	return summaries, nil
 }
 
+// SumPaidExpensesByDateRange sums paid expenses within a date range
+func (r *TransactionRepository) SumPaidExpensesByDateRange(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error) {
+	ctx := context.Background()
+
+	total, err := r.queries.SumPaidExpensesByDateRange(ctx, sqlc.SumPaidExpensesByDateRangeParams{
+		WorkspaceID:       workspaceID,
+		TransactionDate:   pgtype.Date{Time: startDate, Valid: true},
+		TransactionDate_2: pgtype.Date{Time: endDate, Valid: true},
+	})
+	if err != nil {
+		return decimal.Zero, err
+	}
+	return pgNumericToDecimal(total), nil
+}
+
 // Helper functions
 
 func sqlcTransactionToDomain(t sqlc.Transaction) *domain.Transaction {

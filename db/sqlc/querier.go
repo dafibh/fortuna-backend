@@ -40,6 +40,8 @@ type Querier interface {
 	SoftDeleteAccount(ctx context.Context, arg SoftDeleteAccountParams) (int64, error)
 	SoftDeleteTransaction(ctx context.Context, arg SoftDeleteTransactionParams) (int64, error)
 	SoftDeleteTransferPair(ctx context.Context, arg SoftDeleteTransferPairParams) (int64, error)
+	// Sum paid expenses within a date range for in-hand balance calculation
+	SumPaidExpensesByDateRange(ctx context.Context, arg SumPaidExpensesByDateRangeParams) (pgtype.Numeric, error)
 	SumTransactionsByTypeAndDateRange(ctx context.Context, arg SumTransactionsByTypeAndDateRangeParams) (pgtype.Numeric, error)
 	ToggleTransactionPaidStatus(ctx context.Context, arg ToggleTransactionPaidStatusParams) (Transaction, error)
 	UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error)

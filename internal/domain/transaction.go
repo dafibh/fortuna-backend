@@ -105,4 +105,5 @@ type TransactionRepository interface {
 	GetAccountTransactionSummaries(workspaceID int32) ([]*TransactionSummary, error)
 	SumByTypeAndDateRange(workspaceID int32, startDate, endDate time.Time, txType TransactionType) (decimal.Decimal, error)
 	GetMonthlyTransactionSummaries(workspaceID int32) ([]*MonthlyTransactionSummary, error)
+	SumPaidExpensesByDateRange(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
 }
