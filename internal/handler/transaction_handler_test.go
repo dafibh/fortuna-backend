@@ -725,3 +725,643 @@ func TestTogglePaidStatus_WorkspaceIsolation(t *testing.T) {
 		t.Errorf("Expected status 404 for workspace isolation, got %d", rec.Code)
 	}
 }
+
+func TestUpdateSettlementIntent_Success(t *testing.T) {
+	e := echo.New()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	handler := NewTransactionHandler(transactionService)
+
+	workspaceID := int32(1)
+	accountID := int32(1)
+
+	// Add credit card account
+	accountRepo.AddAccount(&domain.Account{
+		ID:          accountID,
+		WorkspaceID: workspaceID,
+		Name:        "Credit Card",
+		Template:    domain.TemplateCreditCard,
+	})
+
+	// Add unpaid CC transaction
+	thisMonth := domain.CCSettlementThisMonth
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:                 1,
+		WorkspaceID:        workspaceID,
+		AccountID:          accountID,
+		Name:               "Online Purchase",
+		Amount:             decimal.NewFromFloat(250.00),
+		Type:               domain.TransactionTypeExpense,
+		IsPaid:             false,
+		CCSettlementIntent: &thisMonth,
+	})
+
+	reqBody := `{"intent": "next_month"}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/transactions/1/settlement-intent", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("1")
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	err := handler.UpdateSettlementIntent(c)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", rec.Code)
+	}
+
+	var response TransactionResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if response.CCSettlementIntent == nil || *response.CCSettlementIntent != "next_month" {
+		t.Errorf("Expected settlement intent 'next_month', got %v", response.CCSettlementIntent)
+	}
+}
+
+func TestUpdateSettlementIntent_MissingIntent(t *testing.T) {
+	e := echo.New()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	handler := NewTransactionHandler(transactionService)
+
+	workspaceID := int32(1)
+
+	reqBody := `{}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/transactions/1/settlement-intent", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("1")
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	err := handler.UpdateSettlementIntent(c)
+	if err != nil {
+		t.Fatalf("Expected JSON response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rec.Code)
+	}
+
+	var problemDetails ProblemDetails
+	if err := json.Unmarshal(rec.Body.Bytes(), &problemDetails); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if len(problemDetails.Errors) != 1 || problemDetails.Errors[0].Field != "intent" {
+		t.Error("Expected validation error for 'intent' field")
+	}
+}
+
+func TestUpdateSettlementIntent_InvalidIntent(t *testing.T) {
+	e := echo.New()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	handler := NewTransactionHandler(transactionService)
+
+	workspaceID := int32(1)
+	accountID := int32(1)
+
+	// Add credit card account
+	accountRepo.AddAccount(&domain.Account{
+		ID:          accountID,
+		WorkspaceID: workspaceID,
+		Name:        "Credit Card",
+		Template:    domain.TemplateCreditCard,
+	})
+
+	// Add unpaid transaction
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		AccountID:   accountID,
+		Name:        "Test Transaction",
+		Amount:      decimal.NewFromFloat(100.00),
+		Type:        domain.TransactionTypeExpense,
+		IsPaid:      false,
+	})
+
+	reqBody := `{"intent": "invalid"}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/transactions/1/settlement-intent", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("1")
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	err := handler.UpdateSettlementIntent(c)
+	if err != nil {
+		t.Fatalf("Expected JSON response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestUpdateSettlementIntent_PaidTransaction(t *testing.T) {
+	e := echo.New()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	handler := NewTransactionHandler(transactionService)
+
+	workspaceID := int32(1)
+	accountID := int32(1)
+
+	// Add credit card account
+	accountRepo.AddAccount(&domain.Account{
+		ID:          accountID,
+		WorkspaceID: workspaceID,
+		Name:        "Credit Card",
+		Template:    domain.TemplateCreditCard,
+	})
+
+	// Add PAID transaction
+	thisMonth := domain.CCSettlementThisMonth
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:                 1,
+		WorkspaceID:        workspaceID,
+		AccountID:          accountID,
+		Name:               "Paid Transaction",
+		Amount:             decimal.NewFromFloat(100.00),
+		Type:               domain.TransactionTypeExpense,
+		IsPaid:             true, // Already paid
+		CCSettlementIntent: &thisMonth,
+	})
+
+	reqBody := `{"intent": "next_month"}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/transactions/1/settlement-intent", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("1")
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	err := handler.UpdateSettlementIntent(c)
+	if err != nil {
+		t.Fatalf("Expected JSON response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestUpdateSettlementIntent_NonCCAccount(t *testing.T) {
+	e := echo.New()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	handler := NewTransactionHandler(transactionService)
+
+	workspaceID := int32(1)
+	accountID := int32(1)
+
+	// Add bank account (not credit card)
+	accountRepo.AddAccount(&domain.Account{
+		ID:          accountID,
+		WorkspaceID: workspaceID,
+		Name:        "Checking Account",
+		Template:    domain.TemplateBank,
+	})
+
+	// Add transaction for bank account
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		AccountID:   accountID,
+		Name:        "Bank Transaction",
+		Amount:      decimal.NewFromFloat(100.00),
+		Type:        domain.TransactionTypeExpense,
+		IsPaid:      false,
+	})
+
+	reqBody := `{"intent": "next_month"}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/transactions/1/settlement-intent", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("1")
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	err := handler.UpdateSettlementIntent(c)
+	if err != nil {
+		t.Fatalf("Expected JSON response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestUpdateSettlementIntent_NotFound(t *testing.T) {
+	e := echo.New()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	handler := NewTransactionHandler(transactionService)
+
+	workspaceID := int32(1)
+
+	reqBody := `{"intent": "next_month"}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/transactions/999/settlement-intent", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("999")
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	err := handler.UpdateSettlementIntent(c)
+	if err != nil {
+		t.Fatalf("Expected JSON response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d", rec.Code)
+	}
+}
+
+func TestUpdateSettlementIntent_MissingWorkspaceID(t *testing.T) {
+	e := echo.New()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	handler := NewTransactionHandler(transactionService)
+
+	reqBody := `{"intent": "next_month"}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/transactions/1/settlement-intent", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("1")
+
+	// No workspace ID set
+	setupAuthContext(c, "auth0|test", "test@example.com", "Test User", "")
+
+	err := handler.UpdateSettlementIntent(c)
+	if err != nil {
+		t.Fatalf("Expected JSON response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401, got %d", rec.Code)
+	}
+}
+
+// ============================================
+// Transfer Handler Tests
+// ============================================
+
+func TestCreateTransfer_Success(t *testing.T) {
+	e := echo.New()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	handler := NewTransactionHandler(transactionService)
+
+	workspaceID := int32(1)
+
+	// Add source and destination accounts
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Checking Account",
+		Template:    domain.TemplateBank,
+	})
+	accountRepo.AddAccount(&domain.Account{
+		ID:          2,
+		WorkspaceID: workspaceID,
+		Name:        "Savings Account",
+		Template:    domain.TemplateBank,
+	})
+
+	reqBody := `{"fromAccountId": 1, "toAccountId": 2, "amount": "500.00", "date": "2025-01-15", "notes": "Monthly savings"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/transactions/transfers", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	err := handler.CreateTransfer(c)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if rec.Code != http.StatusCreated {
+		t.Errorf("Expected status 201, got %d", rec.Code)
+	}
+
+	var response TransferResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	// Validate from transaction
+	if response.FromTransaction.Type != "expense" {
+		t.Errorf("Expected from transaction type 'expense', got %s", response.FromTransaction.Type)
+	}
+	if response.FromTransaction.Amount != "500.00" {
+		t.Errorf("Expected amount '500.00', got %s", response.FromTransaction.Amount)
+	}
+
+	// Validate to transaction
+	if response.ToTransaction.Type != "income" {
+		t.Errorf("Expected to transaction type 'income', got %s", response.ToTransaction.Type)
+	}
+	if response.ToTransaction.Amount != "500.00" {
+		t.Errorf("Expected amount '500.00', got %s", response.ToTransaction.Amount)
+	}
+
+	// Both should have transfer pair ID
+	if response.FromTransaction.TransferPairID == nil || response.ToTransaction.TransferPairID == nil {
+		t.Error("Expected both transactions to have transfer pair ID")
+	}
+}
+
+func TestCreateTransfer_SameAccountError(t *testing.T) {
+	e := echo.New()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	handler := NewTransactionHandler(transactionService)
+
+	workspaceID := int32(1)
+
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Checking Account",
+		Template:    domain.TemplateBank,
+	})
+
+	reqBody := `{"fromAccountId": 1, "toAccountId": 1, "amount": "500.00"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/transactions/transfers", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	err := handler.CreateTransfer(c)
+	if err != nil {
+		t.Fatalf("Expected JSON response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rec.Code)
+	}
+
+	var problemDetails ProblemDetails
+	if err := json.Unmarshal(rec.Body.Bytes(), &problemDetails); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if len(problemDetails.Errors) != 1 || problemDetails.Errors[0].Field != "toAccountId" {
+		t.Error("Expected validation error for 'toAccountId' field")
+	}
+}
+
+func TestCreateTransfer_MissingWorkspaceID(t *testing.T) {
+	e := echo.New()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	handler := NewTransactionHandler(transactionService)
+
+	reqBody := `{"fromAccountId": 1, "toAccountId": 2, "amount": "500.00"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/transactions/transfers", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	// No workspace ID set
+	setupAuthContext(c, "auth0|test", "test@example.com", "Test User", "")
+
+	err := handler.CreateTransfer(c)
+	if err != nil {
+		t.Fatalf("Expected JSON response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401, got %d", rec.Code)
+	}
+}
+
+func TestCreateTransfer_InvalidAmount(t *testing.T) {
+	e := echo.New()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	handler := NewTransactionHandler(transactionService)
+
+	workspaceID := int32(1)
+
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Checking Account",
+		Template:    domain.TemplateBank,
+	})
+	accountRepo.AddAccount(&domain.Account{
+		ID:          2,
+		WorkspaceID: workspaceID,
+		Name:        "Savings Account",
+		Template:    domain.TemplateBank,
+	})
+
+	reqBody := `{"fromAccountId": 1, "toAccountId": 2, "amount": "not-a-number"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/transactions/transfers", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	err := handler.CreateTransfer(c)
+	if err != nil {
+		t.Fatalf("Expected JSON response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestCreateTransfer_ZeroAmount(t *testing.T) {
+	e := echo.New()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	handler := NewTransactionHandler(transactionService)
+
+	workspaceID := int32(1)
+
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Checking Account",
+		Template:    domain.TemplateBank,
+	})
+	accountRepo.AddAccount(&domain.Account{
+		ID:          2,
+		WorkspaceID: workspaceID,
+		Name:        "Savings Account",
+		Template:    domain.TemplateBank,
+	})
+
+	reqBody := `{"fromAccountId": 1, "toAccountId": 2, "amount": "0"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/transactions/transfers", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	err := handler.CreateTransfer(c)
+	if err != nil {
+		t.Fatalf("Expected JSON response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rec.Code)
+	}
+
+	var problemDetails ProblemDetails
+	if err := json.Unmarshal(rec.Body.Bytes(), &problemDetails); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if len(problemDetails.Errors) != 1 || problemDetails.Errors[0].Field != "amount" {
+		t.Error("Expected validation error for 'amount' field")
+	}
+}
+
+func TestCreateTransfer_AccountNotFound(t *testing.T) {
+	e := echo.New()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	handler := NewTransactionHandler(transactionService)
+
+	workspaceID := int32(1)
+
+	// Only add source account
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Checking Account",
+		Template:    domain.TemplateBank,
+	})
+
+	reqBody := `{"fromAccountId": 1, "toAccountId": 999, "amount": "500.00"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/transactions/transfers", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	err := handler.CreateTransfer(c)
+	if err != nil {
+		t.Fatalf("Expected JSON response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestCreateTransfer_MissingFromAccountId(t *testing.T) {
+	e := echo.New()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	handler := NewTransactionHandler(transactionService)
+
+	workspaceID := int32(1)
+
+	reqBody := `{"toAccountId": 2, "amount": "500.00"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/transactions/transfers", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	err := handler.CreateTransfer(c)
+	if err != nil {
+		t.Fatalf("Expected JSON response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rec.Code)
+	}
+
+	var problemDetails ProblemDetails
+	if err := json.Unmarshal(rec.Body.Bytes(), &problemDetails); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if len(problemDetails.Errors) != 1 || problemDetails.Errors[0].Field != "fromAccountId" {
+		t.Error("Expected validation error for 'fromAccountId' field")
+	}
+}
+
+func TestCreateTransfer_MissingToAccountId(t *testing.T) {
+	e := echo.New()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	handler := NewTransactionHandler(transactionService)
+
+	workspaceID := int32(1)
+
+	reqBody := `{"fromAccountId": 1, "amount": "500.00"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/transactions/transfers", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	err := handler.CreateTransfer(c)
+	if err != nil {
+		t.Fatalf("Expected JSON response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rec.Code)
+	}
+
+	var problemDetails ProblemDetails
+	if err := json.Unmarshal(rec.Body.Bytes(), &problemDetails); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if len(problemDetails.Errors) != 1 || problemDetails.Errors[0].Field != "toAccountId" {
+		t.Error("Expected validation error for 'toAccountId' field")
+	}
+}

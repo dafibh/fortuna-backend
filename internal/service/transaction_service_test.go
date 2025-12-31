@@ -751,3 +751,647 @@ func TestTogglePaidStatus_WrongWorkspace(t *testing.T) {
 		t.Errorf("Expected ErrTransactionNotFound for wrong workspace, got %v", err)
 	}
 }
+
+func TestUpdateSettlementIntent_Success(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo)
+
+	workspaceID := int32(1)
+	accountID := int32(1)
+	transactionID := int32(1)
+
+	// Add credit card account
+	accountRepo.AddAccount(&domain.Account{
+		ID:          accountID,
+		WorkspaceID: workspaceID,
+		Name:        "Credit Card",
+		Template:    domain.TemplateCreditCard,
+	})
+
+	// Add unpaid CC transaction with initial intent
+	thisMonth := domain.CCSettlementThisMonth
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:                 transactionID,
+		WorkspaceID:        workspaceID,
+		AccountID:          accountID,
+		Name:               "Online Purchase",
+		Amount:             decimal.NewFromFloat(250.00),
+		Type:               domain.TransactionTypeExpense,
+		IsPaid:             false,
+		CCSettlementIntent: &thisMonth,
+	})
+
+	// Update to next_month
+	transaction, err := transactionService.UpdateSettlementIntent(workspaceID, transactionID, domain.CCSettlementNextMonth)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if transaction.CCSettlementIntent == nil || *transaction.CCSettlementIntent != domain.CCSettlementNextMonth {
+		t.Errorf("Expected settlement intent 'next_month', got %v", transaction.CCSettlementIntent)
+	}
+}
+
+func TestUpdateSettlementIntent_InvalidIntent(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo)
+
+	workspaceID := int32(1)
+
+	_, err := transactionService.UpdateSettlementIntent(workspaceID, 1, domain.CCSettlementIntent("invalid"))
+	if err != domain.ErrInvalidSettlementIntent {
+		t.Errorf("Expected ErrInvalidSettlementIntent, got %v", err)
+	}
+}
+
+func TestUpdateSettlementIntent_TransactionNotFound(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo)
+
+	workspaceID := int32(1)
+
+	_, err := transactionService.UpdateSettlementIntent(workspaceID, 999, domain.CCSettlementNextMonth)
+	if err != domain.ErrTransactionNotFound {
+		t.Errorf("Expected ErrTransactionNotFound, got %v", err)
+	}
+}
+
+func TestUpdateSettlementIntent_TransactionAlreadyPaid(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo)
+
+	workspaceID := int32(1)
+	accountID := int32(1)
+	transactionID := int32(1)
+
+	// Add credit card account
+	accountRepo.AddAccount(&domain.Account{
+		ID:          accountID,
+		WorkspaceID: workspaceID,
+		Name:        "Credit Card",
+		Template:    domain.TemplateCreditCard,
+	})
+
+	// Add PAID CC transaction
+	thisMonth := domain.CCSettlementThisMonth
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:                 transactionID,
+		WorkspaceID:        workspaceID,
+		AccountID:          accountID,
+		Name:               "Paid Purchase",
+		Amount:             decimal.NewFromFloat(100.00),
+		Type:               domain.TransactionTypeExpense,
+		IsPaid:             true, // Already paid
+		CCSettlementIntent: &thisMonth,
+	})
+
+	_, err := transactionService.UpdateSettlementIntent(workspaceID, transactionID, domain.CCSettlementNextMonth)
+	if err != domain.ErrTransactionAlreadyPaid {
+		t.Errorf("Expected ErrTransactionAlreadyPaid, got %v", err)
+	}
+}
+
+func TestUpdateSettlementIntent_NotCreditCardAccount(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo)
+
+	workspaceID := int32(1)
+	accountID := int32(1)
+	transactionID := int32(1)
+
+	// Add bank account (not credit card)
+	accountRepo.AddAccount(&domain.Account{
+		ID:          accountID,
+		WorkspaceID: workspaceID,
+		Name:        "Checking Account",
+		Template:    domain.TemplateBank,
+	})
+
+	// Add transaction for bank account
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:          transactionID,
+		WorkspaceID: workspaceID,
+		AccountID:   accountID,
+		Name:        "Bank Transaction",
+		Amount:      decimal.NewFromFloat(100.00),
+		Type:        domain.TransactionTypeExpense,
+		IsPaid:      false,
+	})
+
+	_, err := transactionService.UpdateSettlementIntent(workspaceID, transactionID, domain.CCSettlementNextMonth)
+	if err != domain.ErrSettlementIntentNotApplicable {
+		t.Errorf("Expected ErrSettlementIntentNotApplicable, got %v", err)
+	}
+}
+
+func TestUpdateSettlementIntent_WrongWorkspace(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo)
+
+	// Transaction belongs to workspace 1
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: 1,
+		Name:        "Credit Card",
+		Template:    domain.TemplateCreditCard,
+	})
+
+	thisMonth := domain.CCSettlementThisMonth
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:                 1,
+		WorkspaceID:        1,
+		AccountID:          1,
+		Name:               "Test Transaction",
+		Amount:             decimal.NewFromFloat(100.00),
+		Type:               domain.TransactionTypeExpense,
+		IsPaid:             false,
+		CCSettlementIntent: &thisMonth,
+	})
+
+	// Try to update from workspace 2
+	_, err := transactionService.UpdateSettlementIntent(2, 1, domain.CCSettlementNextMonth)
+	if err != domain.ErrTransactionNotFound {
+		t.Errorf("Expected ErrTransactionNotFound for wrong workspace, got %v", err)
+	}
+}
+
+func TestCreateTransaction_CCAccountDefaultsToThisMonth(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo)
+
+	workspaceID := int32(1)
+	accountID := int32(1)
+
+	// Add credit card account
+	accountRepo.AddAccount(&domain.Account{
+		ID:          accountID,
+		WorkspaceID: workspaceID,
+		Name:        "Credit Card",
+		Template:    domain.TemplateCreditCard,
+	})
+
+	input := CreateTransactionInput{
+		AccountID: accountID,
+		Name:      "Online Purchase",
+		Amount:    decimal.NewFromFloat(250.00),
+		Type:      domain.TransactionTypeExpense,
+		// CCSettlementIntent not provided - should default to 'this_month'
+	}
+
+	transaction, err := transactionService.CreateTransaction(workspaceID, input)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if transaction.CCSettlementIntent == nil {
+		t.Fatal("Expected CCSettlementIntent to be set for CC account")
+	}
+
+	if *transaction.CCSettlementIntent != domain.CCSettlementThisMonth {
+		t.Errorf("Expected settlement intent 'this_month', got %s", *transaction.CCSettlementIntent)
+	}
+}
+
+func TestCreateTransaction_CCAccountWithExplicitIntent(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo)
+
+	workspaceID := int32(1)
+	accountID := int32(1)
+
+	// Add credit card account
+	accountRepo.AddAccount(&domain.Account{
+		ID:          accountID,
+		WorkspaceID: workspaceID,
+		Name:        "Credit Card",
+		Template:    domain.TemplateCreditCard,
+	})
+
+	nextMonth := domain.CCSettlementNextMonth
+	input := CreateTransactionInput{
+		AccountID:          accountID,
+		Name:               "Online Purchase",
+		Amount:             decimal.NewFromFloat(250.00),
+		Type:               domain.TransactionTypeExpense,
+		CCSettlementIntent: &nextMonth,
+	}
+
+	transaction, err := transactionService.CreateTransaction(workspaceID, input)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if transaction.CCSettlementIntent == nil {
+		t.Fatal("Expected CCSettlementIntent to be set for CC account")
+	}
+
+	if *transaction.CCSettlementIntent != domain.CCSettlementNextMonth {
+		t.Errorf("Expected settlement intent 'next_month', got %s", *transaction.CCSettlementIntent)
+	}
+}
+
+func TestCreateTransaction_NonCCAccountHasNilSettlementIntent(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo)
+
+	workspaceID := int32(1)
+	accountID := int32(1)
+
+	// Add bank account (non-CC)
+	accountRepo.AddAccount(&domain.Account{
+		ID:          accountID,
+		WorkspaceID: workspaceID,
+		Name:        "Checking Account",
+		Template:    domain.TemplateBank,
+	})
+
+	input := CreateTransactionInput{
+		AccountID: accountID,
+		Name:      "Bank Transaction",
+		Amount:    decimal.NewFromFloat(100.00),
+		Type:      domain.TransactionTypeExpense,
+	}
+
+	transaction, err := transactionService.CreateTransaction(workspaceID, input)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if transaction.CCSettlementIntent != nil {
+		t.Errorf("Expected nil CCSettlementIntent for non-CC account, got %s", *transaction.CCSettlementIntent)
+	}
+}
+
+func TestCreateTransaction_NonCCAccountIgnoresProvidedIntent(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo)
+
+	workspaceID := int32(1)
+	accountID := int32(1)
+
+	// Add bank account (non-CC)
+	accountRepo.AddAccount(&domain.Account{
+		ID:          accountID,
+		WorkspaceID: workspaceID,
+		Name:        "Checking Account",
+		Template:    domain.TemplateBank,
+	})
+
+	// Try to provide settlement intent for non-CC account - should be ignored
+	thisMonth := domain.CCSettlementThisMonth
+	input := CreateTransactionInput{
+		AccountID:          accountID,
+		Name:               "Bank Transaction",
+		Amount:             decimal.NewFromFloat(100.00),
+		Type:               domain.TransactionTypeExpense,
+		CCSettlementIntent: &thisMonth,
+	}
+
+	transaction, err := transactionService.CreateTransaction(workspaceID, input)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if transaction.CCSettlementIntent != nil {
+		t.Errorf("Expected nil CCSettlementIntent for non-CC account even when provided, got %s", *transaction.CCSettlementIntent)
+	}
+}
+
+func TestCreateTransaction_CCAccountWithInvalidIntent(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo)
+
+	workspaceID := int32(1)
+	accountID := int32(1)
+
+	// Add credit card account
+	accountRepo.AddAccount(&domain.Account{
+		ID:          accountID,
+		WorkspaceID: workspaceID,
+		Name:        "Credit Card",
+		Template:    domain.TemplateCreditCard,
+	})
+
+	invalidIntent := domain.CCSettlementIntent("invalid")
+	input := CreateTransactionInput{
+		AccountID:          accountID,
+		Name:               "Online Purchase",
+		Amount:             decimal.NewFromFloat(250.00),
+		Type:               domain.TransactionTypeExpense,
+		CCSettlementIntent: &invalidIntent,
+	}
+
+	_, err := transactionService.CreateTransaction(workspaceID, input)
+	if err != domain.ErrInvalidSettlementIntent {
+		t.Errorf("Expected ErrInvalidSettlementIntent, got %v", err)
+	}
+}
+
+// ============================================
+// Transfer Tests
+// ============================================
+
+func TestCreateTransfer_Success(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo)
+
+	workspaceID := int32(1)
+
+	// Add source and destination accounts
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Checking Account",
+		Template:    domain.TemplateBank,
+	})
+	accountRepo.AddAccount(&domain.Account{
+		ID:          2,
+		WorkspaceID: workspaceID,
+		Name:        "Savings Account",
+		Template:    domain.TemplateBank,
+	})
+
+	date := time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)
+	notes := "Monthly savings transfer"
+	input := CreateTransferInput{
+		FromAccountID: 1,
+		ToAccountID:   2,
+		Amount:        decimal.NewFromFloat(500.00),
+		Date:          date,
+		Notes:         &notes,
+	}
+
+	result, err := transactionService.CreateTransfer(workspaceID, input)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// Validate from transaction (expense)
+	if result.FromTransaction.Type != domain.TransactionTypeExpense {
+		t.Errorf("Expected from transaction type 'expense', got %s", result.FromTransaction.Type)
+	}
+	if result.FromTransaction.AccountID != 1 {
+		t.Errorf("Expected from account ID 1, got %d", result.FromTransaction.AccountID)
+	}
+	if !result.FromTransaction.Amount.Equal(decimal.NewFromFloat(500.00)) {
+		t.Errorf("Expected amount 500.00, got %s", result.FromTransaction.Amount.String())
+	}
+	if result.FromTransaction.Name != "Transfer to Savings Account" {
+		t.Errorf("Expected name 'Transfer to Savings Account', got %s", result.FromTransaction.Name)
+	}
+
+	// Validate to transaction (income)
+	if result.ToTransaction.Type != domain.TransactionTypeIncome {
+		t.Errorf("Expected to transaction type 'income', got %s", result.ToTransaction.Type)
+	}
+	if result.ToTransaction.AccountID != 2 {
+		t.Errorf("Expected to account ID 2, got %d", result.ToTransaction.AccountID)
+	}
+	if result.ToTransaction.Name != "Transfer from Checking Account" {
+		t.Errorf("Expected name 'Transfer from Checking Account', got %s", result.ToTransaction.Name)
+	}
+
+	// Both should have same transfer pair ID
+	if result.FromTransaction.TransferPairID == nil || result.ToTransaction.TransferPairID == nil {
+		t.Fatal("Expected both transactions to have transfer pair ID")
+	}
+	if *result.FromTransaction.TransferPairID != *result.ToTransaction.TransferPairID {
+		t.Error("Expected both transactions to have the same transfer pair ID")
+	}
+
+	// Both should be marked as paid
+	if !result.FromTransaction.IsPaid || !result.ToTransaction.IsPaid {
+		t.Error("Expected both transactions to be marked as paid")
+	}
+}
+
+func TestCreateTransfer_SameAccountError(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo)
+
+	workspaceID := int32(1)
+
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Checking Account",
+		Template:    domain.TemplateBank,
+	})
+
+	input := CreateTransferInput{
+		FromAccountID: 1,
+		ToAccountID:   1, // Same account
+		Amount:        decimal.NewFromFloat(500.00),
+	}
+
+	_, err := transactionService.CreateTransfer(workspaceID, input)
+	if err != domain.ErrSameAccountTransfer {
+		t.Errorf("Expected ErrSameAccountTransfer, got %v", err)
+	}
+}
+
+func TestCreateTransfer_SourceAccountNotFound(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo)
+
+	workspaceID := int32(1)
+
+	// Only add destination account
+	accountRepo.AddAccount(&domain.Account{
+		ID:          2,
+		WorkspaceID: workspaceID,
+		Name:        "Savings Account",
+		Template:    domain.TemplateBank,
+	})
+
+	input := CreateTransferInput{
+		FromAccountID: 1, // Does not exist
+		ToAccountID:   2,
+		Amount:        decimal.NewFromFloat(500.00),
+	}
+
+	_, err := transactionService.CreateTransfer(workspaceID, input)
+	if err != domain.ErrAccountNotFound {
+		t.Errorf("Expected ErrAccountNotFound, got %v", err)
+	}
+}
+
+func TestCreateTransfer_DestinationAccountNotFound(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo)
+
+	workspaceID := int32(1)
+
+	// Only add source account
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Checking Account",
+		Template:    domain.TemplateBank,
+	})
+
+	input := CreateTransferInput{
+		FromAccountID: 1,
+		ToAccountID:   2, // Does not exist
+		Amount:        decimal.NewFromFloat(500.00),
+	}
+
+	_, err := transactionService.CreateTransfer(workspaceID, input)
+	if err != domain.ErrAccountNotFound {
+		t.Errorf("Expected ErrAccountNotFound, got %v", err)
+	}
+}
+
+func TestCreateTransfer_ZeroAmount(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo)
+
+	workspaceID := int32(1)
+
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Checking Account",
+		Template:    domain.TemplateBank,
+	})
+	accountRepo.AddAccount(&domain.Account{
+		ID:          2,
+		WorkspaceID: workspaceID,
+		Name:        "Savings Account",
+		Template:    domain.TemplateBank,
+	})
+
+	input := CreateTransferInput{
+		FromAccountID: 1,
+		ToAccountID:   2,
+		Amount:        decimal.Zero,
+	}
+
+	_, err := transactionService.CreateTransfer(workspaceID, input)
+	if err != domain.ErrInvalidAmount {
+		t.Errorf("Expected ErrInvalidAmount, got %v", err)
+	}
+}
+
+func TestCreateTransfer_NegativeAmount(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo)
+
+	workspaceID := int32(1)
+
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Checking Account",
+		Template:    domain.TemplateBank,
+	})
+	accountRepo.AddAccount(&domain.Account{
+		ID:          2,
+		WorkspaceID: workspaceID,
+		Name:        "Savings Account",
+		Template:    domain.TemplateBank,
+	})
+
+	input := CreateTransferInput{
+		FromAccountID: 1,
+		ToAccountID:   2,
+		Amount:        decimal.NewFromFloat(-100.00),
+	}
+
+	_, err := transactionService.CreateTransfer(workspaceID, input)
+	if err != domain.ErrInvalidAmount {
+		t.Errorf("Expected ErrInvalidAmount, got %v", err)
+	}
+}
+
+func TestCreateTransfer_UsesProvidedDate(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo)
+
+	workspaceID := int32(1)
+
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Checking Account",
+		Template:    domain.TemplateBank,
+	})
+	accountRepo.AddAccount(&domain.Account{
+		ID:          2,
+		WorkspaceID: workspaceID,
+		Name:        "Savings Account",
+		Template:    domain.TemplateBank,
+	})
+
+	customDate := time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC)
+	input := CreateTransferInput{
+		FromAccountID: 1,
+		ToAccountID:   2,
+		Amount:        decimal.NewFromFloat(500.00),
+		Date:          customDate,
+	}
+
+	result, err := transactionService.CreateTransfer(workspaceID, input)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if !result.FromTransaction.TransactionDate.Equal(customDate) {
+		t.Errorf("Expected date %v, got %v", customDate, result.FromTransaction.TransactionDate)
+	}
+	if !result.ToTransaction.TransactionDate.Equal(customDate) {
+		t.Errorf("Expected date %v, got %v", customDate, result.ToTransaction.TransactionDate)
+	}
+}
+
+func TestCreateTransfer_WorkspaceIsolation(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo)
+
+	// Accounts in workspace 1
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: 1,
+		Name:        "Checking Account",
+		Template:    domain.TemplateBank,
+	})
+	// Account in workspace 2
+	accountRepo.AddAccount(&domain.Account{
+		ID:          2,
+		WorkspaceID: 2,
+		Name:        "Savings Account",
+		Template:    domain.TemplateBank,
+	})
+
+	// Try to transfer from workspace 1's account to workspace 2's account
+	// Should fail because we're in workspace 1
+	input := CreateTransferInput{
+		FromAccountID: 1,
+		ToAccountID:   2,
+		Amount:        decimal.NewFromFloat(500.00),
+	}
+
+	_, err := transactionService.CreateTransfer(1, input)
+	if err != domain.ErrAccountNotFound {
+		t.Errorf("Expected ErrAccountNotFound for cross-workspace transfer, got %v", err)
+	}
+}

@@ -16,12 +16,16 @@ import (
 
 // AccountHandler handles account-related HTTP requests
 type AccountHandler struct {
-	accountService *service.AccountService
+	accountService     *service.AccountService
+	calculationService *service.CalculationService
 }
 
 // NewAccountHandler creates a new AccountHandler
-func NewAccountHandler(accountService *service.AccountService) *AccountHandler {
-	return &AccountHandler{accountService: accountService}
+func NewAccountHandler(accountService *service.AccountService, calculationService *service.CalculationService) *AccountHandler {
+	return &AccountHandler{
+		accountService:     accountService,
+		calculationService: calculationService,
+	}
 }
 
 // CreateAccountRequest represents the create account request body
@@ -38,15 +42,17 @@ type UpdateAccountRequest struct {
 
 // AccountResponse represents an account in API responses
 type AccountResponse struct {
-	ID             int32   `json:"id"`
-	WorkspaceID    int32   `json:"workspaceId"`
-	Name           string  `json:"name"`
-	AccountType    string  `json:"accountType"`
-	Template       string  `json:"template"`
-	InitialBalance string  `json:"initialBalance"`
-	CreatedAt      string  `json:"createdAt"`
-	UpdatedAt      string  `json:"updatedAt"`
-	DeletedAt      *string `json:"deletedAt,omitempty"`
+	ID                int32   `json:"id"`
+	WorkspaceID       int32   `json:"workspaceId"`
+	Name              string  `json:"name"`
+	AccountType       string  `json:"accountType"`
+	Template          string  `json:"template"`
+	InitialBalance    string  `json:"initialBalance"`
+	CalculatedBalance string  `json:"calculatedBalance"`
+	CCOutstanding     *string `json:"ccOutstanding,omitempty"`
+	CreatedAt         string  `json:"createdAt"`
+	UpdatedAt         string  `json:"updatedAt"`
+	DeletedAt         *string `json:"deletedAt,omitempty"`
 }
 
 // CreateAccount handles POST /api/v1/accounts
@@ -121,9 +127,24 @@ func (h *AccountHandler) GetAccounts(c echo.Context) error {
 		return NewInternalError(c, "Failed to get accounts")
 	}
 
+	// Calculate balances for all accounts
+	balances, err := h.calculationService.CalculateAccountBalances(workspaceID)
+	if err != nil {
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Msg("Failed to calculate balances")
+		return NewInternalError(c, "Failed to calculate balances")
+	}
+
 	response := make([]AccountResponse, len(accounts))
 	for i, account := range accounts {
-		response[i] = toAccountResponse(account)
+		balance := balances[account.ID]
+		if balance == nil {
+			balance = &service.AccountBalanceResult{
+				AccountID:         account.ID,
+				InitialBalance:    account.InitialBalance,
+				CalculatedBalance: account.InitialBalance,
+			}
+		}
+		response[i] = toAccountResponseWithBalance(account, balance)
 	}
 
 	return c.JSON(http.StatusOK, response)
@@ -193,18 +214,46 @@ func (h *AccountHandler) DeleteAccount(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
-// Helper function to convert domain.Account to AccountResponse
+// Helper function to convert domain.Account to AccountResponse (without balance calculation)
 func toAccountResponse(account *domain.Account) AccountResponse {
 	resp := AccountResponse{
-		ID:             account.ID,
-		WorkspaceID:    account.WorkspaceID,
-		Name:           account.Name,
-		AccountType:    string(account.AccountType),
-		Template:       string(account.Template),
-		InitialBalance: account.InitialBalance.StringFixed(2),
-		CreatedAt:      account.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:      account.UpdatedAt.Format(time.RFC3339),
+		ID:                account.ID,
+		WorkspaceID:       account.WorkspaceID,
+		Name:              account.Name,
+		AccountType:       string(account.AccountType),
+		Template:          string(account.Template),
+		InitialBalance:    account.InitialBalance.StringFixed(2),
+		CalculatedBalance: account.InitialBalance.StringFixed(2), // Default to initial if no calculation
+		CreatedAt:         account.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:         account.UpdatedAt.Format(time.RFC3339),
 	}
+	if account.DeletedAt != nil {
+		deletedAt := account.DeletedAt.Format(time.RFC3339)
+		resp.DeletedAt = &deletedAt
+	}
+	return resp
+}
+
+// Helper function to convert domain.Account to AccountResponse with calculated balance
+func toAccountResponseWithBalance(account *domain.Account, balance *service.AccountBalanceResult) AccountResponse {
+	resp := AccountResponse{
+		ID:                account.ID,
+		WorkspaceID:       account.WorkspaceID,
+		Name:              account.Name,
+		AccountType:       string(account.AccountType),
+		Template:          string(account.Template),
+		InitialBalance:    account.InitialBalance.StringFixed(2),
+		CalculatedBalance: balance.CalculatedBalance.StringFixed(2),
+		CreatedAt:         account.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:         account.UpdatedAt.Format(time.RFC3339),
+	}
+
+	// Include CC outstanding for credit card accounts
+	if account.Template == domain.TemplateCreditCard && !balance.CCOutstanding.IsZero() {
+		outstanding := balance.CCOutstanding.StringFixed(2)
+		resp.CCOutstanding = &outstanding
+	}
+
 	if account.DeletedAt != nil {
 		deletedAt := account.DeletedAt.Format(time.RFC3339)
 		resp.DeletedAt = &deletedAt

@@ -48,8 +48,24 @@ type TransactionResponse struct {
 	IsPaid             bool    `json:"isPaid"`
 	CCSettlementIntent *string `json:"ccSettlementIntent,omitempty"`
 	Notes              *string `json:"notes,omitempty"`
+	TransferPairID     *string `json:"transferPairId,omitempty"`
 	CreatedAt          string  `json:"createdAt"`
 	UpdatedAt          string  `json:"updatedAt"`
+}
+
+// CreateTransferRequest represents the create transfer request body
+type CreateTransferRequest struct {
+	FromAccountID int32   `json:"fromAccountId"`
+	ToAccountID   int32   `json:"toAccountId"`
+	Amount        string  `json:"amount"`
+	Date          *string `json:"date,omitempty"`
+	Notes         *string `json:"notes,omitempty"`
+}
+
+// TransferResponse represents a transfer in API responses
+type TransferResponse struct {
+	FromTransaction TransactionResponse `json:"fromTransaction"`
+	ToTransaction   TransactionResponse `json:"toTransaction"`
 }
 
 // CreateTransaction handles POST /api/v1/transactions
@@ -280,6 +296,284 @@ func (h *TransactionHandler) TogglePaidStatus(c echo.Context) error {
 	return c.JSON(http.StatusOK, toTransactionResponse(transaction))
 }
 
+// UpdateSettlementIntentRequest represents the request body for updating settlement intent
+type UpdateSettlementIntentRequest struct {
+	Intent string `json:"intent"`
+}
+
+// UpdateSettlementIntent handles PATCH /api/v1/transactions/:id/settlement-intent
+func (h *TransactionHandler) UpdateSettlementIntent(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return NewValidationError(c, "Invalid transaction ID", nil)
+	}
+
+	var req UpdateSettlementIntentRequest
+	if err := c.Bind(&req); err != nil {
+		return NewValidationError(c, "Invalid request body", nil)
+	}
+
+	if req.Intent == "" {
+		return NewValidationError(c, "Validation failed", []ValidationError{
+			{Field: "intent", Message: "Intent is required"},
+		})
+	}
+
+	intent := domain.CCSettlementIntent(req.Intent)
+	transaction, err := h.transactionService.UpdateSettlementIntent(workspaceID, int32(id), intent)
+	if err != nil {
+		if errors.Is(err, domain.ErrTransactionNotFound) {
+			return NewNotFoundError(c, "Transaction not found")
+		}
+		if errors.Is(err, domain.ErrInvalidSettlementIntent) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "intent", Message: "Must be one of: this_month, next_month"},
+			})
+		}
+		if errors.Is(err, domain.ErrTransactionAlreadyPaid) {
+			return NewValidationError(c, "Cannot change settlement intent for paid transactions", nil)
+		}
+		if errors.Is(err, domain.ErrSettlementIntentNotApplicable) {
+			return NewValidationError(c, "Settlement intent only applies to credit card transactions", nil)
+		}
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("transaction_id", id).Msg("Failed to update settlement intent")
+		return NewInternalError(c, "Failed to update settlement intent")
+	}
+
+	log.Info().Int32("workspace_id", workspaceID).Int32("transaction_id", transaction.ID).Str("intent", string(intent)).Msg("Transaction settlement intent updated")
+	return c.JSON(http.StatusOK, toTransactionResponse(transaction))
+}
+
+// UpdateTransactionRequest represents the request body for updating a transaction
+type UpdateTransactionRequest struct {
+	AccountID          int32   `json:"accountId"`
+	Name               string  `json:"name"`
+	Amount             string  `json:"amount"`
+	Type               string  `json:"type"`
+	Date               string  `json:"date"`
+	CCSettlementIntent *string `json:"ccSettlementIntent,omitempty"`
+	Notes              *string `json:"notes,omitempty"`
+}
+
+// UpdateTransaction handles PUT /api/v1/transactions/:id
+func (h *TransactionHandler) UpdateTransaction(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return NewValidationError(c, "Invalid transaction ID", nil)
+	}
+
+	var req UpdateTransactionRequest
+	if err := c.Bind(&req); err != nil {
+		return NewValidationError(c, "Invalid request body", nil)
+	}
+
+	// Validate accountId early
+	if req.AccountID <= 0 {
+		return NewValidationError(c, "Validation failed", []ValidationError{
+			{Field: "accountId", Message: "Account ID is required"},
+		})
+	}
+
+	// Parse amount
+	amount, err := decimal.NewFromString(req.Amount)
+	if err != nil {
+		return NewValidationError(c, "Invalid amount", []ValidationError{
+			{Field: "amount", Message: "Must be a valid decimal number"},
+		})
+	}
+
+	// Parse date
+	transactionDate, err := time.Parse("2006-01-02", req.Date)
+	if err != nil {
+		return NewValidationError(c, "Invalid date", []ValidationError{
+			{Field: "date", Message: "Must be in YYYY-MM-DD format"},
+		})
+	}
+
+	// Parse CC settlement intent if provided
+	var ccSettlementIntent *domain.CCSettlementIntent
+	if req.CCSettlementIntent != nil && *req.CCSettlementIntent != "" {
+		intent := domain.CCSettlementIntent(*req.CCSettlementIntent)
+		ccSettlementIntent = &intent
+	}
+
+	input := service.UpdateTransactionInput{
+		AccountID:          req.AccountID,
+		Name:               req.Name,
+		Amount:             amount,
+		Type:               domain.TransactionType(req.Type),
+		TransactionDate:    transactionDate,
+		CCSettlementIntent: ccSettlementIntent,
+		Notes:              req.Notes,
+	}
+
+	transaction, err := h.transactionService.UpdateTransaction(workspaceID, int32(id), input)
+	if err != nil {
+		if errors.Is(err, domain.ErrTransactionNotFound) {
+			return NewNotFoundError(c, "Transaction not found")
+		}
+		if errors.Is(err, domain.ErrNameRequired) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "name", Message: "Name is required"},
+			})
+		}
+		if errors.Is(err, domain.ErrNameTooLong) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "name", Message: "Name must be 255 characters or less"},
+			})
+		}
+		if errors.Is(err, domain.ErrInvalidAmount) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "amount", Message: "Amount must be positive"},
+			})
+		}
+		if errors.Is(err, domain.ErrInvalidTransactionType) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "type", Message: "Type must be one of: income, expense"},
+			})
+		}
+		if errors.Is(err, domain.ErrAccountNotFound) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "accountId", Message: "Account not found"},
+			})
+		}
+		if errors.Is(err, domain.ErrInvalidSettlementIntent) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "ccSettlementIntent", Message: "Must be one of: this_month, next_month"},
+			})
+		}
+		if errors.Is(err, domain.ErrNotesTooLong) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "notes", Message: "Notes must be 1000 characters or less"},
+			})
+		}
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("transaction_id", id).Msg("Failed to update transaction")
+		return NewInternalError(c, "Failed to update transaction")
+	}
+
+	log.Info().Int32("workspace_id", workspaceID).Int32("transaction_id", transaction.ID).Msg("Transaction updated")
+	return c.JSON(http.StatusOK, toTransactionResponse(transaction))
+}
+
+// DeleteTransaction handles DELETE /api/v1/transactions/:id
+func (h *TransactionHandler) DeleteTransaction(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return NewValidationError(c, "Invalid transaction ID", nil)
+	}
+
+	if err := h.transactionService.DeleteTransaction(workspaceID, int32(id)); err != nil {
+		if errors.Is(err, domain.ErrTransactionNotFound) {
+			return NewNotFoundError(c, "Transaction not found")
+		}
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("transaction_id", id).Msg("Failed to delete transaction")
+		return NewInternalError(c, "Failed to delete transaction")
+	}
+
+	log.Info().Int32("workspace_id", workspaceID).Int("transaction_id", id).Msg("Transaction deleted")
+	return c.NoContent(http.StatusNoContent)
+}
+
+// CreateTransfer handles POST /api/v1/transfers
+func (h *TransactionHandler) CreateTransfer(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	var req CreateTransferRequest
+	if err := c.Bind(&req); err != nil {
+		return NewValidationError(c, "Invalid request body", nil)
+	}
+
+	// Validate fromAccountId
+	if req.FromAccountID <= 0 {
+		return NewValidationError(c, "Validation failed", []ValidationError{
+			{Field: "fromAccountId", Message: "Source account is required"},
+		})
+	}
+
+	// Validate toAccountId
+	if req.ToAccountID <= 0 {
+		return NewValidationError(c, "Validation failed", []ValidationError{
+			{Field: "toAccountId", Message: "Destination account is required"},
+		})
+	}
+
+	// Parse amount
+	amount, err := decimal.NewFromString(req.Amount)
+	if err != nil {
+		return NewValidationError(c, "Invalid amount", []ValidationError{
+			{Field: "amount", Message: "Must be a valid decimal number"},
+		})
+	}
+
+	// Parse date if provided, default to today
+	transferDate := time.Now()
+	if req.Date != nil && *req.Date != "" {
+		parsed, err := time.Parse("2006-01-02", *req.Date)
+		if err != nil {
+			return NewValidationError(c, "Invalid date", []ValidationError{
+				{Field: "date", Message: "Must be in YYYY-MM-DD format"},
+			})
+		}
+		transferDate = parsed
+	}
+
+	input := service.CreateTransferInput{
+		FromAccountID: req.FromAccountID,
+		ToAccountID:   req.ToAccountID,
+		Amount:        amount,
+		Date:          transferDate,
+		Notes:         req.Notes,
+	}
+
+	result, err := h.transactionService.CreateTransfer(workspaceID, input)
+	if err != nil {
+		if errors.Is(err, domain.ErrSameAccountTransfer) {
+			return NewValidationError(c, "Cannot transfer to the same account", []ValidationError{
+				{Field: "toAccountId", Message: "Must be different from source account"},
+			})
+		}
+		if errors.Is(err, domain.ErrInvalidAmount) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "amount", Message: "Amount must be positive"},
+			})
+		}
+		if errors.Is(err, domain.ErrAccountNotFound) {
+			return NewValidationError(c, "Invalid account", nil)
+		}
+		if errors.Is(err, domain.ErrNotesTooLong) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "notes", Message: "Notes must be 1000 characters or less"},
+			})
+		}
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Msg("Failed to create transfer")
+		return NewInternalError(c, "Failed to create transfer")
+	}
+
+	log.Info().Int32("workspace_id", workspaceID).Str("pair_id", result.FromTransaction.TransferPairID.String()).Msg("Transfer created")
+	return c.JSON(http.StatusCreated, TransferResponse{
+		FromTransaction: toTransactionResponse(result.FromTransaction),
+		ToTransaction:   toTransactionResponse(result.ToTransaction),
+	})
+}
+
 // Helper function to parse int query params with overflow protection
 func parseIntParam(s string, out *int32) (bool, error) {
 	if s == "" {
@@ -313,6 +607,10 @@ func toTransactionResponse(transaction *domain.Transaction) TransactionResponse 
 	}
 	if transaction.Notes != nil {
 		resp.Notes = transaction.Notes
+	}
+	if transaction.TransferPairID != nil {
+		pairID := transaction.TransferPairID.String()
+		resp.TransferPairID = &pairID
 	}
 	return resp
 }

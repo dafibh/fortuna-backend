@@ -17,8 +17,10 @@ import (
 func TestCreateAccount_Success_BankAccount(t *testing.T) {
 	e := echo.New()
 	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
 	accountService := service.NewAccountService(accountRepo)
-	handler := NewAccountHandler(accountService)
+	calculationService := service.NewCalculationService(accountRepo, transactionRepo)
+	handler := NewAccountHandler(accountService, calculationService)
 
 	reqBody := `{"name": "My Savings", "template": "bank", "initialBalance": "1000.50"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/accounts", strings.NewReader(reqBody))
@@ -62,8 +64,10 @@ func TestCreateAccount_Success_BankAccount(t *testing.T) {
 func TestCreateAccount_Success_CreditCard(t *testing.T) {
 	e := echo.New()
 	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
 	accountService := service.NewAccountService(accountRepo)
-	handler := NewAccountHandler(accountService)
+	calculationService := service.NewCalculationService(accountRepo, transactionRepo)
+	handler := NewAccountHandler(accountService, calculationService)
 
 	reqBody := `{"name": "Visa Card", "template": "credit_card"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/accounts", strings.NewReader(reqBody))
@@ -99,8 +103,10 @@ func TestCreateAccount_Success_CreditCard(t *testing.T) {
 func TestCreateAccount_MissingWorkspaceID(t *testing.T) {
 	e := echo.New()
 	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
 	accountService := service.NewAccountService(accountRepo)
-	handler := NewAccountHandler(accountService)
+	calculationService := service.NewCalculationService(accountRepo, transactionRepo)
+	handler := NewAccountHandler(accountService, calculationService)
 
 	reqBody := `{"name": "My Account", "template": "bank"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/accounts", strings.NewReader(reqBody))
@@ -124,8 +130,10 @@ func TestCreateAccount_MissingWorkspaceID(t *testing.T) {
 func TestCreateAccount_MissingName(t *testing.T) {
 	e := echo.New()
 	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
 	accountService := service.NewAccountService(accountRepo)
-	handler := NewAccountHandler(accountService)
+	calculationService := service.NewCalculationService(accountRepo, transactionRepo)
+	handler := NewAccountHandler(accountService, calculationService)
 
 	reqBody := `{"name": "", "template": "bank"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/accounts", strings.NewReader(reqBody))
@@ -161,8 +169,10 @@ func TestCreateAccount_MissingName(t *testing.T) {
 func TestCreateAccount_InvalidTemplate(t *testing.T) {
 	e := echo.New()
 	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
 	accountService := service.NewAccountService(accountRepo)
-	handler := NewAccountHandler(accountService)
+	calculationService := service.NewCalculationService(accountRepo, transactionRepo)
+	handler := NewAccountHandler(accountService, calculationService)
 
 	reqBody := `{"name": "Invalid", "template": "invalid"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/accounts", strings.NewReader(reqBody))
@@ -194,8 +204,10 @@ func TestCreateAccount_InvalidTemplate(t *testing.T) {
 func TestCreateAccount_InvalidInitialBalance(t *testing.T) {
 	e := echo.New()
 	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
 	accountService := service.NewAccountService(accountRepo)
-	handler := NewAccountHandler(accountService)
+	calculationService := service.NewCalculationService(accountRepo, transactionRepo)
+	handler := NewAccountHandler(accountService, calculationService)
 
 	reqBody := `{"name": "My Account", "template": "bank", "initialBalance": "not-a-number"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/accounts", strings.NewReader(reqBody))
@@ -227,8 +239,10 @@ func TestCreateAccount_InvalidInitialBalance(t *testing.T) {
 func TestGetAccounts_Success(t *testing.T) {
 	e := echo.New()
 	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
 	accountService := service.NewAccountService(accountRepo)
-	handler := NewAccountHandler(accountService)
+	calculationService := service.NewCalculationService(accountRepo, transactionRepo)
+	handler := NewAccountHandler(accountService, calculationService)
 
 	workspaceID := int32(1)
 
@@ -278,8 +292,10 @@ func TestGetAccounts_Success(t *testing.T) {
 func TestGetAccounts_EmptyList(t *testing.T) {
 	e := echo.New()
 	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
 	accountService := service.NewAccountService(accountRepo)
-	handler := NewAccountHandler(accountService)
+	calculationService := service.NewCalculationService(accountRepo, transactionRepo)
+	handler := NewAccountHandler(accountService, calculationService)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts", nil)
 	rec := httptest.NewRecorder()
@@ -309,8 +325,10 @@ func TestGetAccounts_EmptyList(t *testing.T) {
 func TestGetAccounts_MissingWorkspaceID(t *testing.T) {
 	e := echo.New()
 	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
 	accountService := service.NewAccountService(accountRepo)
-	handler := NewAccountHandler(accountService)
+	calculationService := service.NewCalculationService(accountRepo, transactionRepo)
+	handler := NewAccountHandler(accountService, calculationService)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts", nil)
 	rec := httptest.NewRecorder()
@@ -332,8 +350,10 @@ func TestGetAccounts_MissingWorkspaceID(t *testing.T) {
 func TestGetAccounts_WorkspaceIsolation(t *testing.T) {
 	e := echo.New()
 	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
 	accountService := service.NewAccountService(accountRepo)
-	handler := NewAccountHandler(accountService)
+	calculationService := service.NewCalculationService(accountRepo, transactionRepo)
+	handler := NewAccountHandler(accountService, calculationService)
 
 	// Add account to workspace 1
 	accountRepo.AddAccount(&domain.Account{
