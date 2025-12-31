@@ -108,3 +108,14 @@ WHERE workspace_id = $1
   AND type = 'expense'
   AND is_paid = true
   AND deleted_at IS NULL;
+
+-- name: SumUnpaidExpensesByDateRange :one
+-- Sum unpaid expenses within a date range for disposable income calculation
+SELECT COALESCE(SUM(amount), 0)::NUMERIC(12,2) as total
+FROM transactions
+WHERE workspace_id = $1
+  AND transaction_date >= $2
+  AND transaction_date <= $3
+  AND type = 'expense'
+  AND is_paid = false
+  AND deleted_at IS NULL;

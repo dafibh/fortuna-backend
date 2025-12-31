@@ -326,6 +326,7 @@ type MockTransactionRepository struct {
 	GetAccountTransactionSummariesFn  func(workspaceID int32) ([]*domain.TransactionSummary, error)
 	SumByTypeAndDateRangeFn           func(workspaceID int32, startDate, endDate time.Time, txType domain.TransactionType) (decimal.Decimal, error)
 	SumPaidExpensesByDateRangeFn      func(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
+	SumUnpaidExpensesByDateRangeFn    func(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
 }
 
 // NewMockTransactionRepository creates a new MockTransactionRepository
@@ -673,6 +674,32 @@ func (m *MockTransactionRepository) SumPaidExpensesByDateRange(workspaceID int32
 			continue
 		}
 		if !tx.IsPaid {
+			continue
+		}
+		// Check if transaction date is within range (inclusive)
+		if (tx.TransactionDate.Equal(startDate) || tx.TransactionDate.After(startDate)) &&
+			(tx.TransactionDate.Equal(endDate) || tx.TransactionDate.Before(endDate)) {
+			total = total.Add(tx.Amount)
+		}
+	}
+	return total, nil
+}
+
+// SumUnpaidExpensesByDateRange sums unpaid expenses within a date range
+func (m *MockTransactionRepository) SumUnpaidExpensesByDateRange(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error) {
+	if m.SumUnpaidExpensesByDateRangeFn != nil {
+		return m.SumUnpaidExpensesByDateRangeFn(workspaceID, startDate, endDate)
+	}
+
+	total := decimal.Zero
+	for _, tx := range m.ByWorkspace[workspaceID] {
+		if tx.DeletedAt != nil {
+			continue
+		}
+		if tx.Type != domain.TransactionTypeExpense {
+			continue
+		}
+		if tx.IsPaid {
 			continue
 		}
 		// Check if transaction date is within range (inclusive)

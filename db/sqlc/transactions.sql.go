@@ -375,6 +375,31 @@ func (q *Queries) SumTransactionsByTypeAndDateRange(ctx context.Context, arg Sum
 	return total, err
 }
 
+const sumUnpaidExpensesByDateRange = `-- name: SumUnpaidExpensesByDateRange :one
+SELECT COALESCE(SUM(amount), 0)::NUMERIC(12,2) as total
+FROM transactions
+WHERE workspace_id = $1
+  AND transaction_date >= $2
+  AND transaction_date <= $3
+  AND type = 'expense'
+  AND is_paid = false
+  AND deleted_at IS NULL
+`
+
+type SumUnpaidExpensesByDateRangeParams struct {
+	WorkspaceID       int32       `json:"workspace_id"`
+	TransactionDate   pgtype.Date `json:"transaction_date"`
+	TransactionDate_2 pgtype.Date `json:"transaction_date_2"`
+}
+
+// Sum unpaid expenses within a date range for disposable income calculation
+func (q *Queries) SumUnpaidExpensesByDateRange(ctx context.Context, arg SumUnpaidExpensesByDateRangeParams) (pgtype.Numeric, error) {
+	row := q.db.QueryRow(ctx, sumUnpaidExpensesByDateRange, arg.WorkspaceID, arg.TransactionDate, arg.TransactionDate_2)
+	var total pgtype.Numeric
+	err := row.Scan(&total)
+	return total, err
+}
+
 const toggleTransactionPaidStatus = `-- name: ToggleTransactionPaidStatus :one
 UPDATE transactions
 SET is_paid = NOT is_paid, updated_at = NOW()

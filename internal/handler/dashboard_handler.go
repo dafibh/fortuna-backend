@@ -23,9 +23,12 @@ func NewDashboardHandler(dashboardService *service.DashboardService) *DashboardH
 
 // DashboardSummaryResponse represents the dashboard summary API response
 type DashboardSummaryResponse struct {
-	TotalBalance  string        `json:"totalBalance"`
-	InHandBalance string        `json:"inHandBalance"`
-	Month         MonthResponse `json:"month"`
+	TotalBalance     string        `json:"totalBalance"`
+	InHandBalance    string        `json:"inHandBalance"`
+	DisposableIncome string        `json:"disposableIncome"`
+	DaysRemaining    int           `json:"daysRemaining"`
+	DailyBudget      string        `json:"dailyBudget"`
+	Month            MonthResponse `json:"month"`
 }
 
 // GetSummary handles GET /api/v1/dashboard/summary
@@ -42,8 +45,11 @@ func (h *DashboardHandler) GetSummary(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, DashboardSummaryResponse{
-		TotalBalance:  summary.TotalBalance.StringFixed(2),
-		InHandBalance: summary.InHandBalance.StringFixed(2),
-		Month:         toMonthResponse(summary.Month),
+		TotalBalance:     summary.TotalBalance.StringFixed(2),
+		InHandBalance:    summary.InHandBalance.StringFixed(2),
+		DisposableIncome: summary.DisposableIncome.StringFixed(2),
+		DaysRemaining:    summary.DaysRemaining,
+		DailyBudget:      summary.DailyBudget.StringFixed(2),
+		Month:            toMonthResponse(summary.Month),
 	})
 }

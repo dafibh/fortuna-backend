@@ -59,11 +59,64 @@ func (s *DashboardService) GetSummaryForMonth(workspaceID int32, year, month int
 
 	inHandBalance := monthData.StartingBalance.Add(monthData.TotalIncome).Sub(paidExpenses)
 
+	// 4. Calculate unpaid expenses for disposable income
+	unpaidExpenses, err := s.transactionRepo.SumUnpaidExpensesByDateRange(
+		workspaceID, monthData.StartDate, monthData.EndDate)
+	if err != nil {
+		return nil, err
+	}
+
+	// Disposable = In-Hand - Unpaid Expenses
+	disposableIncome := inHandBalance.Sub(unpaidExpenses)
+
+	// 5. Calculate days remaining in the month
+	daysRemaining := s.calculateDaysRemaining(year, month)
+
+	// 6. Calculate daily budget
+	dailyBudget := decimal.Zero
+	if daysRemaining > 0 {
+		dailyBudget = disposableIncome.Div(decimal.NewFromInt(int64(daysRemaining)))
+	}
+
 	return &domain.DashboardSummary{
-		TotalBalance:  totalBalance,
-		InHandBalance: inHandBalance,
-		Month:         monthData,
+		TotalBalance:     totalBalance,
+		InHandBalance:    inHandBalance,
+		DisposableIncome: disposableIncome,
+		DaysRemaining:    daysRemaining,
+		DailyBudget:      dailyBudget,
+		Month:            monthData,
 	}, nil
+}
+
+// calculateDaysRemaining returns the number of days from today until the end of the month
+// If viewing a past month, returns 0. If viewing a future month, returns days in that month.
+func (s *DashboardService) calculateDaysRemaining(year, month int) int {
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+
+	// End of the target month (last day at midnight)
+	endOfMonth := time.Date(year, time.Month(month)+1, 0, 0, 0, 0, 0, time.Local)
+
+	// Start of the target month
+	startOfMonth := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.Local)
+
+	// If viewing a past month, return 0
+	if endOfMonth.Before(today) {
+		return 0
+	}
+
+	// If viewing a future month, return total days in that month
+	if startOfMonth.After(today) {
+		return endOfMonth.Day()
+	}
+
+	// Current month: calculate days from today to end of month (inclusive)
+	daysRemaining := int(endOfMonth.Sub(today).Hours()/24) + 1
+	if daysRemaining < 1 {
+		daysRemaining = 1
+	}
+
+	return daysRemaining
 }
 
 // calculateTotalBalance calculates total balance from all accounts
