@@ -143,6 +143,65 @@ func (q *Queries) GetAccountTransactionSummaries(ctx context.Context, workspaceI
 	return items, nil
 }
 
+const getCCPayableBreakdown = `-- name: GetCCPayableBreakdown :many
+SELECT
+    t.id,
+    t.name,
+    t.amount,
+    t.transaction_date,
+    t.cc_settlement_intent,
+    t.account_id,
+    a.name as account_name
+FROM transactions t
+JOIN accounts a ON t.account_id = a.id
+WHERE t.workspace_id = $1
+    AND a.template = 'credit_card'
+    AND t.type = 'expense'
+    AND t.is_paid = false
+    AND t.deleted_at IS NULL
+    AND a.deleted_at IS NULL
+ORDER BY t.cc_settlement_intent, a.name, t.transaction_date DESC
+`
+
+type GetCCPayableBreakdownRow struct {
+	ID                 int32          `json:"id"`
+	Name               string         `json:"name"`
+	Amount             pgtype.Numeric `json:"amount"`
+	TransactionDate    pgtype.Date    `json:"transaction_date"`
+	CcSettlementIntent pgtype.Text    `json:"cc_settlement_intent"`
+	AccountID          int32          `json:"account_id"`
+	AccountName        string         `json:"account_name"`
+}
+
+// Get all unpaid CC transactions with settlement intent for payable breakdown
+func (q *Queries) GetCCPayableBreakdown(ctx context.Context, workspaceID int32) ([]GetCCPayableBreakdownRow, error) {
+	rows, err := q.db.Query(ctx, getCCPayableBreakdown, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetCCPayableBreakdownRow{}
+	for rows.Next() {
+		var i GetCCPayableBreakdownRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Amount,
+			&i.TransactionDate,
+			&i.CcSettlementIntent,
+			&i.AccountID,
+			&i.AccountName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getCCPayableSummary = `-- name: GetCCPayableSummary :many
 SELECT
     cc_settlement_intent,

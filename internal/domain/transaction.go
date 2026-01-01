@@ -108,6 +108,34 @@ type RecentCategory struct {
 	LastUsed time.Time `json:"lastUsed"`
 }
 
+// CCPayableTransaction represents a single CC transaction in the payable breakdown
+type CCPayableTransaction struct {
+	ID               int32              `json:"id"`
+	Name             string             `json:"name"`
+	Amount           decimal.Decimal    `json:"amount"`
+	TransactionDate  time.Time          `json:"transactionDate"`
+	SettlementIntent CCSettlementIntent `json:"settlementIntent"`
+	AccountID        int32              `json:"accountId"`
+	AccountName      string             `json:"accountName"`
+}
+
+// CCPayableByAccount groups transactions by account for the payable breakdown
+type CCPayableByAccount struct {
+	AccountID    int32                  `json:"accountId"`
+	AccountName  string                 `json:"accountName"`
+	Total        decimal.Decimal        `json:"total"`
+	Transactions []CCPayableTransaction `json:"transactions"`
+}
+
+// CCPayableBreakdown contains the full payable breakdown by settlement intent
+type CCPayableBreakdown struct {
+	ThisMonth      []CCPayableByAccount `json:"thisMonth"`
+	NextMonth      []CCPayableByAccount `json:"nextMonth"`
+	ThisMonthTotal decimal.Decimal      `json:"thisMonthTotal"`
+	NextMonthTotal decimal.Decimal      `json:"nextMonthTotal"`
+	GrandTotal     decimal.Decimal      `json:"grandTotal"`
+}
+
 type TransactionRepository interface {
 	Create(transaction *Transaction) (*Transaction, error)
 	GetByID(workspaceID int32, id int32) (*Transaction, error)
@@ -125,4 +153,5 @@ type TransactionRepository interface {
 	SumUnpaidExpensesByDateRange(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
 	GetCCPayableSummary(workspaceID int32) ([]*CCPayableSummaryRow, error)
 	GetRecentlyUsedCategories(workspaceID int32) ([]*RecentCategory, error)
+	GetCCPayableBreakdown(workspaceID int32) ([]*CCPayableTransaction, error)
 }

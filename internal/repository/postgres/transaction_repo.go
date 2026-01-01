@@ -560,6 +560,36 @@ func (r *TransactionRepository) GetRecentlyUsedCategories(workspaceID int32) ([]
 	return result, nil
 }
 
+// GetCCPayableBreakdown returns all unpaid CC transactions for payable breakdown
+func (r *TransactionRepository) GetCCPayableBreakdown(workspaceID int32) ([]*domain.CCPayableTransaction, error) {
+	ctx := context.Background()
+
+	rows, err := r.queries.GetCCPayableBreakdown(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*domain.CCPayableTransaction, len(rows))
+	for i, row := range rows {
+		// Default to this_month if no settlement intent (shouldn't happen with CC transactions)
+		settlementIntent := domain.CCSettlementThisMonth
+		if row.CcSettlementIntent.Valid {
+			settlementIntent = domain.CCSettlementIntent(row.CcSettlementIntent.String)
+		}
+
+		result[i] = &domain.CCPayableTransaction{
+			ID:               row.ID,
+			Name:             row.Name,
+			Amount:           pgNumericToDecimal(row.Amount),
+			TransactionDate:  row.TransactionDate.Time,
+			SettlementIntent: settlementIntent,
+			AccountID:        row.AccountID,
+			AccountName:      row.AccountName,
+		}
+	}
+	return result, nil
+}
+
 // Helper functions
 
 func sqlcTransactionToDomain(t sqlc.Transaction) *domain.Transaction {

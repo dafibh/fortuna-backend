@@ -40,6 +40,8 @@ type Querier interface {
 	GetBudgetCategoryByName(ctx context.Context, arg GetBudgetCategoryByNameParams) (BudgetCategory, error)
 	// Get total outstanding balance across all CC accounts (sum of unpaid expenses)
 	GetCCOutstandingSummary(ctx context.Context, workspaceID int32) (GetCCOutstandingSummaryRow, error)
+	// Get all unpaid CC transactions with settlement intent for payable breakdown
+	GetCCPayableBreakdown(ctx context.Context, workspaceID int32) ([]GetCCPayableBreakdownRow, error)
 	// Get unpaid CC transaction totals grouped by settlement intent
 	GetCCPayableSummary(ctx context.Context, workspaceID int32) ([]GetCCPayableSummaryRow, error)
 	// Returns all categories with their allocation for a specific month (0 if not set)

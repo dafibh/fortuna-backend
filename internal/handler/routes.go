@@ -6,7 +6,7 @@ import (
 )
 
 // RegisterRoutes sets up all API routes
-func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler) {
+func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler) {
 	// API version 1
 	api := e.Group("/api/v1")
 
@@ -72,4 +72,9 @@ func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, aut
 	budgets.PUT("/:year/:month", budgetHandler.SetAllocations)
 	budgets.PUT("/:year/:month/:categoryId", budgetHandler.SetAllocation)
 	budgets.GET("/:year/:month/:categoryId/transactions", budgetHandler.GetCategoryTransactions)
+
+	// Credit Card routes (protected)
+	cc := api.Group("/cc")
+	cc.Use(authMiddleware.Authenticate())
+	cc.GET("/payable/breakdown", ccHandler.GetPayableBreakdown)
 }

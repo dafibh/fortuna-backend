@@ -181,3 +181,23 @@ WHERE t.workspace_id = $1
 GROUP BY bc.id, bc.name
 ORDER BY last_used DESC
 LIMIT 5;
+
+-- name: GetCCPayableBreakdown :many
+-- Get all unpaid CC transactions with settlement intent for payable breakdown
+SELECT
+    t.id,
+    t.name,
+    t.amount,
+    t.transaction_date,
+    t.cc_settlement_intent,
+    t.account_id,
+    a.name as account_name
+FROM transactions t
+JOIN accounts a ON t.account_id = a.id
+WHERE t.workspace_id = $1
+    AND a.template = 'credit_card'
+    AND t.type = 'expense'
+    AND t.is_paid = false
+    AND t.deleted_at IS NULL
+    AND a.deleted_at IS NULL
+ORDER BY t.cc_settlement_intent, a.name, t.transaction_date DESC;

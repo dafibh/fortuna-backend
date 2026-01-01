@@ -65,6 +65,7 @@ func main() {
 	dashboardService := service.NewDashboardService(accountRepo, transactionRepo, monthService, calculationService)
 	budgetCategoryService := service.NewBudgetCategoryService(budgetCategoryRepo)
 	budgetAllocationService := service.NewBudgetAllocationService(budgetAllocationRepo, budgetCategoryRepo)
+	ccService := service.NewCCService(transactionRepo)
 
 	// Create workspace provider adapter for auth middleware
 	workspaceProvider := &workspaceProviderAdapter{authService: authService}
@@ -84,6 +85,7 @@ func main() {
 	dashboardHandler := handler.NewDashboardHandler(dashboardService)
 	budgetCategoryHandler := handler.NewBudgetCategoryHandler(budgetCategoryService)
 	budgetHandler := handler.NewBudgetHandler(budgetAllocationService)
+	ccHandler := handler.NewCCHandler(ccService)
 
 	// Create Echo instance
 	e := echo.New()
@@ -124,7 +126,7 @@ func main() {
 	})
 
 	// Register API routes
-	handler.RegisterRoutes(e, authMiddleware, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler, dashboardHandler, budgetCategoryHandler, budgetHandler)
+	handler.RegisterRoutes(e, authMiddleware, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler, dashboardHandler, budgetCategoryHandler, budgetHandler, ccHandler)
 
 	// Start server in goroutine
 	go func() {
