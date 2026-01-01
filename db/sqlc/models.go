@@ -68,6 +68,7 @@ type Transaction struct {
 	DeletedAt          pgtype.Timestamptz `json:"deleted_at"`
 	TransferPairID     pgtype.UUID        `json:"transfer_pair_id"`
 	CategoryID         pgtype.Int4        `json:"category_id"`
+	IsCcPayment        bool               `json:"is_cc_payment"`
 }
 
 type User struct {

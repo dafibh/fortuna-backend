@@ -29,6 +29,8 @@ var (
 	ErrBudgetCategoryNotFound       = errors.New("budget category not found")
 	ErrBudgetCategoryAlreadyExists  = errors.New("budget category with this name already exists")
 	ErrBudgetAllocationNotFound     = errors.New("budget allocation not found")
+	ErrInvalidAccountType           = errors.New("invalid account type for this operation")
+	ErrInvalidSourceAccount         = errors.New("cannot use a credit card as source account for CC payment")
 )
 
 // Validation constants

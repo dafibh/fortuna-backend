@@ -77,4 +77,5 @@ func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, aut
 	cc := api.Group("/cc")
 	cc.Use(authMiddleware.Authenticate())
 	cc.GET("/payable/breakdown", ccHandler.GetPayableBreakdown)
+	cc.POST("/payments", ccHandler.CreateCCPayment)
 }

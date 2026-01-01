@@ -11,7 +11,8 @@ import (
 
 func TestGetPayableBreakdown_Success_MixedIntents(t *testing.T) {
 	transactionRepo := testutil.NewMockTransactionRepository()
-	ccService := NewCCService(transactionRepo)
+	accountRepo := testutil.NewMockAccountRepository()
+	ccService := NewCCService(transactionRepo, accountRepo)
 
 	workspaceID := int32(1)
 
@@ -90,7 +91,8 @@ func TestGetPayableBreakdown_Success_MixedIntents(t *testing.T) {
 
 func TestGetPayableBreakdown_NoTransactions(t *testing.T) {
 	transactionRepo := testutil.NewMockTransactionRepository()
-	ccService := NewCCService(transactionRepo)
+	accountRepo := testutil.NewMockAccountRepository()
+	ccService := NewCCService(transactionRepo, accountRepo)
 
 	workspaceID := int32(1)
 
@@ -123,7 +125,8 @@ func TestGetPayableBreakdown_NoTransactions(t *testing.T) {
 
 func TestGetPayableBreakdown_OnlyThisMonth(t *testing.T) {
 	transactionRepo := testutil.NewMockTransactionRepository()
-	ccService := NewCCService(transactionRepo)
+	accountRepo := testutil.NewMockAccountRepository()
+	ccService := NewCCService(transactionRepo, accountRepo)
 
 	workspaceID := int32(1)
 
@@ -162,7 +165,8 @@ func TestGetPayableBreakdown_OnlyThisMonth(t *testing.T) {
 
 func TestGetPayableBreakdown_OnlyNextMonth(t *testing.T) {
 	transactionRepo := testutil.NewMockTransactionRepository()
-	ccService := NewCCService(transactionRepo)
+	accountRepo := testutil.NewMockAccountRepository()
+	ccService := NewCCService(transactionRepo, accountRepo)
 
 	workspaceID := int32(1)
 
@@ -201,7 +205,8 @@ func TestGetPayableBreakdown_OnlyNextMonth(t *testing.T) {
 
 func TestGetPayableBreakdown_MultipleAccounts(t *testing.T) {
 	transactionRepo := testutil.NewMockTransactionRepository()
-	ccService := NewCCService(transactionRepo)
+	accountRepo := testutil.NewMockAccountRepository()
+	ccService := NewCCService(transactionRepo, accountRepo)
 
 	workspaceID := int32(1)
 
@@ -260,7 +265,8 @@ func TestGetPayableBreakdown_MultipleAccounts(t *testing.T) {
 
 func TestGetPayableBreakdown_RepoError(t *testing.T) {
 	transactionRepo := testutil.NewMockTransactionRepository()
-	ccService := NewCCService(transactionRepo)
+	accountRepo := testutil.NewMockAccountRepository()
+	ccService := NewCCService(transactionRepo, accountRepo)
 
 	workspaceID := int32(1)
 

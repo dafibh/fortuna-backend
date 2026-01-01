@@ -77,6 +77,7 @@ func (r *TransactionRepository) Create(transaction *domain.Transaction) (*domain
 		Notes:              notes,
 		TransferPairID:     transferPairID,
 		CategoryID:         categoryID,
+		IsCcPayment:        transaction.IsCCPayment,
 	})
 	if err != nil {
 		return nil, err
@@ -376,6 +377,7 @@ func (r *TransactionRepository) createTransactionWithTx(ctx context.Context, qtx
 		Notes:              notes,
 		TransferPairID:     transferPairID,
 		CategoryID:         categoryID,
+		IsCcPayment:        transaction.IsCCPayment,
 	})
 	if err != nil {
 		return nil, err
@@ -602,6 +604,7 @@ func sqlcTransactionToDomain(t sqlc.Transaction) *domain.Transaction {
 		Type:            domain.TransactionType(t.Type),
 		TransactionDate: t.TransactionDate.Time,
 		IsPaid:          t.IsPaid,
+		IsCCPayment:     t.IsCcPayment,
 		CreatedAt:       t.CreatedAt.Time,
 		UpdatedAt:       t.UpdatedAt.Time,
 	}
@@ -635,6 +638,7 @@ func sqlcTransactionWithCategoryToDomain(t sqlc.GetTransactionsWithCategoryRow) 
 		Type:            domain.TransactionType(t.Type),
 		TransactionDate: t.TransactionDate.Time,
 		IsPaid:          t.IsPaid,
+		IsCCPayment:     t.IsCcPayment,
 		CreatedAt:       t.CreatedAt.Time,
 		UpdatedAt:       t.UpdatedAt.Time,
 	}

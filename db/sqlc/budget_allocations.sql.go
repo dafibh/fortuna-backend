@@ -219,7 +219,7 @@ func (q *Queries) GetCategoriesWithAllocations(ctx context.Context, arg GetCateg
 }
 
 const getCategoryTransactions = `-- name: GetCategoryTransactions :many
-SELECT t.id, t.workspace_id, t.account_id, t.name, t.amount, t.type, t.transaction_date, t.is_paid, t.cc_settlement_intent, t.notes, t.created_at, t.updated_at, t.deleted_at, t.transfer_pair_id, t.category_id, a.name AS account_name
+SELECT t.id, t.workspace_id, t.account_id, t.name, t.amount, t.type, t.transaction_date, t.is_paid, t.cc_settlement_intent, t.notes, t.created_at, t.updated_at, t.deleted_at, t.transfer_pair_id, t.category_id, t.is_cc_payment, a.name AS account_name
 FROM transactions t
 JOIN accounts a ON t.account_id = a.id
 WHERE t.workspace_id = $1
@@ -254,6 +254,7 @@ type GetCategoryTransactionsRow struct {
 	DeletedAt          pgtype.Timestamptz `json:"deleted_at"`
 	TransferPairID     pgtype.UUID        `json:"transfer_pair_id"`
 	CategoryID         pgtype.Int4        `json:"category_id"`
+	IsCcPayment        bool               `json:"is_cc_payment"`
 	AccountName        string             `json:"account_name"`
 }
 
@@ -288,6 +289,7 @@ func (q *Queries) GetCategoryTransactions(ctx context.Context, arg GetCategoryTr
 			&i.DeletedAt,
 			&i.TransferPairID,
 			&i.CategoryID,
+			&i.IsCcPayment,
 			&i.AccountName,
 		); err != nil {
 			return nil, err

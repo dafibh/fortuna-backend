@@ -35,6 +35,7 @@ type Transaction struct {
 	TransferPairID     *uuid.UUID          `json:"transferPairId,omitempty"`
 	CategoryID         *int32              `json:"categoryId,omitempty"`
 	CategoryName       *string             `json:"categoryName,omitempty"`
+	IsCCPayment        bool                `json:"isCcPayment"`
 	CreatedAt          time.Time           `json:"createdAt"`
 	UpdatedAt          time.Time           `json:"updatedAt"`
 	DeletedAt          *time.Time          `json:"deletedAt,omitempty"`
@@ -134,6 +135,21 @@ type CCPayableBreakdown struct {
 	ThisMonthTotal decimal.Decimal      `json:"thisMonthTotal"`
 	NextMonthTotal decimal.Decimal      `json:"nextMonthTotal"`
 	GrandTotal     decimal.Decimal      `json:"grandTotal"`
+}
+
+// CreateCCPaymentRequest represents a request to create a CC payment transaction
+type CreateCCPaymentRequest struct {
+	CCAccountID     int32           `json:"ccAccountId" validate:"required"`
+	Amount          decimal.Decimal `json:"amount" validate:"required"`
+	TransactionDate time.Time       `json:"transactionDate" validate:"required"`
+	SourceAccountID *int32          `json:"sourceAccountId,omitempty"` // Optional bank account
+	Notes           string          `json:"notes,omitempty"`
+}
+
+// CCPaymentResponse represents the response after creating a CC payment
+type CCPaymentResponse struct {
+	CCTransaction     *Transaction `json:"ccTransaction"`
+	SourceTransaction *Transaction `json:"sourceTransaction,omitempty"` // Only if source provided
 }
 
 type TransactionRepository interface {

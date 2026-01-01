@@ -65,7 +65,7 @@ func main() {
 	dashboardService := service.NewDashboardService(accountRepo, transactionRepo, monthService, calculationService)
 	budgetCategoryService := service.NewBudgetCategoryService(budgetCategoryRepo)
 	budgetAllocationService := service.NewBudgetAllocationService(budgetAllocationRepo, budgetCategoryRepo)
-	ccService := service.NewCCService(transactionRepo)
+	ccService := service.NewCCService(transactionRepo, accountRepo)
 
 	// Create workspace provider adapter for auth middleware
 	workspaceProvider := &workspaceProviderAdapter{authService: authService}

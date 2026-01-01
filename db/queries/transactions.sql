@@ -1,9 +1,9 @@
 -- name: CreateTransaction :one
 INSERT INTO transactions (
     workspace_id, account_id, name, amount, type,
-    transaction_date, is_paid, cc_settlement_intent, notes, transfer_pair_id, category_id
+    transaction_date, is_paid, cc_settlement_intent, notes, transfer_pair_id, category_id, is_cc_payment
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
 ) RETURNING *;
 
 -- name: GetTransactionByID :one
@@ -152,6 +152,7 @@ SELECT
     t.notes,
     t.transfer_pair_id,
     t.category_id,
+    t.is_cc_payment,
     t.created_at,
     t.updated_at,
     t.deleted_at,
