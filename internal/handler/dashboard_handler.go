@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/dafibh/fortuna/fortuna-backend/internal/domain"
 	"github.com/dafibh/fortuna/fortuna-backend/internal/middleware"
 	"github.com/dafibh/fortuna/fortuna-backend/internal/service"
 	"github.com/labstack/echo/v4"
@@ -30,15 +32,26 @@ type CCPayableResponse struct {
 	Total     string `json:"total"`
 }
 
+// ProjectionResponse represents projected financial data for future months
+type ProjectionResponse struct {
+	RecurringIncome   string `json:"recurringIncome"`
+	RecurringExpenses string `json:"recurringExpenses"`
+	LoanPayments      string `json:"loanPayments"`
+	Note              string `json:"note,omitempty"`
+}
+
 // DashboardSummaryResponse represents the dashboard summary API response
 type DashboardSummaryResponse struct {
-	TotalBalance     string             `json:"totalBalance"`
-	InHandBalance    string             `json:"inHandBalance"`
-	DisposableIncome string             `json:"disposableIncome"`
-	DaysRemaining    int                `json:"daysRemaining"`
-	DailyBudget      string             `json:"dailyBudget"`
-	CCPayable        *CCPayableResponse `json:"ccPayable"`
-	Month            MonthResponse      `json:"month"`
+	IsProjection          bool                `json:"isProjection"`
+	ProjectionLimitMonths int                 `json:"projectionLimitMonths,omitempty"`
+	TotalBalance          string              `json:"totalBalance"`
+	InHandBalance         string              `json:"inHandBalance"`
+	DisposableIncome      string              `json:"disposableIncome"`
+	DaysRemaining         int                 `json:"daysRemaining"`
+	DailyBudget           string              `json:"dailyBudget"`
+	CCPayable             *CCPayableResponse  `json:"ccPayable"`
+	Month                 MonthResponse       `json:"month"`
+	Projection            *ProjectionResponse `json:"projection,omitempty"`
 }
 
 // GetSummary handles GET /api/v1/dashboard/summary
@@ -77,6 +90,12 @@ func (h *DashboardHandler) GetSummary(c echo.Context) error {
 
 	summary, err := h.dashboardService.GetSummaryForMonth(workspaceID, year, month)
 	if err != nil {
+		// Handle projection limit exceeded error
+		if errors.Is(err, service.ErrProjectionLimitExceeded) {
+			return NewValidationError(c, "Cannot project more than 12 months ahead", []ValidationError{
+				{Field: "month", Message: "Projection limit is 12 months from current month"},
+			})
+		}
 		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("year", year).Int("month", month).Msg("Failed to get dashboard summary")
 		return NewInternalError(c, "Failed to get dashboard summary")
 	}
@@ -90,13 +109,32 @@ func (h *DashboardHandler) GetSummary(c echo.Context) error {
 		}
 	}
 
+	var projection *ProjectionResponse
+	if summary.Projection != nil {
+		projection = &ProjectionResponse{
+			RecurringIncome:   summary.Projection.RecurringIncome.StringFixed(2),
+			RecurringExpenses: summary.Projection.RecurringExpenses.StringFixed(2),
+			LoanPayments:      summary.Projection.LoanPayments.StringFixed(2),
+			Note:              summary.Projection.Note,
+		}
+	}
+
+	// Set projection limit only for projections
+	projectionLimit := 0
+	if summary.IsProjection {
+		projectionLimit = domain.MaxProjectionMonths
+	}
+
 	return c.JSON(http.StatusOK, DashboardSummaryResponse{
-		TotalBalance:     summary.TotalBalance.StringFixed(2),
-		InHandBalance:    summary.InHandBalance.StringFixed(2),
-		DisposableIncome: summary.DisposableIncome.StringFixed(2),
-		DaysRemaining:    summary.DaysRemaining,
-		DailyBudget:      summary.DailyBudget.StringFixed(2),
-		CCPayable:        ccPayable,
-		Month:            toMonthResponse(summary.Month),
+		IsProjection:          summary.IsProjection,
+		ProjectionLimitMonths: projectionLimit,
+		TotalBalance:          summary.TotalBalance.StringFixed(2),
+		InHandBalance:         summary.InHandBalance.StringFixed(2),
+		DisposableIncome:      summary.DisposableIncome.StringFixed(2),
+		DaysRemaining:         summary.DaysRemaining,
+		DailyBudget:           summary.DailyBudget.StringFixed(2),
+		CCPayable:             ccPayable,
+		Month:                 toMonthResponse(summary.Month),
+		Projection:            projection,
 	})
 }

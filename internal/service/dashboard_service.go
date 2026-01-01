@@ -1,11 +1,15 @@
 package service
 
 import (
+	"errors"
 	"time"
 
 	"github.com/dafibh/fortuna/fortuna-backend/internal/domain"
 	"github.com/shopspring/decimal"
 )
+
+// ErrProjectionLimitExceeded is returned when requesting projections beyond the maximum allowed
+var ErrProjectionLimitExceeded = errors.New("projection limit exceeded (max 12 months)")
 
 // DashboardService handles dashboard-related business logic
 type DashboardService struct {
@@ -37,7 +41,30 @@ func (s *DashboardService) GetSummary(workspaceID int32) (*domain.DashboardSumma
 }
 
 // GetSummaryForMonth returns the dashboard summary for a workspace for a specific month
+// For future months, it returns projected data based on current balances
+// NOTE: Uses server's local timezone for month boundary detection. Consider accepting
+// timezone from request if users report unexpected behavior near month boundaries.
 func (s *DashboardService) GetSummaryForMonth(workspaceID int32, year, month int) (*domain.DashboardSummary, error) {
+	now := time.Now()
+	requestedDate := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.Local)
+	currentMonthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local)
+
+	isFuture := requestedDate.After(currentMonthStart)
+
+	// Check projection limit for future months
+	if isFuture {
+		monthsAhead := monthsBetween(currentMonthStart, requestedDate)
+		if monthsAhead > domain.MaxProjectionMonths {
+			return nil, ErrProjectionLimitExceeded
+		}
+		return s.getProjection(workspaceID, year, month)
+	}
+
+	return s.getActualSummary(workspaceID, year, month)
+}
+
+// getActualSummary returns the dashboard summary for current or past months
+func (s *DashboardService) getActualSummary(workspaceID int32, year, month int) (*domain.DashboardSummary, error) {
 	// 1. Get month data
 	monthData, err := s.monthService.GetOrCreateMonth(workspaceID, year, month)
 	if err != nil {
@@ -85,6 +112,7 @@ func (s *DashboardService) GetSummaryForMonth(workspaceID int32, year, month int
 	}
 
 	return &domain.DashboardSummary{
+		IsProjection:     false,
 		TotalBalance:     totalBalance,
 		InHandBalance:    inHandBalance,
 		DisposableIncome: disposableIncome,
@@ -93,6 +121,86 @@ func (s *DashboardService) GetSummaryForMonth(workspaceID int32, year, month int
 		CCPayable:        ccPayable,
 		Month:            monthData,
 	}, nil
+}
+
+// getProjection returns projected dashboard data for a future month
+func (s *DashboardService) getProjection(workspaceID int32, year, month int) (*domain.DashboardSummary, error) {
+	// Get the starting balance by chaining from current month
+	startingBalance, err := s.chainBalanceToMonth(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+
+	// MVP: No recurring or loans yet
+	projection := &domain.ProjectionDetails{
+		RecurringIncome:   decimal.Zero,
+		RecurringExpenses: decimal.Zero,
+		LoanPayments:      decimal.Zero,
+		Note:              "Recurring transactions and loans not yet configured",
+	}
+
+	// Projected closing = starting (MVP - no changes)
+	closingBalance := startingBalance
+
+	// Build month boundaries
+	startDate := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.Local)
+	endDate := time.Date(year, time.Month(month)+1, 0, 0, 0, 0, 0, time.Local) // Last day of month
+
+	// For future months, days remaining = total days in month
+	daysRemaining := endDate.Day()
+
+	// Calculate daily budget based on projected balance
+	dailyBudget := decimal.Zero
+	if daysRemaining > 0 {
+		dailyBudget = closingBalance.Div(decimal.NewFromInt(int64(daysRemaining)))
+	}
+
+	return &domain.DashboardSummary{
+		IsProjection:          true,
+		ProjectionLimitMonths: domain.MaxProjectionMonths,
+		TotalBalance:          startingBalance,
+		InHandBalance:         startingBalance,
+		DisposableIncome:      startingBalance,
+		DaysRemaining:         daysRemaining,
+		DailyBudget:           dailyBudget,
+		CCPayable: &domain.CCPayableSummary{
+			ThisMonth: decimal.Zero,
+			NextMonth: decimal.Zero,
+			Total:     decimal.Zero,
+		},
+		Month: &domain.CalculatedMonth{
+			Month: domain.Month{
+				Year:            year,
+				Month:           month,
+				StartDate:       startDate,
+				EndDate:         endDate,
+				StartingBalance: startingBalance,
+			},
+			TotalIncome:    decimal.Zero,
+			TotalExpenses:  decimal.Zero,
+			ClosingBalance: closingBalance,
+		},
+		Projection: projection,
+	}, nil
+}
+
+// chainBalanceToMonth calculates the projected starting balance for a future month
+// For MVP, uses the current month's closing balance as the projection base
+func (s *DashboardService) chainBalanceToMonth(workspaceID int32) (decimal.Decimal, error) {
+	now := time.Now()
+	currentMonth, err := s.monthService.GetOrCreateMonth(workspaceID, now.Year(), int(now.Month()))
+	if err != nil {
+		return decimal.Zero, err
+	}
+
+	return currentMonth.ClosingBalance, nil
+}
+
+// monthsBetween calculates the number of months between two dates
+func monthsBetween(start, end time.Time) int {
+	years := end.Year() - start.Year()
+	months := int(end.Month()) - int(start.Month())
+	return years*12 + months
 }
 
 // calculateDaysRemaining returns the number of days from today until the end of the month

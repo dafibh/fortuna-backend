@@ -780,6 +780,365 @@ func TestDashboardService_GetCCPayable(t *testing.T) {
 	}
 }
 
+func TestDashboardService_Projection_FutureMonth(t *testing.T) {
+	// Test that future months return projection data
+	now := time.Now()
+	currentYear := now.Year()
+	currentMonth := int(now.Month())
+
+	// Calculate future month (2 months ahead)
+	futureYear := currentYear
+	futureMonth := currentMonth + 2
+	if futureMonth > 12 {
+		futureMonth -= 12
+		futureYear++
+	}
+
+	// Setup for current month (use Local to match service behavior)
+	currentStartDate := time.Date(currentYear, time.Month(currentMonth), 1, 0, 0, 0, 0, time.Local)
+	currentEndDate := currentStartDate.AddDate(0, 1, -1)
+
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	monthRepo := testutil.NewMockMonthRepository()
+
+	accountRepo.AddAccount(&domain.Account{
+		ID:             1,
+		WorkspaceID:    1,
+		Name:           "Bank",
+		AccountType:    domain.AccountTypeAsset,
+		Template:       domain.TemplateBank,
+		InitialBalance: decimal.NewFromInt(10000),
+	})
+
+	// Current month with closing balance of 15000
+	monthRepo.AddMonth(&domain.Month{
+		ID:              1,
+		WorkspaceID:     1,
+		Year:            currentYear,
+		Month:           currentMonth,
+		StartDate:       currentStartDate,
+		EndDate:         currentEndDate,
+		StartingBalance: decimal.NewFromInt(10000),
+	})
+
+	// Add income transaction to increase closing balance
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:              1,
+		WorkspaceID:     1,
+		AccountID:       1,
+		Name:            "Salary",
+		Amount:          decimal.NewFromInt(5000),
+		Type:            domain.TransactionTypeIncome,
+		TransactionDate: currentStartDate.AddDate(0, 0, 15),
+		IsPaid:          true,
+	})
+
+	calcService := NewCalculationService(accountRepo, transactionRepo)
+	monthService := NewMonthService(monthRepo, transactionRepo, calcService)
+	dashboardService := NewDashboardService(accountRepo, transactionRepo, monthService, calcService)
+
+	// Get projection for future month
+	summary, err := dashboardService.GetSummaryForMonth(1, futureYear, futureMonth)
+	if err != nil {
+		t.Fatalf("GetSummaryForMonth() error = %v", err)
+	}
+
+	// Verify it's marked as projection
+	if !summary.IsProjection {
+		t.Error("Future month should have IsProjection = true")
+	}
+
+	// Verify projection limit is set
+	if summary.ProjectionLimitMonths != domain.MaxProjectionMonths {
+		t.Errorf("ProjectionLimitMonths = %v, want %v", summary.ProjectionLimitMonths, domain.MaxProjectionMonths)
+	}
+
+	// Verify projection details are populated
+	if summary.Projection == nil {
+		t.Fatal("Projection should not be nil for future month")
+	}
+
+	// MVP: All projection values should be zero
+	if !summary.Projection.RecurringIncome.IsZero() {
+		t.Errorf("RecurringIncome = %v, want 0", summary.Projection.RecurringIncome)
+	}
+	if !summary.Projection.RecurringExpenses.IsZero() {
+		t.Errorf("RecurringExpenses = %v, want 0", summary.Projection.RecurringExpenses)
+	}
+	if !summary.Projection.LoanPayments.IsZero() {
+		t.Errorf("LoanPayments = %v, want 0", summary.Projection.LoanPayments)
+	}
+
+	// Verify CC payable is zero for projected months
+	if summary.CCPayable == nil {
+		t.Fatal("CCPayable should not be nil for projection")
+	}
+	if !summary.CCPayable.ThisMonth.IsZero() {
+		t.Errorf("CCPayable.ThisMonth = %v, want 0", summary.CCPayable.ThisMonth)
+	}
+	if !summary.CCPayable.NextMonth.IsZero() {
+		t.Errorf("CCPayable.NextMonth = %v, want 0", summary.CCPayable.NextMonth)
+	}
+	if !summary.CCPayable.Total.IsZero() {
+		t.Errorf("CCPayable.Total = %v, want 0", summary.CCPayable.Total)
+	}
+
+	// Verify month data is set correctly
+	if summary.Month == nil {
+		t.Fatal("Month should not be nil")
+	}
+	// Note: CalculatedMonth embeds Month, so Month.Month accesses embedded struct's Month field
+	if summary.Month.Year != futureYear || summary.Month.Month.Month != futureMonth {
+		t.Errorf("Month = %d/%d, want %d/%d", summary.Month.Year, summary.Month.Month.Month, futureYear, futureMonth)
+	}
+}
+
+func TestDashboardService_Projection_CurrentMonthNotProjection(t *testing.T) {
+	// Test that current month returns isProjection: false
+	now := time.Now()
+	currentYear := now.Year()
+	currentMonth := int(now.Month())
+
+	// Use Local to match service behavior
+	startDate := time.Date(currentYear, time.Month(currentMonth), 1, 0, 0, 0, 0, time.Local)
+	endDate := startDate.AddDate(0, 1, -1)
+
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	monthRepo := testutil.NewMockMonthRepository()
+
+	monthRepo.AddMonth(&domain.Month{
+		ID:              1,
+		WorkspaceID:     1,
+		Year:            currentYear,
+		Month:           currentMonth,
+		StartDate:       startDate,
+		EndDate:         endDate,
+		StartingBalance: decimal.NewFromInt(5000),
+	})
+
+	calcService := NewCalculationService(accountRepo, transactionRepo)
+	monthService := NewMonthService(monthRepo, transactionRepo, calcService)
+	dashboardService := NewDashboardService(accountRepo, transactionRepo, monthService, calcService)
+
+	summary, err := dashboardService.GetSummaryForMonth(1, currentYear, currentMonth)
+	if err != nil {
+		t.Fatalf("GetSummaryForMonth() error = %v", err)
+	}
+
+	// Current month should NOT be a projection
+	if summary.IsProjection {
+		t.Error("Current month should have IsProjection = false")
+	}
+
+	// Projection details should be nil for current month
+	if summary.Projection != nil {
+		t.Error("Projection should be nil for current month")
+	}
+}
+
+func TestDashboardService_Projection_PastMonthNotProjection(t *testing.T) {
+	// Test that past month returns isProjection: false
+	pastYear := 2024
+	pastMonth := 6
+
+	// Use Local to match service behavior
+	startDate := time.Date(pastYear, time.Month(pastMonth), 1, 0, 0, 0, 0, time.Local)
+	endDate := startDate.AddDate(0, 1, -1)
+
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	monthRepo := testutil.NewMockMonthRepository()
+
+	monthRepo.AddMonth(&domain.Month{
+		ID:              1,
+		WorkspaceID:     1,
+		Year:            pastYear,
+		Month:           pastMonth,
+		StartDate:       startDate,
+		EndDate:         endDate,
+		StartingBalance: decimal.NewFromInt(5000),
+	})
+
+	calcService := NewCalculationService(accountRepo, transactionRepo)
+	monthService := NewMonthService(monthRepo, transactionRepo, calcService)
+	dashboardService := NewDashboardService(accountRepo, transactionRepo, monthService, calcService)
+
+	summary, err := dashboardService.GetSummaryForMonth(1, pastYear, pastMonth)
+	if err != nil {
+		t.Fatalf("GetSummaryForMonth() error = %v", err)
+	}
+
+	// Past month should NOT be a projection
+	if summary.IsProjection {
+		t.Error("Past month should have IsProjection = false")
+	}
+}
+
+func TestDashboardService_Projection_LimitExceeded(t *testing.T) {
+	// Test that requesting >12 months ahead returns error
+	now := time.Now()
+	currentYear := now.Year()
+	currentMonth := int(now.Month())
+
+	// Calculate 13 months ahead
+	futureYear := currentYear + 1
+	futureMonth := currentMonth + 1
+	if futureMonth > 12 {
+		futureMonth -= 12
+		futureYear++
+	}
+
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	monthRepo := testutil.NewMockMonthRepository()
+
+	calcService := NewCalculationService(accountRepo, transactionRepo)
+	monthService := NewMonthService(monthRepo, transactionRepo, calcService)
+	dashboardService := NewDashboardService(accountRepo, transactionRepo, monthService, calcService)
+
+	_, err := dashboardService.GetSummaryForMonth(1, futureYear, futureMonth)
+	if err == nil {
+		t.Error("Expected error for projection beyond 12 months")
+	}
+
+	if err != ErrProjectionLimitExceeded {
+		t.Errorf("Expected ErrProjectionLimitExceeded, got %v", err)
+	}
+}
+
+func TestDashboardService_Projection_ExactlyAtLimit(t *testing.T) {
+	// Test that requesting exactly 12 months ahead succeeds (boundary test)
+	now := time.Now()
+	currentYear := now.Year()
+	currentMonth := int(now.Month())
+
+	// Calculate exactly 12 months ahead
+	futureYear := currentYear + 1
+	futureMonth := currentMonth
+	// No adjustment needed - 12 months ahead is same month next year
+
+	// Setup current month for balance chaining
+	currentStartDate := time.Date(currentYear, time.Month(currentMonth), 1, 0, 0, 0, 0, time.Local)
+	currentEndDate := currentStartDate.AddDate(0, 1, -1)
+
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	monthRepo := testutil.NewMockMonthRepository()
+
+	monthRepo.AddMonth(&domain.Month{
+		ID:              1,
+		WorkspaceID:     1,
+		Year:            currentYear,
+		Month:           currentMonth,
+		StartDate:       currentStartDate,
+		EndDate:         currentEndDate,
+		StartingBalance: decimal.NewFromInt(5000),
+	})
+
+	calcService := NewCalculationService(accountRepo, transactionRepo)
+	monthService := NewMonthService(monthRepo, transactionRepo, calcService)
+	dashboardService := NewDashboardService(accountRepo, transactionRepo, monthService, calcService)
+
+	// Should succeed - exactly at limit
+	summary, err := dashboardService.GetSummaryForMonth(1, futureYear, futureMonth)
+	if err != nil {
+		t.Fatalf("Expected success for exactly 12 months ahead, got error: %v", err)
+	}
+
+	if !summary.IsProjection {
+		t.Error("Should be marked as projection")
+	}
+}
+
+func TestDashboardService_Projection_BalanceChaining(t *testing.T) {
+	// Test that future month uses current month's closing balance
+	now := time.Now()
+	currentYear := now.Year()
+	currentMonth := int(now.Month())
+
+	// Next month
+	futureYear := currentYear
+	futureMonth := currentMonth + 1
+	if futureMonth > 12 {
+		futureMonth = 1
+		futureYear++
+	}
+
+	// Use Local to match service behavior
+	currentStartDate := time.Date(currentYear, time.Month(currentMonth), 1, 0, 0, 0, 0, time.Local)
+	currentEndDate := currentStartDate.AddDate(0, 1, -1)
+
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	monthRepo := testutil.NewMockMonthRepository()
+
+	accountRepo.AddAccount(&domain.Account{
+		ID:             1,
+		WorkspaceID:    1,
+		Name:           "Bank",
+		AccountType:    domain.AccountTypeAsset,
+		Template:       domain.TemplateBank,
+		InitialBalance: decimal.NewFromInt(10000),
+	})
+
+	// Current month with specific closing balance
+	monthRepo.AddMonth(&domain.Month{
+		ID:              1,
+		WorkspaceID:     1,
+		Year:            currentYear,
+		Month:           currentMonth,
+		StartDate:       currentStartDate,
+		EndDate:         currentEndDate,
+		StartingBalance: decimal.NewFromInt(10000),
+	})
+
+	// Add transactions that affect closing balance
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:              1,
+		WorkspaceID:     1,
+		AccountID:       1,
+		Name:            "Income",
+		Amount:          decimal.NewFromInt(5000),
+		Type:            domain.TransactionTypeIncome,
+		TransactionDate: currentStartDate.AddDate(0, 0, 5),
+		IsPaid:          true,
+	})
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:              2,
+		WorkspaceID:     1,
+		AccountID:       1,
+		Name:            "Expense",
+		Amount:          decimal.NewFromInt(2000),
+		Type:            domain.TransactionTypeExpense,
+		TransactionDate: currentStartDate.AddDate(0, 0, 10),
+		IsPaid:          true,
+	})
+
+	calcService := NewCalculationService(accountRepo, transactionRepo)
+	monthService := NewMonthService(monthRepo, transactionRepo, calcService)
+	dashboardService := NewDashboardService(accountRepo, transactionRepo, monthService, calcService)
+
+	// Get projection for next month
+	summary, err := dashboardService.GetSummaryForMonth(1, futureYear, futureMonth)
+	if err != nil {
+		t.Fatalf("GetSummaryForMonth() error = %v", err)
+	}
+
+	// Expected closing balance: 10000 + 5000 - 2000 = 13000
+	// Future month should use this as starting balance
+	expectedBalance := decimal.NewFromInt(13000)
+	if !summary.Month.StartingBalance.Equal(expectedBalance) {
+		t.Errorf("Projected StartingBalance = %v, want %v", summary.Month.StartingBalance, expectedBalance)
+	}
+
+	// For MVP, closing = starting (no changes)
+	if !summary.Month.ClosingBalance.Equal(expectedBalance) {
+		t.Errorf("Projected ClosingBalance = %v, want %v (same as starting for MVP)", summary.Month.ClosingBalance, expectedBalance)
+	}
+}
+
 func TestDashboardService_GetSummary_IncludesCCPayable(t *testing.T) {
 	testYear := 2025
 	testMonth := 1
