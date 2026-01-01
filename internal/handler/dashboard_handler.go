@@ -2,6 +2,8 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/dafibh/fortuna/fortuna-backend/internal/middleware"
 	"github.com/dafibh/fortuna/fortuna-backend/internal/service"
@@ -40,15 +42,42 @@ type DashboardSummaryResponse struct {
 }
 
 // GetSummary handles GET /api/v1/dashboard/summary
+// Accepts optional year and month query params for historical navigation
 func (h *DashboardHandler) GetSummary(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
 	if workspaceID == 0 {
 		return NewUnauthorizedError(c, "Workspace required")
 	}
 
-	summary, err := h.dashboardService.GetSummary(workspaceID)
+	// Parse optional year/month params (default to current)
+	now := time.Now()
+	year := now.Year()
+	month := int(now.Month())
+
+	if yearStr := c.QueryParam("year"); yearStr != "" {
+		parsedYear, err := strconv.Atoi(yearStr)
+		if err != nil {
+			return NewValidationError(c, "Invalid year format", []ValidationError{{Field: "year", Message: "Must be a valid integer"}})
+		}
+		if parsedYear < 2000 || parsedYear > 2100 {
+			return NewValidationError(c, "Year must be between 2000 and 2100", []ValidationError{{Field: "year", Message: "Must be between 2000 and 2100"}})
+		}
+		year = parsedYear
+	}
+	if monthStr := c.QueryParam("month"); monthStr != "" {
+		parsedMonth, err := strconv.Atoi(monthStr)
+		if err != nil {
+			return NewValidationError(c, "Invalid month format", []ValidationError{{Field: "month", Message: "Must be a valid integer"}})
+		}
+		if parsedMonth < 1 || parsedMonth > 12 {
+			return NewValidationError(c, "Month must be between 1 and 12", []ValidationError{{Field: "month", Message: "Must be between 1 and 12"}})
+		}
+		month = parsedMonth
+	}
+
+	summary, err := h.dashboardService.GetSummaryForMonth(workspaceID, year, month)
 	if err != nil {
-		log.Error().Err(err).Int32("workspace_id", workspaceID).Msg("Failed to get dashboard summary")
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("year", year).Int("month", month).Msg("Failed to get dashboard summary")
 		return NewInternalError(c, "Failed to get dashboard summary")
 	}
 
