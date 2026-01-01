@@ -6,7 +6,7 @@ import (
 )
 
 // RegisterRoutes sets up all API routes
-func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler) {
+func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler) {
 	// API version 1
 	api := e.Group("/api/v1")
 
@@ -63,4 +63,11 @@ func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, aut
 	budgetCategories.PUT("/:id", budgetCategoryHandler.UpdateCategory)
 	budgetCategories.DELETE("/:id", budgetCategoryHandler.DeleteCategory)
 	budgetCategories.GET("/:id/can-delete", budgetCategoryHandler.CanDeleteCategory)
+
+	// Budget Allocation routes (protected)
+	budgets := api.Group("/budgets")
+	budgets.Use(authMiddleware.Authenticate())
+	budgets.GET("/:year/:month", budgetHandler.GetAllocations)
+	budgets.PUT("/:year/:month", budgetHandler.SetAllocations)
+	budgets.PUT("/:year/:month/:categoryId", budgetHandler.SetAllocation)
 }

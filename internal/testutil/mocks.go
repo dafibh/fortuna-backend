@@ -1036,3 +1036,148 @@ func (m *MockBudgetCategoryRepository) AddBudgetCategory(category *domain.Budget
 	key := budgetCategoryNameKey(category.WorkspaceID, category.Name)
 	m.ByName[key] = category
 }
+
+// MockBudgetAllocationRepository is a mock implementation of domain.BudgetAllocationRepository
+type MockBudgetAllocationRepository struct {
+	Allocations      map[string]*domain.BudgetAllocation
+	ByWorkspaceMonth map[string][]*domain.BudgetAllocation
+	CategoriesWithAllocations map[string][]*domain.BudgetCategoryWithAllocation
+	NextID           int32
+	UpsertFn         func(allocation *domain.BudgetAllocation) (*domain.BudgetAllocation, error)
+	UpsertBatchFn    func(allocations []*domain.BudgetAllocation) error
+	GetByMonthFn     func(workspaceID int32, year, month int) ([]*domain.BudgetAllocation, error)
+	GetByCategoryFn  func(workspaceID int32, categoryID int32, year, month int) (*domain.BudgetAllocation, error)
+	DeleteFn         func(workspaceID int32, categoryID int32, year, month int) error
+	GetCategoriesWithAllocationsFn func(workspaceID int32, year, month int) ([]*domain.BudgetCategoryWithAllocation, error)
+}
+
+// NewMockBudgetAllocationRepository creates a new MockBudgetAllocationRepository
+func NewMockBudgetAllocationRepository() *MockBudgetAllocationRepository {
+	return &MockBudgetAllocationRepository{
+		Allocations:               make(map[string]*domain.BudgetAllocation),
+		ByWorkspaceMonth:          make(map[string][]*domain.BudgetAllocation),
+		CategoriesWithAllocations: make(map[string][]*domain.BudgetCategoryWithAllocation),
+		NextID:                    1,
+	}
+}
+
+func allocationKey(workspaceID, categoryID int32, year, month int) string {
+	return fmt.Sprintf("%d-%d-%d-%d", workspaceID, categoryID, year, month)
+}
+
+func allocationMonthKey(workspaceID int32, year, month int) string {
+	return fmt.Sprintf("%d-%d-%d", workspaceID, year, month)
+}
+
+// Upsert creates or updates a budget allocation
+func (m *MockBudgetAllocationRepository) Upsert(allocation *domain.BudgetAllocation) (*domain.BudgetAllocation, error) {
+	if m.UpsertFn != nil {
+		return m.UpsertFn(allocation)
+	}
+	key := allocationKey(allocation.WorkspaceID, allocation.CategoryID, allocation.Year, allocation.Month)
+	monthKey := allocationMonthKey(allocation.WorkspaceID, allocation.Year, allocation.Month)
+
+	existing, exists := m.Allocations[key]
+	if exists {
+		// Update existing
+		existing.Amount = allocation.Amount
+		existing.UpdatedAt = time.Now()
+		return existing, nil
+	}
+
+	// Create new
+	allocation.ID = m.NextID
+	m.NextID++
+	allocation.CreatedAt = time.Now()
+	allocation.UpdatedAt = time.Now()
+	m.Allocations[key] = allocation
+	m.ByWorkspaceMonth[monthKey] = append(m.ByWorkspaceMonth[monthKey], allocation)
+	return allocation, nil
+}
+
+// UpsertBatch creates or updates multiple budget allocations atomically
+func (m *MockBudgetAllocationRepository) UpsertBatch(allocations []*domain.BudgetAllocation) error {
+	if m.UpsertBatchFn != nil {
+		return m.UpsertBatchFn(allocations)
+	}
+	for _, allocation := range allocations {
+		_, err := m.Upsert(allocation)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// GetByMonth retrieves all budget allocations for a specific month
+func (m *MockBudgetAllocationRepository) GetByMonth(workspaceID int32, year, month int) ([]*domain.BudgetAllocation, error) {
+	if m.GetByMonthFn != nil {
+		return m.GetByMonthFn(workspaceID, year, month)
+	}
+	key := allocationMonthKey(workspaceID, year, month)
+	allocations := m.ByWorkspaceMonth[key]
+	if allocations == nil {
+		return []*domain.BudgetAllocation{}, nil
+	}
+	return allocations, nil
+}
+
+// GetByCategory retrieves a budget allocation for a specific category and month
+func (m *MockBudgetAllocationRepository) GetByCategory(workspaceID int32, categoryID int32, year, month int) (*domain.BudgetAllocation, error) {
+	if m.GetByCategoryFn != nil {
+		return m.GetByCategoryFn(workspaceID, categoryID, year, month)
+	}
+	key := allocationKey(workspaceID, categoryID, year, month)
+	allocation, ok := m.Allocations[key]
+	if !ok {
+		return nil, domain.ErrBudgetAllocationNotFound
+	}
+	return allocation, nil
+}
+
+// Delete removes a budget allocation
+func (m *MockBudgetAllocationRepository) Delete(workspaceID int32, categoryID int32, year, month int) error {
+	if m.DeleteFn != nil {
+		return m.DeleteFn(workspaceID, categoryID, year, month)
+	}
+	key := allocationKey(workspaceID, categoryID, year, month)
+	delete(m.Allocations, key)
+
+	// Remove from month list
+	monthKey := allocationMonthKey(workspaceID, year, month)
+	allocations := m.ByWorkspaceMonth[monthKey]
+	for i, a := range allocations {
+		if a.CategoryID == categoryID {
+			m.ByWorkspaceMonth[monthKey] = append(allocations[:i], allocations[i+1:]...)
+			break
+		}
+	}
+	return nil
+}
+
+// GetCategoriesWithAllocations retrieves all categories with their allocations for a month
+func (m *MockBudgetAllocationRepository) GetCategoriesWithAllocations(workspaceID int32, year, month int) ([]*domain.BudgetCategoryWithAllocation, error) {
+	if m.GetCategoriesWithAllocationsFn != nil {
+		return m.GetCategoriesWithAllocationsFn(workspaceID, year, month)
+	}
+	key := allocationMonthKey(workspaceID, year, month)
+	categories := m.CategoriesWithAllocations[key]
+	if categories == nil {
+		return []*domain.BudgetCategoryWithAllocation{}, nil
+	}
+	return categories, nil
+}
+
+// SetCategoriesWithAllocations sets the categories with allocations for a month (helper for tests)
+func (m *MockBudgetAllocationRepository) SetCategoriesWithAllocations(workspaceID int32, year, month int, categories []*domain.BudgetCategoryWithAllocation) {
+	key := allocationMonthKey(workspaceID, year, month)
+	m.CategoriesWithAllocations[key] = categories
+}
+
+// AddAllocation adds an allocation to the mock repository (helper for tests)
+func (m *MockBudgetAllocationRepository) AddAllocation(allocation *domain.BudgetAllocation) {
+	key := allocationKey(allocation.WorkspaceID, allocation.CategoryID, allocation.Year, allocation.Month)
+	monthKey := allocationMonthKey(allocation.WorkspaceID, allocation.Year, allocation.Month)
+	m.Allocations[key] = allocation
+	m.ByWorkspaceMonth[monthKey] = append(m.ByWorkspaceMonth[monthKey], allocation)
+}

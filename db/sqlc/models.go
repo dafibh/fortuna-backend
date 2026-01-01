@@ -20,6 +20,17 @@ type Account struct {
 	DeletedAt      pgtype.Timestamptz `json:"deleted_at"`
 }
 
+type BudgetAllocation struct {
+	ID          int32              `json:"id"`
+	WorkspaceID int32              `json:"workspace_id"`
+	CategoryID  int32              `json:"category_id"`
+	Year        int32              `json:"year"`
+	Month       int32              `json:"month"`
+	Amount      pgtype.Numeric     `json:"amount"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
 type BudgetCategory struct {
 	ID          int32              `json:"id"`
 	WorkspaceID int32              `json:"workspace_id"`

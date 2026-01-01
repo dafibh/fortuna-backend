@@ -28,6 +28,7 @@ var (
 	ErrMonthAlreadyExists           = errors.New("month already exists")
 	ErrBudgetCategoryNotFound       = errors.New("budget category not found")
 	ErrBudgetCategoryAlreadyExists  = errors.New("budget category with this name already exists")
+	ErrBudgetAllocationNotFound     = errors.New("budget allocation not found")
 )
 
 // Validation constants

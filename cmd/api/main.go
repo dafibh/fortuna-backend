@@ -53,6 +53,7 @@ func main() {
 	transactionRepo := postgres.NewTransactionRepository(pool)
 	monthRepo := postgres.NewMonthRepository(pool)
 	budgetCategoryRepo := postgres.NewBudgetCategoryRepository(pool)
+	budgetAllocationRepo := postgres.NewBudgetAllocationRepository(pool)
 
 	// Initialize services
 	authService := service.NewAuthService(userRepo, workspaceRepo)
@@ -63,6 +64,7 @@ func main() {
 	monthService := service.NewMonthService(monthRepo, transactionRepo, calculationService)
 	dashboardService := service.NewDashboardService(accountRepo, transactionRepo, monthService, calculationService)
 	budgetCategoryService := service.NewBudgetCategoryService(budgetCategoryRepo)
+	budgetAllocationService := service.NewBudgetAllocationService(budgetAllocationRepo, budgetCategoryRepo)
 
 	// Create workspace provider adapter for auth middleware
 	workspaceProvider := &workspaceProviderAdapter{authService: authService}
@@ -81,6 +83,7 @@ func main() {
 	monthHandler := handler.NewMonthHandler(monthService)
 	dashboardHandler := handler.NewDashboardHandler(dashboardService)
 	budgetCategoryHandler := handler.NewBudgetCategoryHandler(budgetCategoryService)
+	budgetHandler := handler.NewBudgetHandler(budgetAllocationService)
 
 	// Create Echo instance
 	e := echo.New()
@@ -121,7 +124,7 @@ func main() {
 	})
 
 	// Register API routes
-	handler.RegisterRoutes(e, authMiddleware, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler, dashboardHandler, budgetCategoryHandler)
+	handler.RegisterRoutes(e, authMiddleware, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler, dashboardHandler, budgetCategoryHandler, budgetHandler)
 
 	// Start server in goroutine
 	go func() {

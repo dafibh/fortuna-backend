@@ -21,6 +21,7 @@ type Querier interface {
 	CreateTransaction(ctx context.Context, arg CreateTransactionParams) (Transaction, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams) (Workspace, error)
+	DeleteBudgetAllocation(ctx context.Context, arg DeleteBudgetAllocationParams) error
 	DeleteWorkspace(ctx context.Context, id int32) error
 	GetAccountByID(ctx context.Context, arg GetAccountByIDParams) (Account, error)
 	GetAccountByIDIncludeDeleted(ctx context.Context, arg GetAccountByIDIncludeDeletedParams) (Account, error)
@@ -29,10 +30,14 @@ type Querier interface {
 	GetAccountsByWorkspaceAll(ctx context.Context, workspaceID int32) ([]Account, error)
 	GetAllBudgetCategories(ctx context.Context, workspaceID int32) ([]BudgetCategory, error)
 	GetAllMonths(ctx context.Context, workspaceID int32) ([]Month, error)
+	GetBudgetAllocationByCategory(ctx context.Context, arg GetBudgetAllocationByCategoryParams) (BudgetAllocation, error)
+	GetBudgetAllocationsByMonth(ctx context.Context, arg GetBudgetAllocationsByMonthParams) ([]GetBudgetAllocationsByMonthRow, error)
 	GetBudgetCategoryByID(ctx context.Context, arg GetBudgetCategoryByIDParams) (BudgetCategory, error)
 	GetBudgetCategoryByName(ctx context.Context, arg GetBudgetCategoryByNameParams) (BudgetCategory, error)
 	// Get unpaid CC transaction totals grouped by settlement intent
 	GetCCPayableSummary(ctx context.Context, workspaceID int32) ([]GetCCPayableSummaryRow, error)
+	// Returns all categories with their allocation for a specific month (0 if not set)
+	GetCategoriesWithAllocations(ctx context.Context, arg GetCategoriesWithAllocationsParams) ([]GetCategoriesWithAllocationsRow, error)
 	GetLatestMonth(ctx context.Context, workspaceID int32) (Month, error)
 	GetMonthByYearMonth(ctx context.Context, arg GetMonthByYearMonthParams) (Month, error)
 	// Batch query to get income/expense totals grouped by year/month for N+1 prevention
@@ -67,6 +72,7 @@ type Querier interface {
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
 	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) (User, error)
 	UpdateWorkspace(ctx context.Context, arg UpdateWorkspaceParams) (Workspace, error)
+	UpsertBudgetAllocation(ctx context.Context, arg UpsertBudgetAllocationParams) (BudgetAllocation, error)
 }
 
 var _ Querier = (*Queries)(nil)
