@@ -34,6 +34,7 @@ type CreateTransactionRequest struct {
 	IsPaid             *bool   `json:"isPaid,omitempty"`
 	CCSettlementIntent *string `json:"ccSettlementIntent,omitempty"`
 	Notes              *string `json:"notes,omitempty"`
+	CategoryID         *int32  `json:"categoryId,omitempty"`
 }
 
 // TransactionResponse represents a transaction in API responses
@@ -49,6 +50,8 @@ type TransactionResponse struct {
 	CCSettlementIntent *string `json:"ccSettlementIntent,omitempty"`
 	Notes              *string `json:"notes,omitempty"`
 	TransferPairID     *string `json:"transferPairId,omitempty"`
+	CategoryID         *int32  `json:"categoryId,omitempty"`
+	CategoryName       *string `json:"categoryName,omitempty"`
 	CreatedAt          string  `json:"createdAt"`
 	UpdatedAt          string  `json:"updatedAt"`
 }
@@ -128,6 +131,7 @@ func (h *TransactionHandler) CreateTransaction(c echo.Context) error {
 		IsPaid:             req.IsPaid,
 		CCSettlementIntent: ccSettlementIntent,
 		Notes:              req.Notes,
+		CategoryID:         req.CategoryID,
 	}
 
 	transaction, err := h.transactionService.CreateTransaction(workspaceID, input)
@@ -160,6 +164,11 @@ func (h *TransactionHandler) CreateTransaction(c echo.Context) error {
 		if errors.Is(err, domain.ErrNotesTooLong) {
 			return NewValidationError(c, "Validation failed", []ValidationError{
 				{Field: "notes", Message: "Notes must be 1000 characters or less"},
+			})
+		}
+		if errors.Is(err, domain.ErrBudgetCategoryNotFound) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "categoryId", Message: "Category not found"},
 			})
 		}
 		log.Error().Err(err).Int32("workspace_id", workspaceID).Msg("Failed to create transaction")
@@ -358,6 +367,7 @@ type UpdateTransactionRequest struct {
 	Date               string  `json:"date"`
 	CCSettlementIntent *string `json:"ccSettlementIntent,omitempty"`
 	Notes              *string `json:"notes,omitempty"`
+	CategoryID         *int32  `json:"categoryId,omitempty"`
 }
 
 // UpdateTransaction handles PUT /api/v1/transactions/:id
@@ -415,6 +425,7 @@ func (h *TransactionHandler) UpdateTransaction(c echo.Context) error {
 		TransactionDate:    transactionDate,
 		CCSettlementIntent: ccSettlementIntent,
 		Notes:              req.Notes,
+		CategoryID:         req.CategoryID,
 	}
 
 	transaction, err := h.transactionService.UpdateTransaction(workspaceID, int32(id), input)
@@ -455,6 +466,11 @@ func (h *TransactionHandler) UpdateTransaction(c echo.Context) error {
 		if errors.Is(err, domain.ErrNotesTooLong) {
 			return NewValidationError(c, "Validation failed", []ValidationError{
 				{Field: "notes", Message: "Notes must be 1000 characters or less"},
+			})
+		}
+		if errors.Is(err, domain.ErrBudgetCategoryNotFound) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "categoryId", Message: "Category not found"},
 			})
 		}
 		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("transaction_id", id).Msg("Failed to update transaction")
@@ -574,6 +590,38 @@ func (h *TransactionHandler) CreateTransfer(c echo.Context) error {
 	})
 }
 
+// RecentCategoryResponse represents a recently used category in API responses
+type RecentCategoryResponse struct {
+	ID       int32  `json:"id"`
+	Name     string `json:"name"`
+	LastUsed string `json:"lastUsed"`
+}
+
+// GetRecentlyUsedCategories handles GET /api/v1/transactions/categories/recent
+func (h *TransactionHandler) GetRecentlyUsedCategories(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	categories, err := h.transactionService.GetRecentlyUsedCategories(workspaceID)
+	if err != nil {
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Msg("Failed to get recently used categories")
+		return NewInternalError(c, "Failed to get recently used categories")
+	}
+
+	response := make([]RecentCategoryResponse, len(categories))
+	for i, cat := range categories {
+		response[i] = RecentCategoryResponse{
+			ID:       cat.ID,
+			Name:     cat.Name,
+			LastUsed: cat.LastUsed.Format(time.RFC3339),
+		}
+	}
+
+	return c.JSON(http.StatusOK, response)
+}
+
 // Helper function to parse int query params with overflow protection
 func parseIntParam(s string, out *int32) (bool, error) {
 	if s == "" {
@@ -611,6 +659,12 @@ func toTransactionResponse(transaction *domain.Transaction) TransactionResponse 
 	if transaction.TransferPairID != nil {
 		pairID := transaction.TransferPairID.String()
 		resp.TransferPairID = &pairID
+	}
+	if transaction.CategoryID != nil {
+		resp.CategoryID = transaction.CategoryID
+	}
+	if transaction.CategoryName != nil {
+		resp.CategoryName = transaction.CategoryName
 	}
 	return resp
 }

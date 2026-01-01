@@ -7,16 +7,26 @@ package sqlc
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const countTransactionsByCategory = `-- name: CountTransactionsByCategory :one
-SELECT 0::bigint AS count
+SELECT COUNT(*)::bigint AS count
+FROM transactions
+WHERE workspace_id = $1
+  AND category_id = $2
+  AND deleted_at IS NULL
 `
 
-// NOTE: This query will be valid after Story 4.2 adds category_id to transactions
-// For now, return 0 (no transactions can have categories yet)
-func (q *Queries) CountTransactionsByCategory(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, countTransactionsByCategory)
+type CountTransactionsByCategoryParams struct {
+	WorkspaceID int32       `json:"workspace_id"`
+	CategoryID  pgtype.Int4 `json:"category_id"`
+}
+
+// Count transactions assigned to a specific category
+func (q *Queries) CountTransactionsByCategory(ctx context.Context, arg CountTransactionsByCategoryParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countTransactionsByCategory, arg.WorkspaceID, arg.CategoryID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err

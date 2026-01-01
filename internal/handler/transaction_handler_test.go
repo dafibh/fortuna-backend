@@ -18,7 +18,8 @@ func TestCreateTransaction_Success(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
@@ -74,7 +75,8 @@ func TestCreateTransaction_WithDate(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
@@ -117,7 +119,8 @@ func TestCreateTransaction_MissingWorkspaceID(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	reqBody := `{"accountId": 1, "name": "Test", "amount": "100.00", "type": "expense"}`
@@ -143,7 +146,8 @@ func TestCreateTransaction_MissingName(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
@@ -184,7 +188,8 @@ func TestCreateTransaction_InvalidAmount(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
@@ -216,7 +221,8 @@ func TestCreateTransaction_ZeroAmount(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
@@ -257,7 +263,8 @@ func TestCreateTransaction_InvalidType(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
@@ -298,7 +305,8 @@ func TestCreateTransaction_AccountNotFound(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
@@ -334,7 +342,8 @@ func TestCreateTransaction_ZeroAccountId(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
@@ -370,7 +379,8 @@ func TestGetTransactions_Success(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
@@ -430,7 +440,8 @@ func TestGetTransactions_EmptyList(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/transactions", nil)
@@ -466,7 +477,8 @@ func TestGetTransactions_WorkspaceIsolation(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	// Add transaction to workspace 1
@@ -519,7 +531,8 @@ func TestTogglePaidStatus_Success(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
@@ -566,7 +579,8 @@ func TestTogglePaidStatus_UnpaidToPaid(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
@@ -613,7 +627,8 @@ func TestTogglePaidStatus_InvalidID(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
@@ -640,7 +655,8 @@ func TestTogglePaidStatus_NotFound(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
@@ -667,7 +683,8 @@ func TestTogglePaidStatus_MissingWorkspaceID(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	req := httptest.NewRequest(http.MethodPatch, "/api/v1/transactions/1/toggle-paid", nil)
@@ -693,7 +710,8 @@ func TestTogglePaidStatus_WorkspaceIsolation(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	// Transaction belongs to workspace 1
@@ -730,7 +748,8 @@ func TestUpdateSettlementIntent_Success(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
@@ -790,7 +809,8 @@ func TestUpdateSettlementIntent_MissingIntent(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
@@ -828,7 +848,8 @@ func TestUpdateSettlementIntent_InvalidIntent(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
@@ -877,7 +898,8 @@ func TestUpdateSettlementIntent_PaidTransaction(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
@@ -928,7 +950,8 @@ func TestUpdateSettlementIntent_NonCCAccount(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
@@ -977,7 +1000,8 @@ func TestUpdateSettlementIntent_NotFound(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
@@ -1006,7 +1030,8 @@ func TestUpdateSettlementIntent_MissingWorkspaceID(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	reqBody := `{"intent": "next_month"}`
@@ -1038,7 +1063,8 @@ func TestCreateTransfer_Success(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
@@ -1105,7 +1131,8 @@ func TestCreateTransfer_SameAccountError(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
@@ -1148,7 +1175,8 @@ func TestCreateTransfer_MissingWorkspaceID(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	reqBody := `{"fromAccountId": 1, "toAccountId": 2, "amount": "500.00"}`
@@ -1174,7 +1202,8 @@ func TestCreateTransfer_InvalidAmount(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
@@ -1214,7 +1243,8 @@ func TestCreateTransfer_ZeroAmount(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
@@ -1263,7 +1293,8 @@ func TestCreateTransfer_AccountNotFound(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
@@ -1298,7 +1329,8 @@ func TestCreateTransfer_MissingFromAccountId(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
@@ -1334,7 +1366,8 @@ func TestCreateTransfer_MissingToAccountId(t *testing.T) {
 	e := echo.New()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
 	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)

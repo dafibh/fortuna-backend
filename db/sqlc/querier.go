@@ -11,9 +11,8 @@ import (
 )
 
 type Querier interface {
-	// NOTE: This query will be valid after Story 4.2 adds category_id to transactions
-	// For now, return 0 (no transactions can have categories yet)
-	CountTransactionsByCategory(ctx context.Context) (int64, error)
+	// Count transactions assigned to a specific category
+	CountTransactionsByCategory(ctx context.Context, arg CountTransactionsByCategoryParams) (int64, error)
 	CountTransactionsByWorkspace(ctx context.Context, arg CountTransactionsByWorkspaceParams) (int64, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
 	CreateBudgetCategory(ctx context.Context, arg CreateBudgetCategoryParams) (BudgetCategory, error)
@@ -38,8 +37,12 @@ type Querier interface {
 	GetMonthByYearMonth(ctx context.Context, arg GetMonthByYearMonthParams) (Month, error)
 	// Batch query to get income/expense totals grouped by year/month for N+1 prevention
 	GetMonthlyTransactionSummaries(ctx context.Context, workspaceID int32) ([]GetMonthlyTransactionSummariesRow, error)
+	// Returns recently used categories for suggestions dropdown
+	GetRecentlyUsedCategories(ctx context.Context, workspaceID int32) ([]GetRecentlyUsedCategoriesRow, error)
 	GetTransactionByID(ctx context.Context, arg GetTransactionByIDParams) (Transaction, error)
 	GetTransactionsByWorkspace(ctx context.Context, arg GetTransactionsByWorkspaceParams) ([]Transaction, error)
+	// Returns transactions with category name joined for display
+	GetTransactionsWithCategory(ctx context.Context, arg GetTransactionsWithCategoryParams) ([]GetTransactionsWithCategoryRow, error)
 	GetUserByAuth0ID(ctx context.Context, auth0ID string) (User, error)
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	GetWorkspaceByID(ctx context.Context, id int32) (Workspace, error)

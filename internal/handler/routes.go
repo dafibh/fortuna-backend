@@ -36,6 +36,7 @@ func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, aut
 	transactions.Use(authMiddleware.Authenticate())
 	transactions.POST("", transactionHandler.CreateTransaction)
 	transactions.GET("", transactionHandler.GetTransactions)
+	transactions.GET("/categories/recent", transactionHandler.GetRecentlyUsedCategories)
 	transactions.PUT("/:id", transactionHandler.UpdateTransaction)
 	transactions.DELETE("/:id", transactionHandler.DeleteTransaction)
 	transactions.PATCH("/:id/toggle-paid", transactionHandler.TogglePaidStatus)

@@ -24,9 +24,12 @@ SET deleted_at = NOW(), updated_at = NOW()
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL;
 
 -- name: CountTransactionsByCategory :one
--- NOTE: This query will be valid after Story 4.2 adds category_id to transactions
--- For now, return 0 (no transactions can have categories yet)
-SELECT 0::bigint AS count;
+-- Count transactions assigned to a specific category
+SELECT COUNT(*)::bigint AS count
+FROM transactions
+WHERE workspace_id = $1
+  AND category_id = $2
+  AND deleted_at IS NULL;
 
 -- name: GetBudgetCategoryByName :one
 SELECT * FROM budget_categories

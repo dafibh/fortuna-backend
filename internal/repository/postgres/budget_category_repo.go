@@ -8,6 +8,7 @@ import (
 	"github.com/dafibh/fortuna/fortuna-backend/internal/domain"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -119,14 +120,12 @@ func (r *BudgetCategoryRepository) SoftDelete(workspaceID int32, id int32) error
 }
 
 // HasTransactions checks if a budget category has any transactions assigned
-// NOTE: This will always return false until Story 4.2 adds category_id to transactions
-// TODO(Story 4.2): Update CountTransactionsByCategory query to accept workspaceID and categoryID parameters
 func (r *BudgetCategoryRepository) HasTransactions(workspaceID int32, id int32) (bool, error) {
 	ctx := context.Background()
-	// Parameters intentionally unused until Story 4.2 adds category_id to transactions table
-	_ = workspaceID
-	_ = id
-	count, err := r.queries.CountTransactionsByCategory(ctx)
+	count, err := r.queries.CountTransactionsByCategory(ctx, sqlc.CountTransactionsByCategoryParams{
+		WorkspaceID: workspaceID,
+		CategoryID:  pgtype.Int4{Int32: id, Valid: true},
+	})
 	if err != nil {
 		return false, err
 	}

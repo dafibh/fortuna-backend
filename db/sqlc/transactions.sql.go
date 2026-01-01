@@ -45,10 +45,10 @@ func (q *Queries) CountTransactionsByWorkspace(ctx context.Context, arg CountTra
 const createTransaction = `-- name: CreateTransaction :one
 INSERT INTO transactions (
     workspace_id, account_id, name, amount, type,
-    transaction_date, is_paid, cc_settlement_intent, notes, transfer_pair_id
+    transaction_date, is_paid, cc_settlement_intent, notes, transfer_pair_id, category_id
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
-) RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+) RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id
 `
 
 type CreateTransactionParams struct {
@@ -62,6 +62,7 @@ type CreateTransactionParams struct {
 	CcSettlementIntent pgtype.Text    `json:"cc_settlement_intent"`
 	Notes              pgtype.Text    `json:"notes"`
 	TransferPairID     pgtype.UUID    `json:"transfer_pair_id"`
+	CategoryID         pgtype.Int4    `json:"category_id"`
 }
 
 func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionParams) (Transaction, error) {
@@ -76,6 +77,7 @@ func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionPa
 		arg.CcSettlementIntent,
 		arg.Notes,
 		arg.TransferPairID,
+		arg.CategoryID,
 	)
 	var i Transaction
 	err := row.Scan(
@@ -93,6 +95,7 @@ func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionPa
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.TransferPairID,
+		&i.CategoryID,
 	)
 	return i, err
 }
@@ -228,8 +231,50 @@ func (q *Queries) GetMonthlyTransactionSummaries(ctx context.Context, workspaceI
 	return items, nil
 }
 
+const getRecentlyUsedCategories = `-- name: GetRecentlyUsedCategories :many
+SELECT DISTINCT
+    bc.id,
+    bc.name,
+    MAX(t.created_at) AS last_used
+FROM transactions t
+JOIN budget_categories bc ON t.category_id = bc.id AND bc.deleted_at IS NULL
+WHERE t.workspace_id = $1
+  AND t.deleted_at IS NULL
+  AND t.category_id IS NOT NULL
+GROUP BY bc.id, bc.name
+ORDER BY last_used DESC
+LIMIT 5
+`
+
+type GetRecentlyUsedCategoriesRow struct {
+	ID       int32       `json:"id"`
+	Name     string      `json:"name"`
+	LastUsed interface{} `json:"last_used"`
+}
+
+// Returns recently used categories for suggestions dropdown
+func (q *Queries) GetRecentlyUsedCategories(ctx context.Context, workspaceID int32) ([]GetRecentlyUsedCategoriesRow, error) {
+	rows, err := q.db.Query(ctx, getRecentlyUsedCategories, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetRecentlyUsedCategoriesRow{}
+	for rows.Next() {
+		var i GetRecentlyUsedCategoriesRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.LastUsed); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getTransactionByID = `-- name: GetTransactionByID :one
-SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id FROM transactions
+SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id FROM transactions
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
 `
 
@@ -256,12 +301,13 @@ func (q *Queries) GetTransactionByID(ctx context.Context, arg GetTransactionByID
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.TransferPairID,
+		&i.CategoryID,
 	)
 	return i, err
 }
 
 const getTransactionsByWorkspace = `-- name: GetTransactionsByWorkspace :many
-SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id FROM transactions
+SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id FROM transactions
 WHERE workspace_id = $1
   AND deleted_at IS NULL
   AND ($2::INTEGER IS NULL OR account_id = $2)
@@ -314,6 +360,112 @@ func (q *Queries) GetTransactionsByWorkspace(ctx context.Context, arg GetTransac
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.TransferPairID,
+			&i.CategoryID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTransactionsWithCategory = `-- name: GetTransactionsWithCategory :many
+SELECT
+    t.id,
+    t.workspace_id,
+    t.account_id,
+    t.name,
+    t.amount,
+    t.type,
+    t.transaction_date,
+    t.is_paid,
+    t.cc_settlement_intent,
+    t.notes,
+    t.transfer_pair_id,
+    t.category_id,
+    t.created_at,
+    t.updated_at,
+    t.deleted_at,
+    bc.name AS category_name
+FROM transactions t
+LEFT JOIN budget_categories bc ON t.category_id = bc.id AND bc.deleted_at IS NULL
+WHERE t.workspace_id = $1
+  AND t.deleted_at IS NULL
+  AND ($2::INTEGER IS NULL OR t.account_id = $2)
+  AND ($3::DATE IS NULL OR t.transaction_date >= $3)
+  AND ($4::DATE IS NULL OR t.transaction_date <= $4)
+  AND ($5::VARCHAR IS NULL OR t.type = $5)
+ORDER BY t.transaction_date DESC, t.created_at DESC
+LIMIT $6 OFFSET $7
+`
+
+type GetTransactionsWithCategoryParams struct {
+	WorkspaceID int32       `json:"workspace_id"`
+	Column2     int32       `json:"column_2"`
+	Column3     pgtype.Date `json:"column_3"`
+	Column4     pgtype.Date `json:"column_4"`
+	Column5     string      `json:"column_5"`
+	Limit       int32       `json:"limit"`
+	Offset      int32       `json:"offset"`
+}
+
+type GetTransactionsWithCategoryRow struct {
+	ID                 int32              `json:"id"`
+	WorkspaceID        int32              `json:"workspace_id"`
+	AccountID          int32              `json:"account_id"`
+	Name               string             `json:"name"`
+	Amount             pgtype.Numeric     `json:"amount"`
+	Type               string             `json:"type"`
+	TransactionDate    pgtype.Date        `json:"transaction_date"`
+	IsPaid             bool               `json:"is_paid"`
+	CcSettlementIntent pgtype.Text        `json:"cc_settlement_intent"`
+	Notes              pgtype.Text        `json:"notes"`
+	TransferPairID     pgtype.UUID        `json:"transfer_pair_id"`
+	CategoryID         pgtype.Int4        `json:"category_id"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt          pgtype.Timestamptz `json:"deleted_at"`
+	CategoryName       pgtype.Text        `json:"category_name"`
+}
+
+// Returns transactions with category name joined for display
+func (q *Queries) GetTransactionsWithCategory(ctx context.Context, arg GetTransactionsWithCategoryParams) ([]GetTransactionsWithCategoryRow, error) {
+	rows, err := q.db.Query(ctx, getTransactionsWithCategory,
+		arg.WorkspaceID,
+		arg.Column2,
+		arg.Column3,
+		arg.Column4,
+		arg.Column5,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetTransactionsWithCategoryRow{}
+	for rows.Next() {
+		var i GetTransactionsWithCategoryRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.AccountID,
+			&i.Name,
+			&i.Amount,
+			&i.Type,
+			&i.TransactionDate,
+			&i.IsPaid,
+			&i.CcSettlementIntent,
+			&i.Notes,
+			&i.TransferPairID,
+			&i.CategoryID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.CategoryName,
 		); err != nil {
 			return nil, err
 		}
@@ -446,7 +598,7 @@ const toggleTransactionPaidStatus = `-- name: ToggleTransactionPaidStatus :one
 UPDATE transactions
 SET is_paid = NOT is_paid, updated_at = NOW()
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
-RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id
+RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id
 `
 
 type ToggleTransactionPaidStatusParams struct {
@@ -472,6 +624,7 @@ func (q *Queries) ToggleTransactionPaidStatus(ctx context.Context, arg ToggleTra
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.TransferPairID,
+		&i.CategoryID,
 	)
 	return i, err
 }
@@ -486,9 +639,10 @@ SET
     account_id = $7,
     cc_settlement_intent = $8,
     notes = $9,
+    category_id = $10,
     updated_at = NOW()
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
-RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id
+RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id
 `
 
 type UpdateTransactionParams struct {
@@ -501,6 +655,7 @@ type UpdateTransactionParams struct {
 	AccountID          int32          `json:"account_id"`
 	CcSettlementIntent pgtype.Text    `json:"cc_settlement_intent"`
 	Notes              pgtype.Text    `json:"notes"`
+	CategoryID         pgtype.Int4    `json:"category_id"`
 }
 
 func (q *Queries) UpdateTransaction(ctx context.Context, arg UpdateTransactionParams) (Transaction, error) {
@@ -514,6 +669,7 @@ func (q *Queries) UpdateTransaction(ctx context.Context, arg UpdateTransactionPa
 		arg.AccountID,
 		arg.CcSettlementIntent,
 		arg.Notes,
+		arg.CategoryID,
 	)
 	var i Transaction
 	err := row.Scan(
@@ -531,6 +687,7 @@ func (q *Queries) UpdateTransaction(ctx context.Context, arg UpdateTransactionPa
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.TransferPairID,
+		&i.CategoryID,
 	)
 	return i, err
 }
@@ -539,7 +696,7 @@ const updateTransactionSettlementIntent = `-- name: UpdateTransactionSettlementI
 UPDATE transactions
 SET cc_settlement_intent = $3, updated_at = NOW()
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL AND is_paid = false
-RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id
+RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id
 `
 
 type UpdateTransactionSettlementIntentParams struct {
@@ -566,6 +723,7 @@ func (q *Queries) UpdateTransactionSettlementIntent(ctx context.Context, arg Upd
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.TransferPairID,
+		&i.CategoryID,
 	)
 	return i, err
 }

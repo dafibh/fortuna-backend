@@ -59,6 +59,12 @@ func (r *TransactionRepository) Create(transaction *domain.Transaction) (*domain
 		transferPairID.Valid = true
 	}
 
+	var categoryID pgtype.Int4
+	if transaction.CategoryID != nil {
+		categoryID.Int32 = *transaction.CategoryID
+		categoryID.Valid = true
+	}
+
 	created, err := r.queries.CreateTransaction(ctx, sqlc.CreateTransactionParams{
 		WorkspaceID:        transaction.WorkspaceID,
 		AccountID:          transaction.AccountID,
@@ -70,6 +76,7 @@ func (r *TransactionRepository) Create(transaction *domain.Transaction) (*domain
 		CcSettlementIntent: ccSettlementIntent,
 		Notes:              notes,
 		TransferPairID:     transferPairID,
+		CategoryID:         categoryID,
 	})
 	if err != nil {
 		return nil, err
@@ -115,8 +122,8 @@ func (r *TransactionRepository) GetByWorkspace(workspaceID int32, filters *domai
 
 	offset := (page - 1) * pageSize
 
-	// Build query params
-	params := sqlc.GetTransactionsByWorkspaceParams{
+	// Build query params - using GetTransactionsWithCategory for category info
+	params := sqlc.GetTransactionsWithCategoryParams{
 		WorkspaceID: workspaceID,
 		Limit:       pageSize,
 		Offset:      offset,
@@ -155,15 +162,15 @@ func (r *TransactionRepository) GetByWorkspace(workspaceID int32, filters *domai
 		return nil, err
 	}
 
-	// Get transactions
-	transactions, err := r.queries.GetTransactionsByWorkspace(ctx, params)
+	// Get transactions with category info
+	transactions, err := r.queries.GetTransactionsWithCategory(ctx, params)
 	if err != nil {
 		return nil, err
 	}
 
 	result := make([]*domain.Transaction, len(transactions))
 	for i, t := range transactions {
-		result[i] = sqlcTransactionToDomain(t)
+		result[i] = sqlcTransactionWithCategoryToDomain(t)
 	}
 
 	// Calculate total pages
@@ -244,6 +251,12 @@ func (r *TransactionRepository) Update(workspaceID int32, id int32, data *domain
 		notes.Valid = true
 	}
 
+	var categoryID pgtype.Int4
+	if data.CategoryID != nil {
+		categoryID.Int32 = *data.CategoryID
+		categoryID.Valid = true
+	}
+
 	transaction, err := r.queries.UpdateTransaction(ctx, sqlc.UpdateTransactionParams{
 		WorkspaceID:        workspaceID,
 		ID:                 id,
@@ -254,6 +267,7 @@ func (r *TransactionRepository) Update(workspaceID int32, id int32, data *domain
 		AccountID:          data.AccountID,
 		CcSettlementIntent: ccSettlementIntent,
 		Notes:              notes,
+		CategoryID:         categoryID,
 	})
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -344,6 +358,12 @@ func (r *TransactionRepository) createTransactionWithTx(ctx context.Context, qtx
 		transferPairID.Valid = true
 	}
 
+	var categoryID pgtype.Int4
+	if transaction.CategoryID != nil {
+		categoryID.Int32 = *transaction.CategoryID
+		categoryID.Valid = true
+	}
+
 	created, err := qtx.CreateTransaction(ctx, sqlc.CreateTransactionParams{
 		WorkspaceID:        transaction.WorkspaceID,
 		AccountID:          transaction.AccountID,
@@ -355,6 +375,7 @@ func (r *TransactionRepository) createTransactionWithTx(ctx context.Context, qtx
 		CcSettlementIntent: ccSettlementIntent,
 		Notes:              notes,
 		TransferPairID:     transferPairID,
+		CategoryID:         categoryID,
 	})
 	if err != nil {
 		return nil, err
@@ -509,6 +530,36 @@ func (r *TransactionRepository) GetCCPayableSummary(workspaceID int32) ([]*domai
 	return result, nil
 }
 
+// GetRecentlyUsedCategories returns recently used categories for suggestions
+func (r *TransactionRepository) GetRecentlyUsedCategories(workspaceID int32) ([]*domain.RecentCategory, error) {
+	ctx := context.Background()
+
+	rows, err := r.queries.GetRecentlyUsedCategories(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*domain.RecentCategory, len(rows))
+	for i, row := range rows {
+		// LastUsed is an interface{} that could be a time.Time or pgtype.Timestamptz
+		var lastUsed time.Time
+		switch v := row.LastUsed.(type) {
+		case time.Time:
+			lastUsed = v
+		case pgtype.Timestamptz:
+			if v.Valid {
+				lastUsed = v.Time
+			}
+		}
+		result[i] = &domain.RecentCategory{
+			ID:       row.ID,
+			Name:     row.Name,
+			LastUsed: lastUsed,
+		}
+	}
+	return result, nil
+}
+
 // Helper functions
 
 func sqlcTransactionToDomain(t sqlc.Transaction) *domain.Transaction {
@@ -537,6 +588,45 @@ func sqlcTransactionToDomain(t sqlc.Transaction) *domain.Transaction {
 	if t.TransferPairID.Valid {
 		pairID := uuid.UUID(t.TransferPairID.Bytes)
 		transaction.TransferPairID = &pairID
+	}
+	if t.CategoryID.Valid {
+		transaction.CategoryID = &t.CategoryID.Int32
+	}
+	return transaction
+}
+
+func sqlcTransactionWithCategoryToDomain(t sqlc.GetTransactionsWithCategoryRow) *domain.Transaction {
+	transaction := &domain.Transaction{
+		ID:              t.ID,
+		WorkspaceID:     t.WorkspaceID,
+		AccountID:       t.AccountID,
+		Name:            t.Name,
+		Amount:          pgNumericToDecimal(t.Amount),
+		Type:            domain.TransactionType(t.Type),
+		TransactionDate: t.TransactionDate.Time,
+		IsPaid:          t.IsPaid,
+		CreatedAt:       t.CreatedAt.Time,
+		UpdatedAt:       t.UpdatedAt.Time,
+	}
+	if t.CcSettlementIntent.Valid {
+		intent := domain.CCSettlementIntent(t.CcSettlementIntent.String)
+		transaction.CCSettlementIntent = &intent
+	}
+	if t.Notes.Valid {
+		transaction.Notes = &t.Notes.String
+	}
+	if t.DeletedAt.Valid {
+		transaction.DeletedAt = &t.DeletedAt.Time
+	}
+	if t.TransferPairID.Valid {
+		pairID := uuid.UUID(t.TransferPairID.Bytes)
+		transaction.TransferPairID = &pairID
+	}
+	if t.CategoryID.Valid {
+		transaction.CategoryID = &t.CategoryID.Int32
+	}
+	if t.CategoryName.Valid {
+		transaction.CategoryName = &t.CategoryName.String
 	}
 	return transaction
 }

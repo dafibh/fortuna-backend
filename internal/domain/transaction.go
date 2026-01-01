@@ -33,6 +33,8 @@ type Transaction struct {
 	CCSettlementIntent *CCSettlementIntent `json:"ccSettlementIntent,omitempty"`
 	Notes              *string             `json:"notes,omitempty"`
 	TransferPairID     *uuid.UUID          `json:"transferPairId,omitempty"`
+	CategoryID         *int32              `json:"categoryId,omitempty"`
+	CategoryName       *string             `json:"categoryName,omitempty"`
 	CreatedAt          time.Time           `json:"createdAt"`
 	UpdatedAt          time.Time           `json:"updatedAt"`
 	DeletedAt          *time.Time          `json:"deletedAt,omitempty"`
@@ -74,6 +76,7 @@ type UpdateTransactionData struct {
 	AccountID          int32
 	CCSettlementIntent *CCSettlementIntent
 	Notes              *string
+	CategoryID         *int32
 }
 
 // TransactionSummary holds aggregated transaction data for balance calculations
@@ -98,6 +101,13 @@ type CCPayableSummaryRow struct {
 	Total            decimal.Decimal
 }
 
+// RecentCategory holds recently used category info for suggestions
+type RecentCategory struct {
+	ID       int32     `json:"id"`
+	Name     string    `json:"name"`
+	LastUsed time.Time `json:"lastUsed"`
+}
+
 type TransactionRepository interface {
 	Create(transaction *Transaction) (*Transaction, error)
 	GetByID(workspaceID int32, id int32) (*Transaction, error)
@@ -114,4 +124,5 @@ type TransactionRepository interface {
 	SumPaidExpensesByDateRange(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
 	SumUnpaidExpensesByDateRange(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
 	GetCCPayableSummary(workspaceID int32) ([]*CCPayableSummaryRow, error)
+	GetRecentlyUsedCategories(workspaceID int32) ([]*RecentCategory, error)
 }

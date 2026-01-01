@@ -328,6 +328,7 @@ type MockTransactionRepository struct {
 	SumPaidExpensesByDateRangeFn      func(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
 	SumUnpaidExpensesByDateRangeFn    func(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
 	GetCCPayableSummaryFn             func(workspaceID int32) ([]*domain.CCPayableSummaryRow, error)
+	GetRecentlyUsedCategoriesFn       func(workspaceID int32) ([]*domain.RecentCategory, error)
 }
 
 // NewMockTransactionRepository creates a new MockTransactionRepository
@@ -497,6 +498,7 @@ func (m *MockTransactionRepository) Update(workspaceID int32, id int32, data *do
 	transaction.AccountID = data.AccountID
 	transaction.CCSettlementIntent = data.CCSettlementIntent
 	transaction.Notes = data.Notes
+	transaction.CategoryID = data.CategoryID
 	return transaction, nil
 }
 
@@ -752,6 +754,15 @@ func (m *MockTransactionRepository) GetCCPayableSummary(workspaceID int32) ([]*d
 		})
 	}
 	return result, nil
+}
+
+// GetRecentlyUsedCategories returns recently used categories for suggestions
+func (m *MockTransactionRepository) GetRecentlyUsedCategories(workspaceID int32) ([]*domain.RecentCategory, error) {
+	if m.GetRecentlyUsedCategoriesFn != nil {
+		return m.GetRecentlyUsedCategoriesFn(workspaceID)
+	}
+	// Default: return empty list
+	return []*domain.RecentCategory{}, nil
 }
 
 // MockMonthRepository is a mock implementation of domain.MonthRepository

@@ -56,6 +56,7 @@ type Transaction struct {
 	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
 	DeletedAt          pgtype.Timestamptz `json:"deleted_at"`
 	TransferPairID     pgtype.UUID        `json:"transfer_pair_id"`
+	CategoryID         pgtype.Int4        `json:"category_id"`
 }
 
 type User struct {

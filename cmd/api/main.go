@@ -58,7 +58,7 @@ func main() {
 	authService := service.NewAuthService(userRepo, workspaceRepo)
 	profileService := service.NewProfileService(userRepo)
 	accountService := service.NewAccountService(accountRepo)
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, budgetCategoryRepo)
 	calculationService := service.NewCalculationService(accountRepo, transactionRepo)
 	monthService := service.NewMonthService(monthRepo, transactionRepo, calculationService)
 	dashboardService := service.NewDashboardService(accountRepo, transactionRepo, monthService, calculationService)

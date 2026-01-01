@@ -14,13 +14,15 @@ import (
 type TransactionService struct {
 	transactionRepo domain.TransactionRepository
 	accountRepo     domain.AccountRepository
+	categoryRepo    domain.BudgetCategoryRepository
 }
 
 // NewTransactionService creates a new TransactionService
-func NewTransactionService(transactionRepo domain.TransactionRepository, accountRepo domain.AccountRepository) *TransactionService {
+func NewTransactionService(transactionRepo domain.TransactionRepository, accountRepo domain.AccountRepository, categoryRepo domain.BudgetCategoryRepository) *TransactionService {
 	return &TransactionService{
 		transactionRepo: transactionRepo,
 		accountRepo:     accountRepo,
+		categoryRepo:    categoryRepo,
 	}
 }
 
@@ -34,6 +36,7 @@ type CreateTransactionInput struct {
 	IsPaid             *bool
 	CCSettlementIntent *domain.CCSettlementIntent
 	Notes              *string
+	CategoryID         *int32
 }
 
 // CreateTransaction creates a new transaction with validation
@@ -105,6 +108,14 @@ func (s *TransactionService) CreateTransaction(workspaceID int32, input CreateTr
 	}
 	// For non-CC accounts, settlementIntent remains nil (ignores any provided value)
 
+	// Validate category exists and belongs to workspace if provided
+	if input.CategoryID != nil {
+		_, err := s.categoryRepo.GetByID(workspaceID, *input.CategoryID)
+		if err != nil {
+			return nil, domain.ErrBudgetCategoryNotFound
+		}
+	}
+
 	transaction := &domain.Transaction{
 		WorkspaceID:        workspaceID,
 		AccountID:          input.AccountID,
@@ -115,6 +126,7 @@ func (s *TransactionService) CreateTransaction(workspaceID int32, input CreateTr
 		IsPaid:             isPaid,
 		CCSettlementIntent: settlementIntent,
 		Notes:              notes,
+		CategoryID:         input.CategoryID,
 	}
 
 	return s.transactionRepo.Create(transaction)
@@ -144,6 +156,7 @@ type UpdateTransactionInput struct {
 	AccountID          int32
 	CCSettlementIntent *domain.CCSettlementIntent
 	Notes              *string
+	CategoryID         *int32
 }
 
 // UpdateTransaction updates an existing transaction with validation
@@ -203,6 +216,14 @@ func (s *TransactionService) UpdateTransaction(workspaceID int32, id int32, inpu
 		}
 	}
 
+	// Validate category exists and belongs to workspace if provided
+	if input.CategoryID != nil {
+		_, err := s.categoryRepo.GetByID(workspaceID, *input.CategoryID)
+		if err != nil {
+			return nil, domain.ErrBudgetCategoryNotFound
+		}
+	}
+
 	return s.transactionRepo.Update(workspaceID, id, &domain.UpdateTransactionData{
 		Name:               name,
 		Amount:             input.Amount,
@@ -211,6 +232,7 @@ func (s *TransactionService) UpdateTransaction(workspaceID int32, id int32, inpu
 		AccountID:          input.AccountID,
 		CCSettlementIntent: settlementIntent,
 		Notes:              notes,
+		CategoryID:         input.CategoryID,
 	})
 }
 
@@ -331,4 +353,9 @@ func (s *TransactionService) CreateTransfer(workspaceID int32, input CreateTrans
 	}
 
 	return s.transactionRepo.CreateTransferPair(fromTx, toTx)
+}
+
+// GetRecentlyUsedCategories returns recently used categories for suggestions dropdown
+func (s *TransactionService) GetRecentlyUsedCategories(workspaceID int32) ([]*domain.RecentCategory, error) {
+	return s.transactionRepo.GetRecentlyUsedCategories(workspaceID)
 }

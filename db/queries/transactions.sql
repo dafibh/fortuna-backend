@@ -1,9 +1,9 @@
 -- name: CreateTransaction :one
 INSERT INTO transactions (
     workspace_id, account_id, name, amount, type,
-    transaction_date, is_paid, cc_settlement_intent, notes, transfer_pair_id
+    transaction_date, is_paid, cc_settlement_intent, notes, transfer_pair_id, category_id
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
 ) RETURNING *;
 
 -- name: GetTransactionByID :one
@@ -52,6 +52,7 @@ SET
     account_id = $7,
     cc_settlement_intent = $8,
     notes = $9,
+    category_id = $10,
     updated_at = NOW()
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
 RETURNING *;
@@ -135,3 +136,48 @@ WHERE t.workspace_id = $1
   AND t.deleted_at IS NULL
   AND t.cc_settlement_intent IS NOT NULL
 GROUP BY cc_settlement_intent;
+
+-- name: GetTransactionsWithCategory :many
+-- Returns transactions with category name joined for display
+SELECT
+    t.id,
+    t.workspace_id,
+    t.account_id,
+    t.name,
+    t.amount,
+    t.type,
+    t.transaction_date,
+    t.is_paid,
+    t.cc_settlement_intent,
+    t.notes,
+    t.transfer_pair_id,
+    t.category_id,
+    t.created_at,
+    t.updated_at,
+    t.deleted_at,
+    bc.name AS category_name
+FROM transactions t
+LEFT JOIN budget_categories bc ON t.category_id = bc.id AND bc.deleted_at IS NULL
+WHERE t.workspace_id = $1
+  AND t.deleted_at IS NULL
+  AND ($2::INTEGER IS NULL OR t.account_id = $2)
+  AND ($3::DATE IS NULL OR t.transaction_date >= $3)
+  AND ($4::DATE IS NULL OR t.transaction_date <= $4)
+  AND ($5::VARCHAR IS NULL OR t.type = $5)
+ORDER BY t.transaction_date DESC, t.created_at DESC
+LIMIT $6 OFFSET $7;
+
+-- name: GetRecentlyUsedCategories :many
+-- Returns recently used categories for suggestions dropdown
+SELECT DISTINCT
+    bc.id,
+    bc.name,
+    MAX(t.created_at) AS last_used
+FROM transactions t
+JOIN budget_categories bc ON t.category_id = bc.id AND bc.deleted_at IS NULL
+WHERE t.workspace_id = $1
+  AND t.deleted_at IS NULL
+  AND t.category_id IS NOT NULL
+GROUP BY bc.id, bc.name
+ORDER BY last_used DESC
+LIMIT 5;
