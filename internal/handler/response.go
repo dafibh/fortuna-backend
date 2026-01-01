@@ -28,6 +28,7 @@ const (
 	ErrorTypeNotFound     = "https://fortuna.app/errors/not-found"
 	ErrorTypeUnauthorized = "https://fortuna.app/errors/unauthorized"
 	ErrorTypeForbidden    = "https://fortuna.app/errors/forbidden"
+	ErrorTypeConflict     = "https://fortuna.app/errors/conflict"
 	ErrorTypeInternal     = "https://fortuna.app/errors/internal"
 )
 
@@ -71,6 +72,17 @@ func NewForbiddenError(c echo.Context, detail string) error {
 		Type:     ErrorTypeForbidden,
 		Title:    "Forbidden",
 		Status:   http.StatusForbidden,
+		Detail:   detail,
+		Instance: c.Request().URL.Path,
+	})
+}
+
+// NewConflictError creates a conflict error response
+func NewConflictError(c echo.Context, detail string) error {
+	return c.JSON(http.StatusConflict, ProblemDetails{
+		Type:     ErrorTypeConflict,
+		Title:    "Conflict",
+		Status:   http.StatusConflict,
 		Detail:   detail,
 		Instance: c.Request().URL.Path,
 	})

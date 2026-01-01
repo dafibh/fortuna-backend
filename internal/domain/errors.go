@@ -26,11 +26,14 @@ var (
 	ErrSameAccountTransfer          = errors.New("cannot transfer to the same account")
 	ErrMonthNotFound                = errors.New("month not found")
 	ErrMonthAlreadyExists           = errors.New("month already exists")
+	ErrBudgetCategoryNotFound       = errors.New("budget category not found")
+	ErrBudgetCategoryAlreadyExists  = errors.New("budget category with this name already exists")
 )
 
 // Validation constants
 const (
-	MaxAccountNameLength      = 255
-	MaxTransactionNameLength  = 255
-	MaxTransactionNotesLength = 1000
+	MaxAccountNameLength        = 255
+	MaxTransactionNameLength    = 255
+	MaxTransactionNotesLength   = 1000
+	MaxBudgetCategoryNameLength = 100
 )

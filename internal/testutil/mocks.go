@@ -871,3 +871,157 @@ func (m *MockMonthRepository) AddMonth(month *domain.Month) {
 	key := monthKey(month.WorkspaceID, month.Year, month.Month)
 	m.ByWorkspaceYearMonth[key] = month
 }
+
+// MockBudgetCategoryRepository is a mock implementation of domain.BudgetCategoryRepository
+type MockBudgetCategoryRepository struct {
+	Categories       map[int32]*domain.BudgetCategory
+	ByWorkspace      map[int32][]*domain.BudgetCategory
+	ByName           map[string]*domain.BudgetCategory
+	NextID           int32
+	CreateFn         func(category *domain.BudgetCategory) (*domain.BudgetCategory, error)
+	GetByIDFn        func(workspaceID int32, id int32) (*domain.BudgetCategory, error)
+	GetByNameFn      func(workspaceID int32, name string) (*domain.BudgetCategory, error)
+	GetAllFn         func(workspaceID int32) ([]*domain.BudgetCategory, error)
+	UpdateFn         func(workspaceID int32, id int32, name string) (*domain.BudgetCategory, error)
+	SoftDeleteFn     func(workspaceID int32, id int32) error
+	HasTransactionsFn func(workspaceID int32, id int32) (bool, error)
+}
+
+// NewMockBudgetCategoryRepository creates a new MockBudgetCategoryRepository
+func NewMockBudgetCategoryRepository() *MockBudgetCategoryRepository {
+	return &MockBudgetCategoryRepository{
+		Categories:  make(map[int32]*domain.BudgetCategory),
+		ByWorkspace: make(map[int32][]*domain.BudgetCategory),
+		ByName:      make(map[string]*domain.BudgetCategory),
+		NextID:      1,
+	}
+}
+
+func budgetCategoryNameKey(workspaceID int32, name string) string {
+	return fmt.Sprintf("%d-%s", workspaceID, name)
+}
+
+// Create creates a new budget category
+func (m *MockBudgetCategoryRepository) Create(category *domain.BudgetCategory) (*domain.BudgetCategory, error) {
+	if m.CreateFn != nil {
+		return m.CreateFn(category)
+	}
+	// Check for duplicate name
+	key := budgetCategoryNameKey(category.WorkspaceID, category.Name)
+	if existing, ok := m.ByName[key]; ok && existing.DeletedAt == nil {
+		return nil, domain.ErrBudgetCategoryAlreadyExists
+	}
+	category.ID = m.NextID
+	m.NextID++
+	category.CreatedAt = time.Now()
+	category.UpdatedAt = time.Now()
+	m.Categories[category.ID] = category
+	m.ByWorkspace[category.WorkspaceID] = append(m.ByWorkspace[category.WorkspaceID], category)
+	m.ByName[key] = category
+	return category, nil
+}
+
+// GetByID retrieves a budget category by its ID within a workspace
+func (m *MockBudgetCategoryRepository) GetByID(workspaceID int32, id int32) (*domain.BudgetCategory, error) {
+	if m.GetByIDFn != nil {
+		return m.GetByIDFn(workspaceID, id)
+	}
+	category, ok := m.Categories[id]
+	if !ok || category.WorkspaceID != workspaceID {
+		return nil, domain.ErrBudgetCategoryNotFound
+	}
+	if category.DeletedAt != nil {
+		return nil, domain.ErrBudgetCategoryNotFound
+	}
+	return category, nil
+}
+
+// GetByName retrieves a budget category by its name within a workspace
+func (m *MockBudgetCategoryRepository) GetByName(workspaceID int32, name string) (*domain.BudgetCategory, error) {
+	if m.GetByNameFn != nil {
+		return m.GetByNameFn(workspaceID, name)
+	}
+	key := budgetCategoryNameKey(workspaceID, name)
+	category, ok := m.ByName[key]
+	if !ok || category.DeletedAt != nil {
+		return nil, domain.ErrBudgetCategoryNotFound
+	}
+	return category, nil
+}
+
+// GetAllByWorkspace retrieves all budget categories for a workspace
+func (m *MockBudgetCategoryRepository) GetAllByWorkspace(workspaceID int32) ([]*domain.BudgetCategory, error) {
+	if m.GetAllFn != nil {
+		return m.GetAllFn(workspaceID)
+	}
+	categories := m.ByWorkspace[workspaceID]
+	if categories == nil {
+		return []*domain.BudgetCategory{}, nil
+	}
+	// Filter out soft-deleted categories
+	var active []*domain.BudgetCategory
+	for _, cat := range categories {
+		if cat.DeletedAt == nil {
+			active = append(active, cat)
+		}
+	}
+	if active == nil {
+		return []*domain.BudgetCategory{}, nil
+	}
+	return active, nil
+}
+
+// Update updates a budget category's name
+func (m *MockBudgetCategoryRepository) Update(workspaceID int32, id int32, name string) (*domain.BudgetCategory, error) {
+	if m.UpdateFn != nil {
+		return m.UpdateFn(workspaceID, id, name)
+	}
+	category, ok := m.Categories[id]
+	if !ok || category.WorkspaceID != workspaceID || category.DeletedAt != nil {
+		return nil, domain.ErrBudgetCategoryNotFound
+	}
+	// Check for duplicate name (excluding self)
+	key := budgetCategoryNameKey(workspaceID, name)
+	if existing, ok := m.ByName[key]; ok && existing.ID != id && existing.DeletedAt == nil {
+		return nil, domain.ErrBudgetCategoryAlreadyExists
+	}
+	// Remove old name key
+	oldKey := budgetCategoryNameKey(workspaceID, category.Name)
+	delete(m.ByName, oldKey)
+	// Update
+	category.Name = name
+	category.UpdatedAt = time.Now()
+	m.ByName[key] = category
+	return category, nil
+}
+
+// SoftDelete marks a budget category as deleted
+func (m *MockBudgetCategoryRepository) SoftDelete(workspaceID int32, id int32) error {
+	if m.SoftDeleteFn != nil {
+		return m.SoftDeleteFn(workspaceID, id)
+	}
+	category, ok := m.Categories[id]
+	if !ok || category.WorkspaceID != workspaceID || category.DeletedAt != nil {
+		return domain.ErrBudgetCategoryNotFound
+	}
+	now := time.Now()
+	category.DeletedAt = &now
+	return nil
+}
+
+// HasTransactions checks if a budget category has any transactions assigned
+func (m *MockBudgetCategoryRepository) HasTransactions(workspaceID int32, id int32) (bool, error) {
+	if m.HasTransactionsFn != nil {
+		return m.HasTransactionsFn(workspaceID, id)
+	}
+	// Default: no transactions (until Story 4.2)
+	return false, nil
+}
+
+// AddBudgetCategory adds a budget category to the mock repository (helper for tests)
+func (m *MockBudgetCategoryRepository) AddBudgetCategory(category *domain.BudgetCategory) {
+	m.Categories[category.ID] = category
+	m.ByWorkspace[category.WorkspaceID] = append(m.ByWorkspace[category.WorkspaceID], category)
+	key := budgetCategoryNameKey(category.WorkspaceID, category.Name)
+	m.ByName[key] = category
+}

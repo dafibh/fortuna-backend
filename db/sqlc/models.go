@@ -20,6 +20,15 @@ type Account struct {
 	DeletedAt      pgtype.Timestamptz `json:"deleted_at"`
 }
 
+type BudgetCategory struct {
+	ID          int32              `json:"id"`
+	WorkspaceID int32              `json:"workspace_id"`
+	Name        string             `json:"name"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt   pgtype.Timestamptz `json:"deleted_at"`
+}
+
 type Month struct {
 	ID              int32              `json:"id"`
 	WorkspaceID     int32              `json:"workspace_id"`

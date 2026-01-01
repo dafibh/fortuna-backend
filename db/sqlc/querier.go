@@ -11,8 +11,12 @@ import (
 )
 
 type Querier interface {
+	// NOTE: This query will be valid after Story 4.2 adds category_id to transactions
+	// For now, return 0 (no transactions can have categories yet)
+	CountTransactionsByCategory(ctx context.Context) (int64, error)
 	CountTransactionsByWorkspace(ctx context.Context, arg CountTransactionsByWorkspaceParams) (int64, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
+	CreateBudgetCategory(ctx context.Context, arg CreateBudgetCategoryParams) (BudgetCategory, error)
 	CreateMonth(ctx context.Context, arg CreateMonthParams) (Month, error)
 	CreateOrGetUserByAuth0ID(ctx context.Context, arg CreateOrGetUserByAuth0IDParams) (User, error)
 	CreateTransaction(ctx context.Context, arg CreateTransactionParams) (Transaction, error)
@@ -24,7 +28,10 @@ type Querier interface {
 	GetAccountTransactionSummaries(ctx context.Context, workspaceID int32) ([]GetAccountTransactionSummariesRow, error)
 	GetAccountsByWorkspace(ctx context.Context, workspaceID int32) ([]Account, error)
 	GetAccountsByWorkspaceAll(ctx context.Context, workspaceID int32) ([]Account, error)
+	GetAllBudgetCategories(ctx context.Context, workspaceID int32) ([]BudgetCategory, error)
 	GetAllMonths(ctx context.Context, workspaceID int32) ([]Month, error)
+	GetBudgetCategoryByID(ctx context.Context, arg GetBudgetCategoryByIDParams) (BudgetCategory, error)
+	GetBudgetCategoryByName(ctx context.Context, arg GetBudgetCategoryByNameParams) (BudgetCategory, error)
 	// Get unpaid CC transaction totals grouped by settlement intent
 	GetCCPayableSummary(ctx context.Context, workspaceID int32) ([]GetCCPayableSummaryRow, error)
 	GetLatestMonth(ctx context.Context, workspaceID int32) (Month, error)
@@ -40,6 +47,7 @@ type Querier interface {
 	GetWorkspaceByUserID(ctx context.Context, userID pgtype.UUID) (Workspace, error)
 	HardDeleteAccount(ctx context.Context, arg HardDeleteAccountParams) error
 	SoftDeleteAccount(ctx context.Context, arg SoftDeleteAccountParams) (int64, error)
+	SoftDeleteBudgetCategory(ctx context.Context, arg SoftDeleteBudgetCategoryParams) error
 	SoftDeleteTransaction(ctx context.Context, arg SoftDeleteTransactionParams) (int64, error)
 	SoftDeleteTransferPair(ctx context.Context, arg SoftDeleteTransferPairParams) (int64, error)
 	// Sum paid expenses within a date range for in-hand balance calculation
@@ -49,6 +57,7 @@ type Querier interface {
 	SumUnpaidExpensesByDateRange(ctx context.Context, arg SumUnpaidExpensesByDateRangeParams) (pgtype.Numeric, error)
 	ToggleTransactionPaidStatus(ctx context.Context, arg ToggleTransactionPaidStatusParams) (Transaction, error)
 	UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error)
+	UpdateBudgetCategory(ctx context.Context, arg UpdateBudgetCategoryParams) (BudgetCategory, error)
 	UpdateMonthStartingBalance(ctx context.Context, arg UpdateMonthStartingBalanceParams) error
 	UpdateTransaction(ctx context.Context, arg UpdateTransactionParams) (Transaction, error)
 	UpdateTransactionSettlementIntent(ctx context.Context, arg UpdateTransactionSettlementIntentParams) (Transaction, error)
