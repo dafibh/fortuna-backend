@@ -40,6 +40,11 @@ func (s *CCService) CreateCCPayment(workspaceID int32, req *domain.CreateCCPayme
 		return nil, domain.ErrInvalidAmount
 	}
 
+	// Validate notes length
+	if len(req.Notes) > domain.MaxTransactionNotesLength {
+		return nil, domain.ErrNotesTooLong
+	}
+
 	// Validate source account if provided
 	if req.SourceAccountID != nil {
 		sourceAccount, err := s.accountRepo.GetByID(workspaceID, *req.SourceAccountID)
