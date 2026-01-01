@@ -92,6 +92,12 @@ type MonthlyTransactionSummary struct {
 	TotalExpenses decimal.Decimal
 }
 
+// CCPayableSummaryRow holds settlement intent and total for CC payables query
+type CCPayableSummaryRow struct {
+	SettlementIntent CCSettlementIntent
+	Total            decimal.Decimal
+}
+
 type TransactionRepository interface {
 	Create(transaction *Transaction) (*Transaction, error)
 	GetByID(workspaceID int32, id int32) (*Transaction, error)
@@ -107,4 +113,5 @@ type TransactionRepository interface {
 	GetMonthlyTransactionSummaries(workspaceID int32) ([]*MonthlyTransactionSummary, error)
 	SumPaidExpensesByDateRange(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
 	SumUnpaidExpensesByDateRange(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
+	GetCCPayableSummary(workspaceID int32) ([]*CCPayableSummaryRow, error)
 }

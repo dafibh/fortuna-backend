@@ -21,14 +21,22 @@ func NewDashboardHandler(dashboardService *service.DashboardService) *DashboardH
 	}
 }
 
+// CCPayableResponse represents the CC payable summary in API response
+type CCPayableResponse struct {
+	ThisMonth string `json:"thisMonth"`
+	NextMonth string `json:"nextMonth"`
+	Total     string `json:"total"`
+}
+
 // DashboardSummaryResponse represents the dashboard summary API response
 type DashboardSummaryResponse struct {
-	TotalBalance     string        `json:"totalBalance"`
-	InHandBalance    string        `json:"inHandBalance"`
-	DisposableIncome string        `json:"disposableIncome"`
-	DaysRemaining    int           `json:"daysRemaining"`
-	DailyBudget      string        `json:"dailyBudget"`
-	Month            MonthResponse `json:"month"`
+	TotalBalance     string             `json:"totalBalance"`
+	InHandBalance    string             `json:"inHandBalance"`
+	DisposableIncome string             `json:"disposableIncome"`
+	DaysRemaining    int                `json:"daysRemaining"`
+	DailyBudget      string             `json:"dailyBudget"`
+	CCPayable        *CCPayableResponse `json:"ccPayable"`
+	Month            MonthResponse      `json:"month"`
 }
 
 // GetSummary handles GET /api/v1/dashboard/summary
@@ -44,12 +52,22 @@ func (h *DashboardHandler) GetSummary(c echo.Context) error {
 		return NewInternalError(c, "Failed to get dashboard summary")
 	}
 
+	var ccPayable *CCPayableResponse
+	if summary.CCPayable != nil {
+		ccPayable = &CCPayableResponse{
+			ThisMonth: summary.CCPayable.ThisMonth.StringFixed(2),
+			NextMonth: summary.CCPayable.NextMonth.StringFixed(2),
+			Total:     summary.CCPayable.Total.StringFixed(2),
+		}
+	}
+
 	return c.JSON(http.StatusOK, DashboardSummaryResponse{
 		TotalBalance:     summary.TotalBalance.StringFixed(2),
 		InHandBalance:    summary.InHandBalance.StringFixed(2),
 		DisposableIncome: summary.DisposableIncome.StringFixed(2),
 		DaysRemaining:    summary.DaysRemaining,
 		DailyBudget:      summary.DailyBudget.StringFixed(2),
+		CCPayable:        ccPayable,
 		Month:            toMonthResponse(summary.Month),
 	})
 }

@@ -140,6 +140,48 @@ func (q *Queries) GetAccountTransactionSummaries(ctx context.Context, workspaceI
 	return items, nil
 }
 
+const getCCPayableSummary = `-- name: GetCCPayableSummary :many
+SELECT
+    cc_settlement_intent,
+    COALESCE(SUM(amount), 0)::NUMERIC(12,2) as total
+FROM transactions t
+JOIN accounts a ON t.account_id = a.id
+WHERE t.workspace_id = $1
+  AND a.template = 'credit_card'
+  AND a.deleted_at IS NULL
+  AND t.type = 'expense'
+  AND t.is_paid = false
+  AND t.deleted_at IS NULL
+  AND t.cc_settlement_intent IS NOT NULL
+GROUP BY cc_settlement_intent
+`
+
+type GetCCPayableSummaryRow struct {
+	CcSettlementIntent pgtype.Text    `json:"cc_settlement_intent"`
+	Total              pgtype.Numeric `json:"total"`
+}
+
+// Get unpaid CC transaction totals grouped by settlement intent
+func (q *Queries) GetCCPayableSummary(ctx context.Context, workspaceID int32) ([]GetCCPayableSummaryRow, error) {
+	rows, err := q.db.Query(ctx, getCCPayableSummary, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetCCPayableSummaryRow{}
+	for rows.Next() {
+		var i GetCCPayableSummaryRow
+		if err := rows.Scan(&i.CcSettlementIntent, &i.Total); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getMonthlyTransactionSummaries = `-- name: GetMonthlyTransactionSummaries :many
 SELECT
     EXTRACT(YEAR FROM transaction_date)::INTEGER AS year,

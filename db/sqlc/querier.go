@@ -25,6 +25,8 @@ type Querier interface {
 	GetAccountsByWorkspace(ctx context.Context, workspaceID int32) ([]Account, error)
 	GetAccountsByWorkspaceAll(ctx context.Context, workspaceID int32) ([]Account, error)
 	GetAllMonths(ctx context.Context, workspaceID int32) ([]Month, error)
+	// Get unpaid CC transaction totals grouped by settlement intent
+	GetCCPayableSummary(ctx context.Context, workspaceID int32) ([]GetCCPayableSummaryRow, error)
 	GetLatestMonth(ctx context.Context, workspaceID int32) (Month, error)
 	GetMonthByYearMonth(ctx context.Context, arg GetMonthByYearMonthParams) (Month, error)
 	// Batch query to get income/expense totals grouped by year/month for N+1 prevention

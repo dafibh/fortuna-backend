@@ -78,12 +78,19 @@ func (s *DashboardService) GetSummaryForMonth(workspaceID int32, year, month int
 		dailyBudget = disposableIncome.Div(decimal.NewFromInt(int64(daysRemaining)))
 	}
 
+	// 7. Get CC payable summary
+	ccPayable, err := s.GetCCPayable(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+
 	return &domain.DashboardSummary{
 		TotalBalance:     totalBalance,
 		InHandBalance:    inHandBalance,
 		DisposableIncome: disposableIncome,
 		DaysRemaining:    daysRemaining,
 		DailyBudget:      dailyBudget,
+		CCPayable:        ccPayable,
 		Month:            monthData,
 	}, nil
 }
@@ -135,4 +142,29 @@ func (s *DashboardService) calculateTotalBalance(workspaceID int32) (decimal.Dec
 	}
 
 	return total, nil
+}
+
+// GetCCPayable calculates the CC payable summary for a workspace
+func (s *DashboardService) GetCCPayable(workspaceID int32) (*domain.CCPayableSummary, error) {
+	rows, err := s.transactionRepo.GetCCPayableSummary(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+
+	summary := &domain.CCPayableSummary{
+		ThisMonth: decimal.Zero,
+		NextMonth: decimal.Zero,
+	}
+
+	for _, row := range rows {
+		switch row.SettlementIntent {
+		case domain.CCSettlementThisMonth:
+			summary.ThisMonth = row.Total
+		case domain.CCSettlementNextMonth:
+			summary.NextMonth = row.Total
+		}
+	}
+
+	summary.Total = summary.ThisMonth.Add(summary.NextMonth)
+	return summary, nil
 }

@@ -119,3 +119,19 @@ WHERE workspace_id = $1
   AND type = 'expense'
   AND is_paid = false
   AND deleted_at IS NULL;
+
+-- name: GetCCPayableSummary :many
+-- Get unpaid CC transaction totals grouped by settlement intent
+SELECT
+    cc_settlement_intent,
+    COALESCE(SUM(amount), 0)::NUMERIC(12,2) as total
+FROM transactions t
+JOIN accounts a ON t.account_id = a.id
+WHERE t.workspace_id = $1
+  AND a.template = 'credit_card'
+  AND a.deleted_at IS NULL
+  AND t.type = 'expense'
+  AND t.is_paid = false
+  AND t.deleted_at IS NULL
+  AND t.cc_settlement_intent IS NOT NULL
+GROUP BY cc_settlement_intent;

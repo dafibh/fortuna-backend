@@ -327,6 +327,7 @@ type MockTransactionRepository struct {
 	SumByTypeAndDateRangeFn           func(workspaceID int32, startDate, endDate time.Time, txType domain.TransactionType) (decimal.Decimal, error)
 	SumPaidExpensesByDateRangeFn      func(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
 	SumUnpaidExpensesByDateRangeFn    func(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
+	GetCCPayableSummaryFn             func(workspaceID int32) ([]*domain.CCPayableSummaryRow, error)
 }
 
 // NewMockTransactionRepository creates a new MockTransactionRepository
@@ -709,6 +710,48 @@ func (m *MockTransactionRepository) SumUnpaidExpensesByDateRange(workspaceID int
 		}
 	}
 	return total, nil
+}
+
+// GetCCPayableSummary returns unpaid CC transaction totals grouped by settlement intent
+// NOTE: This mock does NOT verify account template like the real SQL query does.
+// The real query joins with accounts table to filter by template='credit_card'.
+// Tests using this mock should be aware of this limitation - use GetCCPayableSummaryFn
+// for tests requiring precise control over the query behavior.
+func (m *MockTransactionRepository) GetCCPayableSummary(workspaceID int32) ([]*domain.CCPayableSummaryRow, error) {
+	if m.GetCCPayableSummaryFn != nil {
+		return m.GetCCPayableSummaryFn(workspaceID)
+	}
+
+	// Note: The real implementation joins with accounts to filter by CC template.
+	// In the mock, we don't have access to accounts, so we just aggregate by settlement intent
+	// for transactions that have a settlement intent set (which implies CC).
+	summaryMap := make(map[domain.CCSettlementIntent]decimal.Decimal)
+
+	for _, tx := range m.ByWorkspace[workspaceID] {
+		if tx.DeletedAt != nil {
+			continue
+		}
+		if tx.Type != domain.TransactionTypeExpense {
+			continue
+		}
+		if tx.IsPaid {
+			continue
+		}
+		if tx.CCSettlementIntent == nil {
+			continue
+		}
+		intent := *tx.CCSettlementIntent
+		summaryMap[intent] = summaryMap[intent].Add(tx.Amount)
+	}
+
+	var result []*domain.CCPayableSummaryRow
+	for intent, total := range summaryMap {
+		result = append(result, &domain.CCPayableSummaryRow{
+			SettlementIntent: intent,
+			Total:            total,
+		})
+	}
+	return result, nil
 }
 
 // MockMonthRepository is a mock implementation of domain.MonthRepository

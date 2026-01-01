@@ -596,3 +596,269 @@ func TestDashboardService_NegativeDisposableIncome(t *testing.T) {
 		t.Errorf("DailyBudget should be negative when disposable is negative, got %v", summary.DailyBudget.StringFixed(2))
 	}
 }
+
+func TestDashboardService_GetCCPayable(t *testing.T) {
+	workspaceID := int32(1)
+
+	tests := []struct {
+		name              string
+		setupTransactions func(*testutil.MockTransactionRepository)
+		wantThisMonth     string
+		wantNextMonth     string
+		wantTotal         string
+		wantErr           bool
+	}{
+		{
+			name: "returns correct totals for mixed settlement intents",
+			setupTransactions: func(m *testutil.MockTransactionRepository) {
+				thisMonth := domain.CCSettlementThisMonth
+				nextMonth := domain.CCSettlementNextMonth
+
+				// This month: 1500
+				m.AddTransaction(&domain.Transaction{
+					ID:                 1,
+					WorkspaceID:        workspaceID,
+					AccountID:          1,
+					Name:               "Groceries",
+					Amount:             decimal.NewFromInt(1000),
+					Type:               domain.TransactionTypeExpense,
+					TransactionDate:    time.Now(),
+					IsPaid:             false,
+					CCSettlementIntent: &thisMonth,
+				})
+				m.AddTransaction(&domain.Transaction{
+					ID:                 2,
+					WorkspaceID:        workspaceID,
+					AccountID:          1,
+					Name:               "Shopping",
+					Amount:             decimal.NewFromInt(500),
+					Type:               domain.TransactionTypeExpense,
+					TransactionDate:    time.Now(),
+					IsPaid:             false,
+					CCSettlementIntent: &thisMonth,
+				})
+				// Next month: 750
+				m.AddTransaction(&domain.Transaction{
+					ID:                 3,
+					WorkspaceID:        workspaceID,
+					AccountID:          1,
+					Name:               "Electronics",
+					Amount:             decimal.NewFromInt(750),
+					Type:               domain.TransactionTypeExpense,
+					TransactionDate:    time.Now(),
+					IsPaid:             false,
+					CCSettlementIntent: &nextMonth,
+				})
+			},
+			wantThisMonth: "1500.00",
+			wantNextMonth: "750.00",
+			wantTotal:     "2250.00",
+			wantErr:       false,
+		},
+		{
+			name: "returns zeros when no CC transactions",
+			setupTransactions: func(m *testutil.MockTransactionRepository) {
+				// No CC transactions
+			},
+			wantThisMonth: "0.00",
+			wantNextMonth: "0.00",
+			wantTotal:     "0.00",
+			wantErr:       false,
+		},
+		{
+			name: "excludes paid transactions",
+			setupTransactions: func(m *testutil.MockTransactionRepository) {
+				thisMonth := domain.CCSettlementThisMonth
+
+				// Unpaid - should be counted
+				m.AddTransaction(&domain.Transaction{
+					ID:                 1,
+					WorkspaceID:        workspaceID,
+					AccountID:          1,
+					Name:               "Unpaid",
+					Amount:             decimal.NewFromInt(100),
+					Type:               domain.TransactionTypeExpense,
+					TransactionDate:    time.Now(),
+					IsPaid:             false,
+					CCSettlementIntent: &thisMonth,
+				})
+				// Paid - should be excluded
+				m.AddTransaction(&domain.Transaction{
+					ID:                 2,
+					WorkspaceID:        workspaceID,
+					AccountID:          1,
+					Name:               "Paid",
+					Amount:             decimal.NewFromInt(200),
+					Type:               domain.TransactionTypeExpense,
+					TransactionDate:    time.Now(),
+					IsPaid:             true,
+					CCSettlementIntent: &thisMonth,
+				})
+			},
+			wantThisMonth: "100.00",
+			wantNextMonth: "0.00",
+			wantTotal:     "100.00",
+			wantErr:       false,
+		},
+		{
+			name: "only this_month transactions",
+			setupTransactions: func(m *testutil.MockTransactionRepository) {
+				thisMonth := domain.CCSettlementThisMonth
+				m.AddTransaction(&domain.Transaction{
+					ID:                 1,
+					WorkspaceID:        workspaceID,
+					AccountID:          1,
+					Name:               "Only This Month",
+					Amount:             decimal.NewFromInt(300),
+					Type:               domain.TransactionTypeExpense,
+					TransactionDate:    time.Now(),
+					IsPaid:             false,
+					CCSettlementIntent: &thisMonth,
+				})
+			},
+			wantThisMonth: "300.00",
+			wantNextMonth: "0.00",
+			wantTotal:     "300.00",
+			wantErr:       false,
+		},
+		{
+			name: "only next_month transactions",
+			setupTransactions: func(m *testutil.MockTransactionRepository) {
+				nextMonth := domain.CCSettlementNextMonth
+				m.AddTransaction(&domain.Transaction{
+					ID:                 1,
+					WorkspaceID:        workspaceID,
+					AccountID:          1,
+					Name:               "Only Next Month",
+					Amount:             decimal.NewFromInt(400),
+					Type:               domain.TransactionTypeExpense,
+					TransactionDate:    time.Now(),
+					IsPaid:             false,
+					CCSettlementIntent: &nextMonth,
+				})
+			},
+			wantThisMonth: "0.00",
+			wantNextMonth: "400.00",
+			wantTotal:     "400.00",
+			wantErr:       false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			accountRepo := testutil.NewMockAccountRepository()
+			transactionRepo := testutil.NewMockTransactionRepository()
+			monthRepo := testutil.NewMockMonthRepository()
+
+			if tt.setupTransactions != nil {
+				tt.setupTransactions(transactionRepo)
+			}
+
+			calcService := NewCalculationService(accountRepo, transactionRepo)
+			monthService := NewMonthService(monthRepo, transactionRepo, calcService)
+			dashboardService := NewDashboardService(accountRepo, transactionRepo, monthService, calcService)
+
+			summary, err := dashboardService.GetCCPayable(workspaceID)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetCCPayable() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr {
+				if summary.ThisMonth.StringFixed(2) != tt.wantThisMonth {
+					t.Errorf("GetCCPayable() ThisMonth = %v, want %v", summary.ThisMonth.StringFixed(2), tt.wantThisMonth)
+				}
+				if summary.NextMonth.StringFixed(2) != tt.wantNextMonth {
+					t.Errorf("GetCCPayable() NextMonth = %v, want %v", summary.NextMonth.StringFixed(2), tt.wantNextMonth)
+				}
+				if summary.Total.StringFixed(2) != tt.wantTotal {
+					t.Errorf("GetCCPayable() Total = %v, want %v", summary.Total.StringFixed(2), tt.wantTotal)
+				}
+			}
+		})
+	}
+}
+
+func TestDashboardService_GetSummary_IncludesCCPayable(t *testing.T) {
+	testYear := 2025
+	testMonth := 1
+	startDate := time.Date(testYear, time.Month(testMonth), 1, 0, 0, 0, 0, time.UTC)
+	endDate := startDate.AddDate(0, 1, -1)
+	txDate := time.Date(testYear, time.Month(testMonth), 15, 0, 0, 0, 0, time.UTC)
+
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	monthRepo := testutil.NewMockMonthRepository()
+
+	// Setup accounts
+	accountRepo.AddAccount(&domain.Account{
+		ID:             1,
+		WorkspaceID:    1,
+		Name:           "Credit Card",
+		AccountType:    domain.AccountTypeLiability,
+		Template:       domain.TemplateCreditCard,
+		InitialBalance: decimal.Zero,
+	})
+
+	// Setup CC transactions with settlement intent
+	thisMonth := domain.CCSettlementThisMonth
+	nextMonth := domain.CCSettlementNextMonth
+
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:                 1,
+		WorkspaceID:        1,
+		AccountID:          1,
+		Name:               "Groceries",
+		Amount:             decimal.NewFromInt(500),
+		Type:               domain.TransactionTypeExpense,
+		TransactionDate:    txDate,
+		IsPaid:             false,
+		CCSettlementIntent: &thisMonth,
+	})
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:                 2,
+		WorkspaceID:        1,
+		AccountID:          1,
+		Name:               "Shopping",
+		Amount:             decimal.NewFromInt(300),
+		Type:               domain.TransactionTypeExpense,
+		TransactionDate:    txDate,
+		IsPaid:             false,
+		CCSettlementIntent: &nextMonth,
+	})
+
+	monthRepo.AddMonth(&domain.Month{
+		ID:              1,
+		WorkspaceID:     1,
+		Year:            testYear,
+		Month:           testMonth,
+		StartDate:       startDate,
+		EndDate:         endDate,
+		StartingBalance: decimal.Zero,
+	})
+
+	calcService := NewCalculationService(accountRepo, transactionRepo)
+	monthService := NewMonthService(monthRepo, transactionRepo, calcService)
+	dashboardService := NewDashboardService(accountRepo, transactionRepo, monthService, calcService)
+
+	summary, err := dashboardService.GetSummaryForMonth(1, testYear, testMonth)
+	if err != nil {
+		t.Fatalf("GetSummaryForMonth() error = %v", err)
+	}
+
+	// Verify CCPayable is included in the summary
+	if summary.CCPayable == nil {
+		t.Fatal("GetSummaryForMonth() CCPayable should not be nil")
+	}
+
+	if summary.CCPayable.ThisMonth.StringFixed(2) != "500.00" {
+		t.Errorf("CCPayable.ThisMonth = %v, want 500.00", summary.CCPayable.ThisMonth.StringFixed(2))
+	}
+	if summary.CCPayable.NextMonth.StringFixed(2) != "300.00" {
+		t.Errorf("CCPayable.NextMonth = %v, want 300.00", summary.CCPayable.NextMonth.StringFixed(2))
+	}
+	if summary.CCPayable.Total.StringFixed(2) != "800.00" {
+		t.Errorf("CCPayable.Total = %v, want 800.00", summary.CCPayable.Total.StringFixed(2))
+	}
+}

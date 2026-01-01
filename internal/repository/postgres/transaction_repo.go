@@ -490,6 +490,25 @@ func (r *TransactionRepository) SumUnpaidExpensesByDateRange(workspaceID int32, 
 	return pgNumericToDecimal(total), nil
 }
 
+// GetCCPayableSummary returns unpaid CC transaction totals grouped by settlement intent
+func (r *TransactionRepository) GetCCPayableSummary(workspaceID int32) ([]*domain.CCPayableSummaryRow, error) {
+	ctx := context.Background()
+
+	rows, err := r.queries.GetCCPayableSummary(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*domain.CCPayableSummaryRow, len(rows))
+	for i, row := range rows {
+		result[i] = &domain.CCPayableSummaryRow{
+			SettlementIntent: domain.CCSettlementIntent(row.CcSettlementIntent.String),
+			Total:            pgNumericToDecimal(row.Total),
+		}
+	}
+	return result, nil
+}
+
 // Helper functions
 
 func sqlcTransactionToDomain(t sqlc.Transaction) *domain.Transaction {
