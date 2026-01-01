@@ -41,6 +41,19 @@ type Account struct {
 	DeletedAt      *time.Time      `json:"deletedAt,omitempty"`
 }
 
+// CCOutstandingSummary holds total CC outstanding across all accounts
+type CCOutstandingSummary struct {
+	TotalOutstanding decimal.Decimal `json:"totalOutstanding"`
+	CCAccountCount   int32           `json:"ccAccountCount"`
+}
+
+// PerAccountOutstanding holds outstanding balance for a single CC account
+type PerAccountOutstanding struct {
+	AccountID          int32           `json:"accountId"`
+	AccountName        string          `json:"accountName"`
+	OutstandingBalance decimal.Decimal `json:"outstandingBalance"`
+}
+
 type AccountRepository interface {
 	Create(account *Account) (*Account, error)
 	GetByID(workspaceID int32, id int32) (*Account, error)
@@ -48,4 +61,6 @@ type AccountRepository interface {
 	Update(workspaceID int32, id int32, name string) (*Account, error)
 	SoftDelete(workspaceID int32, id int32) error
 	HardDelete(workspaceID int32, id int32) error
+	GetCCOutstandingSummary(workspaceID int32) (*CCOutstandingSummary, error)
+	GetPerAccountOutstanding(workspaceID int32) ([]*PerAccountOutstanding, error)
 }

@@ -519,3 +519,224 @@ func TestDeleteAccount_AlreadyDeleted(t *testing.T) {
 		t.Errorf("Expected ErrAccountNotFound for already deleted account, got %v", err)
 	}
 }
+
+// GetCCOutstanding tests
+
+func TestGetCCOutstanding_Success_WithData(t *testing.T) {
+	accountRepo := testutil.NewMockAccountRepository()
+	accountService := NewAccountService(accountRepo)
+
+	workspaceID := int32(1)
+
+	// Configure mock to return CC outstanding data
+	accountRepo.GetCCOutstandingSummaryFn = func(wsID int32) (*domain.CCOutstandingSummary, error) {
+		if wsID != workspaceID {
+			t.Errorf("Expected workspaceID %d, got %d", workspaceID, wsID)
+		}
+		return &domain.CCOutstandingSummary{
+			TotalOutstanding: decimal.NewFromFloat(5250.00),
+			CCAccountCount:   3,
+		}, nil
+	}
+
+	accountRepo.GetPerAccountOutstandingFn = func(wsID int32) ([]*domain.PerAccountOutstanding, error) {
+		if wsID != workspaceID {
+			t.Errorf("Expected workspaceID %d, got %d", workspaceID, wsID)
+		}
+		return []*domain.PerAccountOutstanding{
+			{AccountID: 1, AccountName: "Maybank CC", OutstandingBalance: decimal.NewFromFloat(2500.00)},
+			{AccountID: 2, AccountName: "CIMB CC", OutstandingBalance: decimal.NewFromFloat(1750.00)},
+			{AccountID: 3, AccountName: "Public Bank CC", OutstandingBalance: decimal.NewFromFloat(1000.00)},
+		}, nil
+	}
+
+	result, err := accountService.GetCCOutstanding(workspaceID)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if !result.TotalOutstanding.Equal(decimal.NewFromFloat(5250.00)) {
+		t.Errorf("Expected total outstanding 5250.00, got %s", result.TotalOutstanding.String())
+	}
+
+	if result.CCAccountCount != 3 {
+		t.Errorf("Expected 3 CC accounts, got %d", result.CCAccountCount)
+	}
+
+	if len(result.PerAccount) != 3 {
+		t.Errorf("Expected 3 per-account entries, got %d", len(result.PerAccount))
+	}
+
+	// Verify first account
+	if result.PerAccount[0].AccountName != "Maybank CC" {
+		t.Errorf("Expected first account 'Maybank CC', got %s", result.PerAccount[0].AccountName)
+	}
+	if !result.PerAccount[0].OutstandingBalance.Equal(decimal.NewFromFloat(2500.00)) {
+		t.Errorf("Expected first account balance 2500.00, got %s", result.PerAccount[0].OutstandingBalance.String())
+	}
+}
+
+func TestGetCCOutstanding_NoAccounts(t *testing.T) {
+	accountRepo := testutil.NewMockAccountRepository()
+	accountService := NewAccountService(accountRepo)
+
+	workspaceID := int32(1)
+
+	// Default mock returns zeros
+	result, err := accountService.GetCCOutstanding(workspaceID)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if !result.TotalOutstanding.IsZero() {
+		t.Errorf("Expected zero outstanding, got %s", result.TotalOutstanding.String())
+	}
+
+	if result.CCAccountCount != 0 {
+		t.Errorf("Expected 0 CC accounts, got %d", result.CCAccountCount)
+	}
+
+	if len(result.PerAccount) != 0 {
+		t.Errorf("Expected 0 per-account entries, got %d", len(result.PerAccount))
+	}
+}
+
+func TestGetCCOutstanding_AllPaid(t *testing.T) {
+	accountRepo := testutil.NewMockAccountRepository()
+	accountService := NewAccountService(accountRepo)
+
+	workspaceID := int32(1)
+
+	// CC accounts exist but all transactions are paid
+	accountRepo.GetCCOutstandingSummaryFn = func(wsID int32) (*domain.CCOutstandingSummary, error) {
+		return &domain.CCOutstandingSummary{
+			TotalOutstanding: decimal.Zero,
+			CCAccountCount:   2,
+		}, nil
+	}
+
+	accountRepo.GetPerAccountOutstandingFn = func(wsID int32) ([]*domain.PerAccountOutstanding, error) {
+		return []*domain.PerAccountOutstanding{
+			{AccountID: 1, AccountName: "Maybank CC", OutstandingBalance: decimal.Zero},
+			{AccountID: 2, AccountName: "CIMB CC", OutstandingBalance: decimal.Zero},
+		}, nil
+	}
+
+	result, err := accountService.GetCCOutstanding(workspaceID)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if !result.TotalOutstanding.IsZero() {
+		t.Errorf("Expected zero outstanding, got %s", result.TotalOutstanding.String())
+	}
+
+	if result.CCAccountCount != 2 {
+		t.Errorf("Expected 2 CC accounts, got %d", result.CCAccountCount)
+	}
+
+	// Per-account should still show accounts with zero
+	if len(result.PerAccount) != 2 {
+		t.Errorf("Expected 2 per-account entries, got %d", len(result.PerAccount))
+	}
+}
+
+func TestGetCCOutstanding_SummaryError(t *testing.T) {
+	accountRepo := testutil.NewMockAccountRepository()
+	accountService := NewAccountService(accountRepo)
+
+	workspaceID := int32(1)
+
+	// Simulate error from GetCCOutstandingSummary
+	accountRepo.GetCCOutstandingSummaryFn = func(wsID int32) (*domain.CCOutstandingSummary, error) {
+		return nil, domain.ErrAccountNotFound
+	}
+
+	_, err := accountService.GetCCOutstanding(workspaceID)
+	if err == nil {
+		t.Fatal("Expected error, got nil")
+	}
+	if err != domain.ErrAccountNotFound {
+		t.Errorf("Expected ErrAccountNotFound, got %v", err)
+	}
+}
+
+func TestGetCCOutstanding_PerAccountError(t *testing.T) {
+	accountRepo := testutil.NewMockAccountRepository()
+	accountService := NewAccountService(accountRepo)
+
+	workspaceID := int32(1)
+
+	// Summary succeeds
+	accountRepo.GetCCOutstandingSummaryFn = func(wsID int32) (*domain.CCOutstandingSummary, error) {
+		return &domain.CCOutstandingSummary{
+			TotalOutstanding: decimal.NewFromFloat(1000.00),
+			CCAccountCount:   1,
+		}, nil
+	}
+
+	// But per-account fails
+	accountRepo.GetPerAccountOutstandingFn = func(wsID int32) ([]*domain.PerAccountOutstanding, error) {
+		return nil, domain.ErrAccountNotFound
+	}
+
+	_, err := accountService.GetCCOutstanding(workspaceID)
+	if err == nil {
+		t.Fatal("Expected error when per-account query fails, got nil")
+	}
+	if err != domain.ErrAccountNotFound {
+		t.Errorf("Expected ErrAccountNotFound, got %v", err)
+	}
+}
+
+func TestGetCCOutstanding_WorkspaceIsolation(t *testing.T) {
+	accountRepo := testutil.NewMockAccountRepository()
+	accountService := NewAccountService(accountRepo)
+
+	workspace1 := int32(1)
+	workspace2 := int32(2)
+
+	calledWithWorkspace := int32(0)
+
+	accountRepo.GetCCOutstandingSummaryFn = func(wsID int32) (*domain.CCOutstandingSummary, error) {
+		calledWithWorkspace = wsID
+		if wsID == workspace1 {
+			return &domain.CCOutstandingSummary{
+				TotalOutstanding: decimal.NewFromFloat(1000.00),
+				CCAccountCount:   1,
+			}, nil
+		}
+		return &domain.CCOutstandingSummary{
+			TotalOutstanding: decimal.NewFromFloat(2000.00),
+			CCAccountCount:   2,
+		}, nil
+	}
+
+	accountRepo.GetPerAccountOutstandingFn = func(wsID int32) ([]*domain.PerAccountOutstanding, error) {
+		return []*domain.PerAccountOutstanding{}, nil
+	}
+
+	// Query workspace 1
+	result1, err := accountService.GetCCOutstanding(workspace1)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if calledWithWorkspace != workspace1 {
+		t.Errorf("Expected workspace1 (%d), got %d", workspace1, calledWithWorkspace)
+	}
+	if !result1.TotalOutstanding.Equal(decimal.NewFromFloat(1000.00)) {
+		t.Errorf("Expected 1000.00 for workspace1, got %s", result1.TotalOutstanding.String())
+	}
+
+	// Query workspace 2
+	result2, err := accountService.GetCCOutstanding(workspace2)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if calledWithWorkspace != workspace2 {
+		t.Errorf("Expected workspace2 (%d), got %d", workspace2, calledWithWorkspace)
+	}
+	if !result2.TotalOutstanding.Equal(decimal.NewFromFloat(2000.00)) {
+		t.Errorf("Expected 2000.00 for workspace2, got %s", result2.TotalOutstanding.String())
+	}
+}

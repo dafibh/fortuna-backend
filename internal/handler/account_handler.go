@@ -55,6 +55,20 @@ type AccountResponse struct {
 	DeletedAt         *string `json:"deletedAt,omitempty"`
 }
 
+// CCOutstandingResponse represents the CC summary API response
+type CCOutstandingResponse struct {
+	TotalOutstanding string                       `json:"totalOutstanding"`
+	CCAccountCount   int32                        `json:"ccAccountCount"`
+	PerAccount       []PerAccountOutstandingEntry `json:"perAccount"`
+}
+
+// PerAccountOutstandingEntry represents a single account's outstanding balance
+type PerAccountOutstandingEntry struct {
+	AccountID          int32  `json:"accountId"`
+	AccountName        string `json:"accountName"`
+	OutstandingBalance string `json:"outstandingBalance"`
+}
+
 // CreateAccount handles POST /api/v1/accounts
 func (h *AccountHandler) CreateAccount(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
@@ -212,6 +226,38 @@ func (h *AccountHandler) DeleteAccount(c echo.Context) error {
 
 	log.Info().Int32("workspace_id", workspaceID).Int("account_id", id).Msg("Account deleted (soft)")
 	return c.NoContent(http.StatusNoContent)
+}
+
+// GetCCSummary handles GET /api/v1/accounts/cc-summary
+func (h *AccountHandler) GetCCSummary(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	result, err := h.accountService.GetCCOutstanding(workspaceID)
+	if err != nil {
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Msg("Failed to get CC outstanding summary")
+		return NewInternalError(c, "Failed to get CC outstanding summary")
+	}
+
+	// Convert to response format
+	perAccount := make([]PerAccountOutstandingEntry, len(result.PerAccount))
+	for i, acc := range result.PerAccount {
+		perAccount[i] = PerAccountOutstandingEntry{
+			AccountID:          acc.AccountID,
+			AccountName:        acc.AccountName,
+			OutstandingBalance: acc.OutstandingBalance.StringFixed(2),
+		}
+	}
+
+	response := CCOutstandingResponse{
+		TotalOutstanding: result.TotalOutstanding.StringFixed(2),
+		CCAccountCount:   result.CCAccountCount,
+		PerAccount:       perAccount,
+	}
+
+	return c.JSON(http.StatusOK, response)
 }
 
 // Helper function to convert domain.Account to AccountResponse (without balance calculation)

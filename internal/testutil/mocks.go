@@ -181,15 +181,17 @@ func (m *MockWorkspaceRepository) AddWorkspace(workspace *domain.Workspace, auth
 
 // MockAccountRepository is a mock implementation of domain.AccountRepository
 type MockAccountRepository struct {
-	Accounts      map[int32]*domain.Account
-	ByWorkspace   map[int32][]*domain.Account
-	NextID        int32
-	CreateFn      func(account *domain.Account) (*domain.Account, error)
-	GetByIDFn     func(workspaceID int32, id int32) (*domain.Account, error)
-	GetAllFn      func(workspaceID int32, includeArchived bool) ([]*domain.Account, error)
-	UpdateFn      func(workspaceID int32, id int32, name string) (*domain.Account, error)
-	SoftDeleteFn  func(workspaceID int32, id int32) error
-	HardDeleteFn  func(workspaceID int32, id int32) error
+	Accounts                   map[int32]*domain.Account
+	ByWorkspace                map[int32][]*domain.Account
+	NextID                     int32
+	CreateFn                   func(account *domain.Account) (*domain.Account, error)
+	GetByIDFn                  func(workspaceID int32, id int32) (*domain.Account, error)
+	GetAllFn                   func(workspaceID int32, includeArchived bool) ([]*domain.Account, error)
+	UpdateFn                   func(workspaceID int32, id int32, name string) (*domain.Account, error)
+	SoftDeleteFn               func(workspaceID int32, id int32) error
+	HardDeleteFn               func(workspaceID int32, id int32) error
+	GetCCOutstandingSummaryFn  func(workspaceID int32) (*domain.CCOutstandingSummary, error)
+	GetPerAccountOutstandingFn func(workspaceID int32) ([]*domain.PerAccountOutstanding, error)
 }
 
 // NewMockAccountRepository creates a new MockAccountRepository
@@ -306,6 +308,27 @@ func (m *MockAccountRepository) HardDelete(workspaceID int32, id int32) error {
 func (m *MockAccountRepository) AddAccount(account *domain.Account) {
 	m.Accounts[account.ID] = account
 	m.ByWorkspace[account.WorkspaceID] = append(m.ByWorkspace[account.WorkspaceID], account)
+}
+
+// GetCCOutstandingSummary returns total CC outstanding across all CC accounts
+func (m *MockAccountRepository) GetCCOutstandingSummary(workspaceID int32) (*domain.CCOutstandingSummary, error) {
+	if m.GetCCOutstandingSummaryFn != nil {
+		return m.GetCCOutstandingSummaryFn(workspaceID)
+	}
+	// Default: return zeros
+	return &domain.CCOutstandingSummary{
+		TotalOutstanding: decimal.Zero,
+		CCAccountCount:   0,
+	}, nil
+}
+
+// GetPerAccountOutstanding returns outstanding balance for each CC account
+func (m *MockAccountRepository) GetPerAccountOutstanding(workspaceID int32) ([]*domain.PerAccountOutstanding, error) {
+	if m.GetPerAccountOutstandingFn != nil {
+		return m.GetPerAccountOutstandingFn(workspaceID)
+	}
+	// Default: return empty list
+	return []*domain.PerAccountOutstanding{}, nil
 }
 
 // MockTransactionRepository is a mock implementation of domain.TransactionRepository

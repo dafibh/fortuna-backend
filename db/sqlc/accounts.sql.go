@@ -174,6 +174,77 @@ func (q *Queries) GetAccountsByWorkspaceAll(ctx context.Context, workspaceID int
 	return items, nil
 }
 
+const getCCOutstandingSummary = `-- name: GetCCOutstandingSummary :one
+SELECT
+    COALESCE(SUM(t.amount), 0)::NUMERIC(12,2) as total_outstanding,
+    COUNT(DISTINCT a.id)::INTEGER as cc_account_count
+FROM accounts a
+LEFT JOIN transactions t ON t.account_id = a.id
+    AND t.type = 'expense'
+    AND t.is_paid = false
+    AND t.deleted_at IS NULL
+WHERE a.workspace_id = $1
+    AND a.template = 'credit_card'
+    AND a.deleted_at IS NULL
+`
+
+type GetCCOutstandingSummaryRow struct {
+	TotalOutstanding pgtype.Numeric `json:"total_outstanding"`
+	CcAccountCount   int32          `json:"cc_account_count"`
+}
+
+// Get total outstanding balance across all CC accounts (sum of unpaid expenses)
+func (q *Queries) GetCCOutstandingSummary(ctx context.Context, workspaceID int32) (GetCCOutstandingSummaryRow, error) {
+	row := q.db.QueryRow(ctx, getCCOutstandingSummary, workspaceID)
+	var i GetCCOutstandingSummaryRow
+	err := row.Scan(&i.TotalOutstanding, &i.CcAccountCount)
+	return i, err
+}
+
+const getPerAccountOutstanding = `-- name: GetPerAccountOutstanding :many
+SELECT
+    a.id,
+    a.name,
+    COALESCE(SUM(t.amount), 0)::NUMERIC(12,2) as outstanding_balance
+FROM accounts a
+LEFT JOIN transactions t ON t.account_id = a.id
+    AND t.type = 'expense'
+    AND t.is_paid = false
+    AND t.deleted_at IS NULL
+WHERE a.workspace_id = $1
+    AND a.template = 'credit_card'
+    AND a.deleted_at IS NULL
+GROUP BY a.id, a.name
+ORDER BY a.name
+`
+
+type GetPerAccountOutstandingRow struct {
+	ID                 int32          `json:"id"`
+	Name               string         `json:"name"`
+	OutstandingBalance pgtype.Numeric `json:"outstanding_balance"`
+}
+
+// Get outstanding balance for each CC account
+func (q *Queries) GetPerAccountOutstanding(ctx context.Context, workspaceID int32) ([]GetPerAccountOutstandingRow, error) {
+	rows, err := q.db.Query(ctx, getPerAccountOutstanding, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetPerAccountOutstandingRow{}
+	for rows.Next() {
+		var i GetPerAccountOutstandingRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.OutstandingBalance); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const hardDeleteAccount = `-- name: HardDeleteAccount :exec
 DELETE FROM accounts
 WHERE workspace_id = $1 AND id = $2

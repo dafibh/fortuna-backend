@@ -38,6 +38,8 @@ type Querier interface {
 	GetBudgetAllocationsByMonth(ctx context.Context, arg GetBudgetAllocationsByMonthParams) ([]GetBudgetAllocationsByMonthRow, error)
 	GetBudgetCategoryByID(ctx context.Context, arg GetBudgetCategoryByIDParams) (BudgetCategory, error)
 	GetBudgetCategoryByName(ctx context.Context, arg GetBudgetCategoryByNameParams) (BudgetCategory, error)
+	// Get total outstanding balance across all CC accounts (sum of unpaid expenses)
+	GetCCOutstandingSummary(ctx context.Context, workspaceID int32) (GetCCOutstandingSummaryRow, error)
 	// Get unpaid CC transaction totals grouped by settlement intent
 	GetCCPayableSummary(ctx context.Context, workspaceID int32) ([]GetCCPayableSummaryRow, error)
 	// Returns all categories with their allocation for a specific month (0 if not set)
@@ -48,6 +50,8 @@ type Querier interface {
 	GetMonthByYearMonth(ctx context.Context, arg GetMonthByYearMonthParams) (Month, error)
 	// Batch query to get income/expense totals grouped by year/month for N+1 prevention
 	GetMonthlyTransactionSummaries(ctx context.Context, workspaceID int32) ([]GetMonthlyTransactionSummariesRow, error)
+	// Get outstanding balance for each CC account
+	GetPerAccountOutstanding(ctx context.Context, workspaceID int32) ([]GetPerAccountOutstandingRow, error)
 	// Returns recently used categories for suggestions dropdown
 	GetRecentlyUsedCategories(ctx context.Context, workspaceID int32) ([]GetRecentlyUsedCategoriesRow, error)
 	// Returns total spending per category for a specific month

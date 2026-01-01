@@ -400,3 +400,133 @@ func TestGetAccounts_WorkspaceIsolation(t *testing.T) {
 		t.Errorf("Expected 'Workspace 1 Account', got %s", response[0].Name)
 	}
 }
+
+// GetCCSummary tests
+
+func TestGetCCSummary_Success(t *testing.T) {
+	e := echo.New()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountService := service.NewAccountService(accountRepo)
+	calculationService := service.NewCalculationService(accountRepo, transactionRepo)
+	handler := NewAccountHandler(accountService, calculationService)
+
+	workspaceID := int32(1)
+
+	// Configure mock to return CC outstanding data
+	accountRepo.GetCCOutstandingSummaryFn = func(wsID int32) (*domain.CCOutstandingSummary, error) {
+		return &domain.CCOutstandingSummary{
+			TotalOutstanding: decimal.NewFromFloat(5250.00),
+			CCAccountCount:   2,
+		}, nil
+	}
+
+	accountRepo.GetPerAccountOutstandingFn = func(wsID int32) ([]*domain.PerAccountOutstanding, error) {
+		return []*domain.PerAccountOutstanding{
+			{AccountID: 1, AccountName: "Maybank CC", OutstandingBalance: decimal.NewFromFloat(2500.00)},
+			{AccountID: 2, AccountName: "CIMB CC", OutstandingBalance: decimal.NewFromFloat(2750.00)},
+		}, nil
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/cc-summary", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	err := handler.GetCCSummary(c)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", rec.Code)
+	}
+
+	var response CCOutstandingResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if response.TotalOutstanding != "5250.00" {
+		t.Errorf("Expected total outstanding '5250.00', got %s", response.TotalOutstanding)
+	}
+
+	if response.CCAccountCount != 2 {
+		t.Errorf("Expected 2 CC accounts, got %d", response.CCAccountCount)
+	}
+
+	if len(response.PerAccount) != 2 {
+		t.Errorf("Expected 2 per-account entries, got %d", len(response.PerAccount))
+	}
+
+	if response.PerAccount[0].AccountName != "Maybank CC" {
+		t.Errorf("Expected first account 'Maybank CC', got %s", response.PerAccount[0].AccountName)
+	}
+}
+
+func TestGetCCSummary_MissingWorkspaceID(t *testing.T) {
+	e := echo.New()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountService := service.NewAccountService(accountRepo)
+	calculationService := service.NewCalculationService(accountRepo, transactionRepo)
+	handler := NewAccountHandler(accountService, calculationService)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/cc-summary", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	// No workspace ID set
+	setupAuthContext(c, "auth0|test", "test@example.com", "Test User", "")
+
+	err := handler.GetCCSummary(c)
+	if err != nil {
+		t.Fatalf("Expected JSON response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401, got %d", rec.Code)
+	}
+}
+
+func TestGetCCSummary_NoAccounts(t *testing.T) {
+	e := echo.New()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountService := service.NewAccountService(accountRepo)
+	calculationService := service.NewCalculationService(accountRepo, transactionRepo)
+	handler := NewAccountHandler(accountService, calculationService)
+
+	workspaceID := int32(1)
+
+	// Default mock returns zeros (no CC accounts)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/cc-summary", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	err := handler.GetCCSummary(c)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", rec.Code)
+	}
+
+	var response CCOutstandingResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if response.TotalOutstanding != "0.00" {
+		t.Errorf("Expected total outstanding '0.00', got %s", response.TotalOutstanding)
+	}
+
+	if response.CCAccountCount != 0 {
+		t.Errorf("Expected 0 CC accounts, got %d", response.CCAccountCount)
+	}
+}

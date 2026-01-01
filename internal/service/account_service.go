@@ -82,3 +82,32 @@ func (s *AccountService) DeleteAccount(workspaceID int32, id int32) error {
 	// SoftDelete atomically checks existence and deletes, returning ErrAccountNotFound if not found
 	return s.accountRepo.SoftDelete(workspaceID, id)
 }
+
+// CCOutstandingResult holds the aggregated CC outstanding data
+// including total outstanding balance and per-account breakdown
+type CCOutstandingResult struct {
+	TotalOutstanding decimal.Decimal
+	CCAccountCount   int32
+	PerAccount       []*domain.PerAccountOutstanding
+}
+
+// GetCCOutstanding returns the total outstanding balance across all credit card accounts
+// and a per-account breakdown. Outstanding balance is the sum of unpaid expenses.
+// Returns CCOutstandingResult with zero values if no CC accounts exist.
+func (s *AccountService) GetCCOutstanding(workspaceID int32) (*CCOutstandingResult, error) {
+	summary, err := s.accountRepo.GetCCOutstandingSummary(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+
+	perAccount, err := s.accountRepo.GetPerAccountOutstanding(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &CCOutstandingResult{
+		TotalOutstanding: summary.TotalOutstanding,
+		CCAccountCount:   summary.CCAccountCount,
+		PerAccount:       perAccount,
+	}, nil
+}

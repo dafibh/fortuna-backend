@@ -168,3 +168,34 @@ func pgNumericToDecimal(n pgtype.Numeric) decimal.Decimal {
 	}
 	return decimal.NewFromBigInt(n.Int, n.Exp)
 }
+
+// GetCCOutstandingSummary returns total CC outstanding across all CC accounts
+func (r *AccountRepository) GetCCOutstandingSummary(workspaceID int32) (*domain.CCOutstandingSummary, error) {
+	ctx := context.Background()
+	row, err := r.queries.GetCCOutstandingSummary(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	return &domain.CCOutstandingSummary{
+		TotalOutstanding: pgNumericToDecimal(row.TotalOutstanding),
+		CCAccountCount:   row.CcAccountCount,
+	}, nil
+}
+
+// GetPerAccountOutstanding returns outstanding balance for each CC account
+func (r *AccountRepository) GetPerAccountOutstanding(workspaceID int32) ([]*domain.PerAccountOutstanding, error) {
+	ctx := context.Background()
+	rows, err := r.queries.GetPerAccountOutstanding(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*domain.PerAccountOutstanding, len(rows))
+	for i, row := range rows {
+		result[i] = &domain.PerAccountOutstanding{
+			AccountID:          row.ID,
+			AccountName:        row.Name,
+			OutstandingBalance: pgNumericToDecimal(row.OutstandingBalance),
+		}
+	}
+	return result, nil
+}
