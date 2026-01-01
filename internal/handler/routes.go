@@ -70,4 +70,5 @@ func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, aut
 	budgets.GET("/:year/:month", budgetHandler.GetAllocations)
 	budgets.PUT("/:year/:month", budgetHandler.SetAllocations)
 	budgets.PUT("/:year/:month/:categoryId", budgetHandler.SetAllocation)
+	budgets.GET("/:year/:month/:categoryId/transactions", budgetHandler.GetCategoryTransactions)
 }

@@ -167,6 +167,134 @@ func (q *Queries) GetCategoriesWithAllocations(ctx context.Context, arg GetCateg
 	return items, nil
 }
 
+const getCategoryTransactions = `-- name: GetCategoryTransactions :many
+SELECT t.id, t.workspace_id, t.account_id, t.name, t.amount, t.type, t.transaction_date, t.is_paid, t.cc_settlement_intent, t.notes, t.created_at, t.updated_at, t.deleted_at, t.transfer_pair_id, t.category_id, a.name AS account_name
+FROM transactions t
+JOIN accounts a ON t.account_id = a.id
+WHERE t.workspace_id = $1
+    AND t.category_id = $2
+    AND t.transaction_type = 'expense'
+    AND t.deleted_at IS NULL
+    AND EXTRACT(YEAR FROM t.transaction_date) = $3::int
+    AND EXTRACT(MONTH FROM t.transaction_date) = $4::int
+ORDER BY t.transaction_date DESC
+`
+
+type GetCategoryTransactionsParams struct {
+	WorkspaceID int32       `json:"workspace_id"`
+	CategoryID  pgtype.Int4 `json:"category_id"`
+	Year        int32       `json:"year"`
+	Month       int32       `json:"month"`
+}
+
+type GetCategoryTransactionsRow struct {
+	ID                 int32              `json:"id"`
+	WorkspaceID        int32              `json:"workspace_id"`
+	AccountID          int32              `json:"account_id"`
+	Name               string             `json:"name"`
+	Amount             pgtype.Numeric     `json:"amount"`
+	Type               string             `json:"type"`
+	TransactionDate    pgtype.Date        `json:"transaction_date"`
+	IsPaid             bool               `json:"is_paid"`
+	CcSettlementIntent pgtype.Text        `json:"cc_settlement_intent"`
+	Notes              pgtype.Text        `json:"notes"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt          pgtype.Timestamptz `json:"deleted_at"`
+	TransferPairID     pgtype.UUID        `json:"transfer_pair_id"`
+	CategoryID         pgtype.Int4        `json:"category_id"`
+	AccountName        string             `json:"account_name"`
+}
+
+// Returns all transactions for a specific category in a month
+func (q *Queries) GetCategoryTransactions(ctx context.Context, arg GetCategoryTransactionsParams) ([]GetCategoryTransactionsRow, error) {
+	rows, err := q.db.Query(ctx, getCategoryTransactions,
+		arg.WorkspaceID,
+		arg.CategoryID,
+		arg.Year,
+		arg.Month,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetCategoryTransactionsRow{}
+	for rows.Next() {
+		var i GetCategoryTransactionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.AccountID,
+			&i.Name,
+			&i.Amount,
+			&i.Type,
+			&i.TransactionDate,
+			&i.IsPaid,
+			&i.CcSettlementIntent,
+			&i.Notes,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.TransferPairID,
+			&i.CategoryID,
+			&i.AccountName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getSpendingByCategory = `-- name: GetSpendingByCategory :many
+SELECT
+    t.category_id,
+    COALESCE(SUM(t.amount), 0) AS spent
+FROM transactions t
+WHERE t.workspace_id = $1
+    AND t.category_id IS NOT NULL
+    AND t.transaction_type = 'expense'
+    AND t.deleted_at IS NULL
+    AND EXTRACT(YEAR FROM t.transaction_date) = $2::int
+    AND EXTRACT(MONTH FROM t.transaction_date) = $3::int
+GROUP BY t.category_id
+`
+
+type GetSpendingByCategoryParams struct {
+	WorkspaceID int32 `json:"workspace_id"`
+	Year        int32 `json:"year"`
+	Month       int32 `json:"month"`
+}
+
+type GetSpendingByCategoryRow struct {
+	CategoryID pgtype.Int4 `json:"category_id"`
+	Spent      interface{} `json:"spent"`
+}
+
+// Returns total spending per category for a specific month
+func (q *Queries) GetSpendingByCategory(ctx context.Context, arg GetSpendingByCategoryParams) ([]GetSpendingByCategoryRow, error) {
+	rows, err := q.db.Query(ctx, getSpendingByCategory, arg.WorkspaceID, arg.Year, arg.Month)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetSpendingByCategoryRow{}
+	for rows.Next() {
+		var i GetSpendingByCategoryRow
+		if err := rows.Scan(&i.CategoryID, &i.Spent); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const upsertBudgetAllocation = `-- name: UpsertBudgetAllocation :one
 INSERT INTO budget_allocations (workspace_id, category_id, year, month, amount)
 VALUES ($1, $2, $3, $4, $5)

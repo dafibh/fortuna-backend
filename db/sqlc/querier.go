@@ -38,12 +38,16 @@ type Querier interface {
 	GetCCPayableSummary(ctx context.Context, workspaceID int32) ([]GetCCPayableSummaryRow, error)
 	// Returns all categories with their allocation for a specific month (0 if not set)
 	GetCategoriesWithAllocations(ctx context.Context, arg GetCategoriesWithAllocationsParams) ([]GetCategoriesWithAllocationsRow, error)
+	// Returns all transactions for a specific category in a month
+	GetCategoryTransactions(ctx context.Context, arg GetCategoryTransactionsParams) ([]GetCategoryTransactionsRow, error)
 	GetLatestMonth(ctx context.Context, workspaceID int32) (Month, error)
 	GetMonthByYearMonth(ctx context.Context, arg GetMonthByYearMonthParams) (Month, error)
 	// Batch query to get income/expense totals grouped by year/month for N+1 prevention
 	GetMonthlyTransactionSummaries(ctx context.Context, workspaceID int32) ([]GetMonthlyTransactionSummariesRow, error)
 	// Returns recently used categories for suggestions dropdown
 	GetRecentlyUsedCategories(ctx context.Context, workspaceID int32) ([]GetRecentlyUsedCategoriesRow, error)
+	// Returns total spending per category for a specific month
+	GetSpendingByCategory(ctx context.Context, arg GetSpendingByCategoryParams) ([]GetSpendingByCategoryRow, error)
 	GetTransactionByID(ctx context.Context, arg GetTransactionByIDParams) (Transaction, error)
 	GetTransactionsByWorkspace(ctx context.Context, arg GetTransactionsByWorkspaceParams) ([]Transaction, error)
 	// Returns transactions with category name joined for display

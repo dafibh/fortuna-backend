@@ -1039,16 +1039,19 @@ func (m *MockBudgetCategoryRepository) AddBudgetCategory(category *domain.Budget
 
 // MockBudgetAllocationRepository is a mock implementation of domain.BudgetAllocationRepository
 type MockBudgetAllocationRepository struct {
-	Allocations      map[string]*domain.BudgetAllocation
-	ByWorkspaceMonth map[string][]*domain.BudgetAllocation
+	Allocations               map[string]*domain.BudgetAllocation
+	ByWorkspaceMonth          map[string][]*domain.BudgetAllocation
 	CategoriesWithAllocations map[string][]*domain.BudgetCategoryWithAllocation
-	NextID           int32
-	UpsertFn         func(allocation *domain.BudgetAllocation) (*domain.BudgetAllocation, error)
-	UpsertBatchFn    func(allocations []*domain.BudgetAllocation) error
-	GetByMonthFn     func(workspaceID int32, year, month int) ([]*domain.BudgetAllocation, error)
-	GetByCategoryFn  func(workspaceID int32, categoryID int32, year, month int) (*domain.BudgetAllocation, error)
-	DeleteFn         func(workspaceID int32, categoryID int32, year, month int) error
+	SpendingByCategory        map[string][]*domain.CategorySpending
+	NextID                    int32
+	UpsertFn                  func(allocation *domain.BudgetAllocation) (*domain.BudgetAllocation, error)
+	UpsertBatchFn             func(allocations []*domain.BudgetAllocation) error
+	GetByMonthFn              func(workspaceID int32, year, month int) ([]*domain.BudgetAllocation, error)
+	GetByCategoryFn           func(workspaceID int32, categoryID int32, year, month int) (*domain.BudgetAllocation, error)
+	DeleteFn                  func(workspaceID int32, categoryID int32, year, month int) error
 	GetCategoriesWithAllocationsFn func(workspaceID int32, year, month int) ([]*domain.BudgetCategoryWithAllocation, error)
+	GetSpendingByCategoryFn        func(workspaceID int32, year, month int) ([]*domain.CategorySpending, error)
+	GetCategoryTransactionsFn      func(workspaceID int32, categoryID int32, year, month int) ([]*domain.CategoryTransaction, error)
 }
 
 // NewMockBudgetAllocationRepository creates a new MockBudgetAllocationRepository
@@ -1057,6 +1060,7 @@ func NewMockBudgetAllocationRepository() *MockBudgetAllocationRepository {
 		Allocations:               make(map[string]*domain.BudgetAllocation),
 		ByWorkspaceMonth:          make(map[string][]*domain.BudgetAllocation),
 		CategoriesWithAllocations: make(map[string][]*domain.BudgetCategoryWithAllocation),
+		SpendingByCategory:        make(map[string][]*domain.CategorySpending),
 		NextID:                    1,
 	}
 }
@@ -1172,6 +1176,33 @@ func (m *MockBudgetAllocationRepository) GetCategoriesWithAllocations(workspaceI
 func (m *MockBudgetAllocationRepository) SetCategoriesWithAllocations(workspaceID int32, year, month int, categories []*domain.BudgetCategoryWithAllocation) {
 	key := allocationMonthKey(workspaceID, year, month)
 	m.CategoriesWithAllocations[key] = categories
+}
+
+// GetSpendingByCategory retrieves spending totals by category for a month
+func (m *MockBudgetAllocationRepository) GetSpendingByCategory(workspaceID int32, year, month int) ([]*domain.CategorySpending, error) {
+	if m.GetSpendingByCategoryFn != nil {
+		return m.GetSpendingByCategoryFn(workspaceID, year, month)
+	}
+	key := allocationMonthKey(workspaceID, year, month)
+	spending := m.SpendingByCategory[key]
+	if spending == nil {
+		return []*domain.CategorySpending{}, nil
+	}
+	return spending, nil
+}
+
+// SetSpendingByCategory sets the spending by category for a month (helper for tests)
+func (m *MockBudgetAllocationRepository) SetSpendingByCategory(workspaceID int32, year, month int, spending []*domain.CategorySpending) {
+	key := allocationMonthKey(workspaceID, year, month)
+	m.SpendingByCategory[key] = spending
+}
+
+// GetCategoryTransactions retrieves transactions for a specific category and month
+func (m *MockBudgetAllocationRepository) GetCategoryTransactions(workspaceID int32, categoryID int32, year, month int) ([]*domain.CategoryTransaction, error) {
+	if m.GetCategoryTransactionsFn != nil {
+		return m.GetCategoryTransactionsFn(workspaceID, categoryID, year, month)
+	}
+	return []*domain.CategoryTransaction{}, nil
 }
 
 // AddAllocation adds an allocation to the mock repository (helper for tests)

@@ -6,7 +6,9 @@ import (
 	"github.com/dafibh/fortuna/fortuna-backend/db/sqlc"
 	"github.com/dafibh/fortuna/fortuna-backend/internal/domain"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/shopspring/decimal"
 )
 
 // BudgetAllocationRepository implements domain.BudgetAllocationRepository using PostgreSQL
@@ -163,6 +165,29 @@ func (r *BudgetAllocationRepository) GetCategoriesWithAllocations(workspaceID in
 	return result, nil
 }
 
+// GetSpendingByCategory retrieves spending totals by category for a month
+func (r *BudgetAllocationRepository) GetSpendingByCategory(workspaceID int32, year, month int) ([]*domain.CategorySpending, error) {
+	ctx := context.Background()
+
+	rows, err := r.queries.GetSpendingByCategory(ctx, sqlc.GetSpendingByCategoryParams{
+		WorkspaceID: workspaceID,
+		Year:        int32(year),
+		Month:       int32(month),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*domain.CategorySpending, len(rows))
+	for i, row := range rows {
+		result[i] = &domain.CategorySpending{
+			CategoryID: row.CategoryID.Int32,
+			Spent:      pgInterfaceToDecimal(row.Spent),
+		}
+	}
+	return result, nil
+}
+
 // Helper function to convert sqlc BudgetAllocation to domain
 func sqlcBudgetAllocationToDomain(a sqlc.BudgetAllocation) *domain.BudgetAllocation {
 	return &domain.BudgetAllocation{
@@ -175,4 +200,42 @@ func sqlcBudgetAllocationToDomain(a sqlc.BudgetAllocation) *domain.BudgetAllocat
 		CreatedAt:   a.CreatedAt.Time,
 		UpdatedAt:   a.UpdatedAt.Time,
 	}
+}
+
+// pgInterfaceToDecimal converts an interface{} (from COALESCE) to decimal.Decimal
+func pgInterfaceToDecimal(v interface{}) decimal.Decimal {
+	if v == nil {
+		return decimal.Zero
+	}
+	if n, ok := v.(pgtype.Numeric); ok {
+		return pgNumericToDecimal(n)
+	}
+	return decimal.Zero
+}
+
+// GetCategoryTransactions retrieves transactions for a specific category and month
+func (r *BudgetAllocationRepository) GetCategoryTransactions(workspaceID int32, categoryID int32, year, month int) ([]*domain.CategoryTransaction, error) {
+	ctx := context.Background()
+
+	rows, err := r.queries.GetCategoryTransactions(ctx, sqlc.GetCategoryTransactionsParams{
+		WorkspaceID: workspaceID,
+		CategoryID:  pgtype.Int4{Int32: categoryID, Valid: true},
+		Year:        int32(year),
+		Month:       int32(month),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*domain.CategoryTransaction, len(rows))
+	for i, row := range rows {
+		result[i] = &domain.CategoryTransaction{
+			ID:              row.ID,
+			Name:            row.Name,
+			Amount:          pgNumericToDecimal(row.Amount),
+			TransactionDate: row.TransactionDate.Time.Format("2006-01-02"),
+			AccountName:     row.AccountName,
+		}
+	}
+	return result, nil
 }

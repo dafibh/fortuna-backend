@@ -312,3 +312,317 @@ func TestDeleteAllocation_CategoryNotFound(t *testing.T) {
 		t.Errorf("expected ErrBudgetCategoryNotFound, got: %v", err)
 	}
 }
+
+func TestGetMonthlyProgress(t *testing.T) {
+	allocationRepo := testutil.NewMockBudgetAllocationRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	service := NewBudgetAllocationService(allocationRepo, categoryRepo)
+
+	workspaceID := int32(1)
+	year := 2026
+	month := 1
+
+	// Setup allocations
+	allocationRepo.SetCategoriesWithAllocations(workspaceID, year, month, []*domain.BudgetCategoryWithAllocation{
+		{CategoryID: 1, CategoryName: "Food & Dining", Allocated: decimal.NewFromInt(2000)},
+		{CategoryID: 2, CategoryName: "Transport", Allocated: decimal.NewFromInt(500)},
+		{CategoryID: 3, CategoryName: "Entertainment", Allocated: decimal.NewFromInt(1000)},
+	})
+
+	// Setup spending
+	allocationRepo.SetSpendingByCategory(workspaceID, year, month, []*domain.CategorySpending{
+		{CategoryID: 1, Spent: decimal.NewFromInt(1850)}, // 92.5% - warning
+		{CategoryID: 2, Spent: decimal.NewFromInt(650)},  // 130% - over
+		{CategoryID: 3, Spent: decimal.NewFromInt(400)},  // 40% - healthy
+	})
+
+	result, err := service.GetMonthlyProgress(workspaceID, year, month)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if result.Year != year {
+		t.Errorf("expected year %d, got %d", year, result.Year)
+	}
+	if result.Month != month {
+		t.Errorf("expected month %d, got %d", month, result.Month)
+	}
+	if len(result.Categories) != 3 {
+		t.Errorf("expected 3 categories, got %d", len(result.Categories))
+	}
+
+	// Verify totals
+	expectedTotalAllocated := decimal.NewFromInt(3500)
+	if !result.TotalAllocated.Equal(expectedTotalAllocated) {
+		t.Errorf("expected total allocated %s, got %s", expectedTotalAllocated.String(), result.TotalAllocated.String())
+	}
+
+	expectedTotalSpent := decimal.NewFromInt(2900)
+	if !result.TotalSpent.Equal(expectedTotalSpent) {
+		t.Errorf("expected total spent %s, got %s", expectedTotalSpent.String(), result.TotalSpent.String())
+	}
+
+	expectedTotalRemaining := decimal.NewFromInt(600)
+	if !result.TotalRemaining.Equal(expectedTotalRemaining) {
+		t.Errorf("expected total remaining %s, got %s", expectedTotalRemaining.String(), result.TotalRemaining.String())
+	}
+}
+
+func TestGetMonthlyProgress_StatusThresholds(t *testing.T) {
+	allocationRepo := testutil.NewMockBudgetAllocationRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	service := NewBudgetAllocationService(allocationRepo, categoryRepo)
+
+	workspaceID := int32(1)
+	year := 2026
+	month := 1
+
+	// Setup allocations - all 1000 for easy percentage calculation
+	allocationRepo.SetCategoriesWithAllocations(workspaceID, year, month, []*domain.BudgetCategoryWithAllocation{
+		{CategoryID: 1, CategoryName: "Healthy", Allocated: decimal.NewFromInt(1000)},
+		{CategoryID: 2, CategoryName: "Warning", Allocated: decimal.NewFromInt(1000)},
+		{CategoryID: 3, CategoryName: "Over", Allocated: decimal.NewFromInt(1000)},
+	})
+
+	// Setup spending
+	allocationRepo.SetSpendingByCategory(workspaceID, year, month, []*domain.CategorySpending{
+		{CategoryID: 1, Spent: decimal.NewFromInt(500)},  // 50% - healthy
+		{CategoryID: 2, Spent: decimal.NewFromInt(850)},  // 85% - warning
+		{CategoryID: 3, Spent: decimal.NewFromInt(1200)}, // 120% - over
+	})
+
+	result, err := service.GetMonthlyProgress(workspaceID, year, month)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// Find categories by name and check status
+	statusMap := make(map[string]domain.BudgetStatus)
+	for _, cat := range result.Categories {
+		statusMap[cat.CategoryName] = cat.Status
+	}
+
+	if statusMap["Healthy"] != domain.BudgetStatusHealthy {
+		t.Errorf("expected Healthy to be healthy, got %s", statusMap["Healthy"])
+	}
+	if statusMap["Warning"] != domain.BudgetStatusWarning {
+		t.Errorf("expected Warning to be warning, got %s", statusMap["Warning"])
+	}
+	if statusMap["Over"] != domain.BudgetStatusOver {
+		t.Errorf("expected Over to be over, got %s", statusMap["Over"])
+	}
+}
+
+func TestGetMonthlyProgress_ExactBoundaries(t *testing.T) {
+	allocationRepo := testutil.NewMockBudgetAllocationRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	service := NewBudgetAllocationService(allocationRepo, categoryRepo)
+
+	workspaceID := int32(1)
+	year := 2026
+	month := 1
+
+	// Test exact boundary at 80%
+	allocationRepo.SetCategoriesWithAllocations(workspaceID, year, month, []*domain.BudgetCategoryWithAllocation{
+		{CategoryID: 1, CategoryName: "Exactly80", Allocated: decimal.NewFromInt(1000)},
+		{CategoryID: 2, CategoryName: "Exactly100", Allocated: decimal.NewFromInt(1000)},
+	})
+
+	allocationRepo.SetSpendingByCategory(workspaceID, year, month, []*domain.CategorySpending{
+		{CategoryID: 1, Spent: decimal.NewFromInt(800)},  // 80% - should be warning
+		{CategoryID: 2, Spent: decimal.NewFromInt(1000)}, // 100% - should be over
+	})
+
+	result, err := service.GetMonthlyProgress(workspaceID, year, month)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	statusMap := make(map[string]domain.BudgetStatus)
+	for _, cat := range result.Categories {
+		statusMap[cat.CategoryName] = cat.Status
+	}
+
+	if statusMap["Exactly80"] != domain.BudgetStatusWarning {
+		t.Errorf("expected 80%% to be warning, got %s", statusMap["Exactly80"])
+	}
+	if statusMap["Exactly100"] != domain.BudgetStatusOver {
+		t.Errorf("expected 100%% to be over, got %s", statusMap["Exactly100"])
+	}
+}
+
+func TestGetMonthlyProgress_ZeroAllocation(t *testing.T) {
+	allocationRepo := testutil.NewMockBudgetAllocationRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	service := NewBudgetAllocationService(allocationRepo, categoryRepo)
+
+	workspaceID := int32(1)
+	year := 2026
+	month := 1
+
+	// Zero allocation should result in 0% percentage
+	allocationRepo.SetCategoriesWithAllocations(workspaceID, year, month, []*domain.BudgetCategoryWithAllocation{
+		{CategoryID: 1, CategoryName: "ZeroBudget", Allocated: decimal.Zero},
+	})
+
+	allocationRepo.SetSpendingByCategory(workspaceID, year, month, []*domain.CategorySpending{
+		{CategoryID: 1, Spent: decimal.NewFromInt(100)},
+	})
+
+	result, err := service.GetMonthlyProgress(workspaceID, year, month)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if len(result.Categories) != 1 {
+		t.Fatalf("expected 1 category, got %d", len(result.Categories))
+	}
+
+	cat := result.Categories[0]
+	if !cat.Percentage.Equal(decimal.Zero) {
+		t.Errorf("expected 0%% for zero allocation, got %s", cat.Percentage.String())
+	}
+	if cat.Status != domain.BudgetStatusHealthy {
+		t.Errorf("expected healthy status for zero allocation, got %s", cat.Status)
+	}
+}
+
+func TestGetMonthlyProgress_Empty(t *testing.T) {
+	allocationRepo := testutil.NewMockBudgetAllocationRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	service := NewBudgetAllocationService(allocationRepo, categoryRepo)
+
+	result, err := service.GetMonthlyProgress(1, 2026, 1)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if len(result.Categories) != 0 {
+		t.Errorf("expected 0 categories, got %d", len(result.Categories))
+	}
+	if !result.TotalAllocated.Equal(decimal.Zero) {
+		t.Errorf("expected total allocated 0, got %s", result.TotalAllocated.String())
+	}
+	if !result.TotalSpent.Equal(decimal.Zero) {
+		t.Errorf("expected total spent 0, got %s", result.TotalSpent.String())
+	}
+}
+
+func TestGetMonthlyProgress_NoSpending(t *testing.T) {
+	allocationRepo := testutil.NewMockBudgetAllocationRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	service := NewBudgetAllocationService(allocationRepo, categoryRepo)
+
+	workspaceID := int32(1)
+	year := 2026
+	month := 1
+
+	// Allocation with no spending
+	allocationRepo.SetCategoriesWithAllocations(workspaceID, year, month, []*domain.BudgetCategoryWithAllocation{
+		{CategoryID: 1, CategoryName: "Food", Allocated: decimal.NewFromInt(1000)},
+	})
+
+	// No spending set
+
+	result, err := service.GetMonthlyProgress(workspaceID, year, month)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if len(result.Categories) != 1 {
+		t.Fatalf("expected 1 category, got %d", len(result.Categories))
+	}
+
+	cat := result.Categories[0]
+	if !cat.Spent.Equal(decimal.Zero) {
+		t.Errorf("expected 0 spent, got %s", cat.Spent.String())
+	}
+	if !cat.Percentage.Equal(decimal.Zero) {
+		t.Errorf("expected 0%%, got %s", cat.Percentage.String())
+	}
+	if !cat.Remaining.Equal(decimal.NewFromInt(1000)) {
+		t.Errorf("expected 1000 remaining, got %s", cat.Remaining.String())
+	}
+}
+
+func TestGetCategoryTransactions(t *testing.T) {
+	allocationRepo := testutil.NewMockBudgetAllocationRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	service := NewBudgetAllocationService(allocationRepo, categoryRepo)
+
+	workspaceID := int32(1)
+	categoryID := int32(1)
+	year := 2026
+	month := 1
+
+	// Add category to mock
+	categoryRepo.AddBudgetCategory(&domain.BudgetCategory{
+		ID:          categoryID,
+		WorkspaceID: workspaceID,
+		Name:        "Food & Dining",
+	})
+
+	// Setup mock transactions
+	allocationRepo.GetCategoryTransactionsFn = func(wID int32, catID int32, y, m int) ([]*domain.CategoryTransaction, error) {
+		if wID == workspaceID && catID == categoryID && y == year && m == month {
+			return []*domain.CategoryTransaction{
+				{ID: 1, Name: "Grocery Store", Amount: decimal.NewFromFloat(50.00), TransactionDate: "2026-01-15", AccountName: "DBS Debit"},
+				{ID: 2, Name: "Restaurant", Amount: decimal.NewFromFloat(25.50), TransactionDate: "2026-01-10", AccountName: "DBS Debit"},
+			}, nil
+		}
+		return []*domain.CategoryTransaction{}, nil
+	}
+
+	result, err := service.GetCategoryTransactions(workspaceID, categoryID, year, month)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if result.CategoryID != categoryID {
+		t.Errorf("expected category ID %d, got %d", categoryID, result.CategoryID)
+	}
+	if result.CategoryName != "Food & Dining" {
+		t.Errorf("expected category name 'Food & Dining', got '%s'", result.CategoryName)
+	}
+	if len(result.Transactions) != 2 {
+		t.Errorf("expected 2 transactions, got %d", len(result.Transactions))
+	}
+}
+
+func TestGetCategoryTransactions_CategoryNotFound(t *testing.T) {
+	allocationRepo := testutil.NewMockBudgetAllocationRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	service := NewBudgetAllocationService(allocationRepo, categoryRepo)
+
+	// Try to get transactions for non-existent category
+	_, err := service.GetCategoryTransactions(1, 999, 2026, 1)
+	if err != domain.ErrBudgetCategoryNotFound {
+		t.Errorf("expected ErrBudgetCategoryNotFound, got: %v", err)
+	}
+}
+
+func TestGetCategoryTransactions_Empty(t *testing.T) {
+	allocationRepo := testutil.NewMockBudgetAllocationRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	service := NewBudgetAllocationService(allocationRepo, categoryRepo)
+
+	workspaceID := int32(1)
+	categoryID := int32(1)
+
+	// Add category to mock
+	categoryRepo.AddBudgetCategory(&domain.BudgetCategory{
+		ID:          categoryID,
+		WorkspaceID: workspaceID,
+		Name:        "Food & Dining",
+	})
+
+	// No transactions (default mock returns empty)
+	result, err := service.GetCategoryTransactions(workspaceID, categoryID, 2026, 1)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if len(result.Transactions) != 0 {
+		t.Errorf("expected 0 transactions, got %d", len(result.Transactions))
+	}
+}

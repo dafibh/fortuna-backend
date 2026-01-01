@@ -135,3 +135,97 @@ func (s *BudgetAllocationService) DeleteAllocation(workspaceID int32, categoryID
 
 	return s.allocationRepo.Delete(workspaceID, categoryID, year, month)
 }
+
+// GetCategoryTransactions retrieves transactions for a specific category in a month
+func (s *BudgetAllocationService) GetCategoryTransactions(workspaceID int32, categoryID int32, year, month int) (*domain.CategoryTransactionsResponse, error) {
+	// Validate category exists and belongs to workspace
+	category, err := s.categoryRepo.GetByID(workspaceID, categoryID)
+	if err != nil {
+		return nil, err
+	}
+
+	transactions, err := s.allocationRepo.GetCategoryTransactions(workspaceID, categoryID, year, month)
+	if err != nil {
+		return nil, err
+	}
+
+	return &domain.CategoryTransactionsResponse{
+		CategoryID:   categoryID,
+		CategoryName: category.Name,
+		Transactions: transactions,
+	}, nil
+}
+
+// GetMonthlyProgress retrieves budget progress for all categories in a month
+func (s *BudgetAllocationService) GetMonthlyProgress(workspaceID int32, year, month int) (*domain.MonthlyBudgetSummary, error) {
+	// Get all categories with allocations
+	allocations, err := s.allocationRepo.GetCategoriesWithAllocations(workspaceID, year, month)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get spending by category
+	spending, err := s.allocationRepo.GetSpendingByCategory(workspaceID, year, month)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build spending map for quick lookup
+	spentMap := make(map[int32]decimal.Decimal)
+	for _, sp := range spending {
+		spentMap[sp.CategoryID] = sp.Spent
+	}
+
+	// Calculate progress for each category
+	categories := make([]*domain.BudgetProgress, 0, len(allocations))
+	totalAllocated := decimal.Zero
+	totalSpent := decimal.Zero
+
+	hundred := decimal.NewFromInt(100)
+	eightyPercent := decimal.NewFromInt(80)
+
+	for _, alloc := range allocations {
+		spent := spentMap[alloc.CategoryID]
+		if spent.IsZero() {
+			spent = decimal.Zero
+		}
+
+		remaining := alloc.Allocated.Sub(spent)
+
+		var percentage decimal.Decimal
+		if alloc.Allocated.IsPositive() {
+			percentage = spent.Div(alloc.Allocated).Mul(hundred)
+		} else {
+			percentage = decimal.Zero
+		}
+
+		status := domain.BudgetStatusHealthy
+		if percentage.GreaterThanOrEqual(hundred) {
+			status = domain.BudgetStatusOver
+		} else if percentage.GreaterThanOrEqual(eightyPercent) {
+			status = domain.BudgetStatusWarning
+		}
+
+		categories = append(categories, &domain.BudgetProgress{
+			CategoryID:   alloc.CategoryID,
+			CategoryName: alloc.CategoryName,
+			Allocated:    alloc.Allocated,
+			Spent:        spent,
+			Remaining:    remaining,
+			Percentage:   percentage.Round(2),
+			Status:       status,
+		})
+
+		totalAllocated = totalAllocated.Add(alloc.Allocated)
+		totalSpent = totalSpent.Add(spent)
+	}
+
+	return &domain.MonthlyBudgetSummary{
+		Year:           year,
+		Month:          month,
+		TotalAllocated: totalAllocated,
+		TotalSpent:     totalSpent,
+		TotalRemaining: totalAllocated.Sub(totalSpent),
+		Categories:     categories,
+	}, nil
+}
