@@ -11,6 +11,57 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const copyAllocationsToMonth = `-- name: CopyAllocationsToMonth :exec
+INSERT INTO budget_allocations (workspace_id, category_id, year, month, amount)
+SELECT ba.workspace_id, ba.category_id, $1::int, $2::int, ba.amount
+FROM budget_allocations ba
+JOIN budget_categories bc ON ba.category_id = bc.id
+WHERE ba.workspace_id = $3
+    AND ba.year = $4::int
+    AND ba.month = $5::int
+    AND bc.deleted_at IS NULL
+ON CONFLICT (workspace_id, category_id, year, month) DO NOTHING
+`
+
+type CopyAllocationsToMonthParams struct {
+	ToYear      int32 `json:"to_year"`
+	ToMonth     int32 `json:"to_month"`
+	WorkspaceID int32 `json:"workspace_id"`
+	FromYear    int32 `json:"from_year"`
+	FromMonth   int32 `json:"from_month"`
+}
+
+// Copies all allocations from one month to another (atomic, skips deleted categories)
+func (q *Queries) CopyAllocationsToMonth(ctx context.Context, arg CopyAllocationsToMonthParams) error {
+	_, err := q.db.Exec(ctx, copyAllocationsToMonth,
+		arg.ToYear,
+		arg.ToMonth,
+		arg.WorkspaceID,
+		arg.FromYear,
+		arg.FromMonth,
+	)
+	return err
+}
+
+const countAllocationsForMonth = `-- name: CountAllocationsForMonth :one
+SELECT COUNT(*) FROM budget_allocations
+WHERE workspace_id = $1 AND year = $2 AND month = $3
+`
+
+type CountAllocationsForMonthParams struct {
+	WorkspaceID int32 `json:"workspace_id"`
+	Year        int32 `json:"year"`
+	Month       int32 `json:"month"`
+}
+
+// Returns the count of allocations for a specific month (for lazy initialization check)
+func (q *Queries) CountAllocationsForMonth(ctx context.Context, arg CountAllocationsForMonthParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countAllocationsForMonth, arg.WorkspaceID, arg.Year, arg.Month)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteBudgetAllocation = `-- name: DeleteBudgetAllocation :exec
 DELETE FROM budget_allocations
 WHERE workspace_id = $1 AND category_id = $2 AND year = $3 AND month = $4

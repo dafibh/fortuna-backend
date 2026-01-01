@@ -8,6 +8,7 @@ import (
 	"github.com/dafibh/fortuna/fortuna-backend/internal/domain"
 	"github.com/dafibh/fortuna/fortuna-backend/internal/middleware"
 	"github.com/dafibh/fortuna/fortuna-backend/internal/service"
+	"github.com/dafibh/fortuna/fortuna-backend/internal/util"
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
 	"github.com/shopspring/decimal"
@@ -67,12 +68,15 @@ type BudgetMonthResponse struct {
 
 // MonthlyBudgetSummaryResponse represents the budget progress data for a month
 type MonthlyBudgetSummaryResponse struct {
-	Year           int                      `json:"year"`
-	Month          int                      `json:"month"`
-	TotalAllocated string                   `json:"totalAllocated"`
-	TotalSpent     string                   `json:"totalSpent"`
-	TotalRemaining string                   `json:"totalRemaining"`
-	Categories     []BudgetProgressResponse `json:"categories"`
+	Year                    int                      `json:"year"`
+	Month                   int                      `json:"month"`
+	TotalAllocated          string                   `json:"totalAllocated"`
+	TotalSpent              string                   `json:"totalSpent"`
+	TotalRemaining          string                   `json:"totalRemaining"`
+	Categories              []BudgetProgressResponse `json:"categories"`
+	Initialized             bool                     `json:"initialized"`
+	CopiedFromPreviousMonth bool                     `json:"copiedFromPreviousMonth"`
+	IsHistorical            bool                     `json:"isHistorical"`
 }
 
 // GetAllocations handles GET /api/v1/budgets/:year/:month
@@ -116,6 +120,11 @@ func (h *BudgetHandler) SetAllocations(c echo.Context) error {
 	month, err := strconv.Atoi(c.Param("month"))
 	if err != nil || month < 1 || month > 12 {
 		return NewValidationError(c, "Invalid month", nil)
+	}
+
+	// Prevent editing historical months
+	if util.IsHistoricalMonth(year, month) {
+		return NewValidationError(c, "Cannot modify allocations for historical months", nil)
 	}
 
 	var req SetAllocationsRequest
@@ -208,6 +217,11 @@ func (h *BudgetHandler) SetAllocation(c echo.Context) error {
 		return NewValidationError(c, "Invalid month", nil)
 	}
 
+	// Prevent editing historical months
+	if util.IsHistoricalMonth(year, month) {
+		return NewValidationError(c, "Cannot modify allocations for historical months", nil)
+	}
+
 	categoryID, err := strconv.Atoi(c.Param("categoryId"))
 	if err != nil {
 		return NewValidationError(c, "Invalid category ID", nil)
@@ -281,11 +295,14 @@ func toMonthlyBudgetSummaryResponse(result *domain.MonthlyBudgetSummary) Monthly
 		}
 	}
 	return MonthlyBudgetSummaryResponse{
-		Year:           result.Year,
-		Month:          result.Month,
-		TotalAllocated: result.TotalAllocated.StringFixed(2),
-		TotalSpent:     result.TotalSpent.StringFixed(2),
-		TotalRemaining: result.TotalRemaining.StringFixed(2),
-		Categories:     categories,
+		Year:                    result.Year,
+		Month:                   result.Month,
+		TotalAllocated:          result.TotalAllocated.StringFixed(2),
+		TotalSpent:              result.TotalSpent.StringFixed(2),
+		TotalRemaining:          result.TotalRemaining.StringFixed(2),
+		Categories:              categories,
+		Initialized:             result.Initialized,
+		CopiedFromPreviousMonth: result.CopiedFromPreviousMonth,
+		IsHistorical:            result.IsHistorical,
 	}
 }

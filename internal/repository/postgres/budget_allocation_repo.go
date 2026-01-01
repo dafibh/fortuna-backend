@@ -239,3 +239,32 @@ func (r *BudgetAllocationRepository) GetCategoryTransactions(workspaceID int32, 
 	}
 	return result, nil
 }
+
+// CountAllocationsForMonth returns the count of allocations for a specific month
+func (r *BudgetAllocationRepository) CountAllocationsForMonth(workspaceID int32, year, month int) (int64, error) {
+	ctx := context.Background()
+
+	count, err := r.queries.CountAllocationsForMonth(ctx, sqlc.CountAllocationsForMonthParams{
+		WorkspaceID: workspaceID,
+		Year:        int32(year),
+		Month:       int32(month),
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
+// CopyAllocationsToMonth copies all allocations from one month to another
+func (r *BudgetAllocationRepository) CopyAllocationsToMonth(workspaceID int32, fromYear, fromMonth, toYear, toMonth int) error {
+	ctx := context.Background()
+
+	return r.queries.CopyAllocationsToMonth(ctx, sqlc.CopyAllocationsToMonthParams{
+		WorkspaceID: workspaceID,
+		FromYear:    int32(fromYear),
+		FromMonth:   int32(fromMonth),
+		ToYear:      int32(toYear),
+		ToMonth:     int32(toMonth),
+	})
+}

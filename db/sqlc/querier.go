@@ -11,6 +11,10 @@ import (
 )
 
 type Querier interface {
+	// Copies all allocations from one month to another (atomic, skips deleted categories)
+	CopyAllocationsToMonth(ctx context.Context, arg CopyAllocationsToMonthParams) error
+	// Returns the count of allocations for a specific month (for lazy initialization check)
+	CountAllocationsForMonth(ctx context.Context, arg CountAllocationsForMonthParams) (int64, error)
 	// Count transactions assigned to a specific category
 	CountTransactionsByCategory(ctx context.Context, arg CountTransactionsByCategoryParams) (int64, error)
 	CountTransactionsByWorkspace(ctx context.Context, arg CountTransactionsByWorkspaceParams) (int64, error)

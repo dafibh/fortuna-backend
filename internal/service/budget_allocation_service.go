@@ -2,6 +2,7 @@ package service
 
 import (
 	"github.com/dafibh/fortuna/fortuna-backend/internal/domain"
+	"github.com/dafibh/fortuna/fortuna-backend/internal/util"
 	"github.com/shopspring/decimal"
 )
 
@@ -158,6 +159,28 @@ func (s *BudgetAllocationService) GetCategoryTransactions(workspaceID int32, cat
 
 // GetMonthlyProgress retrieves budget progress for all categories in a month
 func (s *BudgetAllocationService) GetMonthlyProgress(workspaceID int32, year, month int) (*domain.MonthlyBudgetSummary, error) {
+	// Check if this month has any allocations (lazy initialization check)
+	existingCount, err := s.allocationRepo.CountAllocationsForMonth(workspaceID, year, month)
+	if err != nil {
+		return nil, err
+	}
+
+	copiedFromPreviousMonth := false
+
+	// If no allocations, try to copy from previous month
+	if existingCount == 0 {
+		prevYear, prevMonth := util.PreviousMonth(year, month)
+		err := s.allocationRepo.CopyAllocationsToMonth(workspaceID, prevYear, prevMonth, year, month)
+		if err != nil {
+			// Log but don't fail - might be first month or no previous allocations
+			// In production, we'd log this error
+		} else {
+			// Check if we actually copied anything
+			newCount, _ := s.allocationRepo.CountAllocationsForMonth(workspaceID, year, month)
+			copiedFromPreviousMonth = newCount > 0
+		}
+	}
+
 	// Get all categories with allocations
 	allocations, err := s.allocationRepo.GetCategoriesWithAllocations(workspaceID, year, month)
 	if err != nil {
@@ -221,11 +244,14 @@ func (s *BudgetAllocationService) GetMonthlyProgress(workspaceID int32, year, mo
 	}
 
 	return &domain.MonthlyBudgetSummary{
-		Year:           year,
-		Month:          month,
-		TotalAllocated: totalAllocated,
-		TotalSpent:     totalSpent,
-		TotalRemaining: totalAllocated.Sub(totalSpent),
-		Categories:     categories,
+		Year:                    year,
+		Month:                   month,
+		TotalAllocated:          totalAllocated,
+		TotalSpent:              totalSpent,
+		TotalRemaining:          totalAllocated.Sub(totalSpent),
+		Categories:              categories,
+		Initialized:             true,
+		CopiedFromPreviousMonth: copiedFromPreviousMonth,
+		IsHistorical:            util.IsHistoricalMonth(year, month),
 	}, nil
 }

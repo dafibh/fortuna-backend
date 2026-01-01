@@ -45,12 +45,15 @@ type BudgetProgress struct {
 
 // MonthlyBudgetSummary contains budget progress for all categories in a month
 type MonthlyBudgetSummary struct {
-	Year           int               `json:"year"`
-	Month          int               `json:"month"`
-	TotalAllocated decimal.Decimal   `json:"totalAllocated"`
-	TotalSpent     decimal.Decimal   `json:"totalSpent"`
-	TotalRemaining decimal.Decimal   `json:"totalRemaining"`
-	Categories     []*BudgetProgress `json:"categories"`
+	Year                    int               `json:"year"`
+	Month                   int               `json:"month"`
+	TotalAllocated          decimal.Decimal   `json:"totalAllocated"`
+	TotalSpent              decimal.Decimal   `json:"totalSpent"`
+	TotalRemaining          decimal.Decimal   `json:"totalRemaining"`
+	Categories              []*BudgetProgress `json:"categories"`
+	Initialized             bool              `json:"initialized"`
+	CopiedFromPreviousMonth bool              `json:"copiedFromPreviousMonth"`
+	IsHistorical            bool              `json:"isHistorical"`
 }
 
 // CategorySpending represents spending for a single category
@@ -84,4 +87,6 @@ type BudgetAllocationRepository interface {
 	GetCategoriesWithAllocations(workspaceID int32, year, month int) ([]*BudgetCategoryWithAllocation, error)
 	GetSpendingByCategory(workspaceID int32, year, month int) ([]*CategorySpending, error)
 	GetCategoryTransactions(workspaceID int32, categoryID int32, year, month int) ([]*CategoryTransaction, error)
+	CountAllocationsForMonth(workspaceID int32, year, month int) (int64, error)
+	CopyAllocationsToMonth(workspaceID int32, fromYear, fromMonth, toYear, toMonth int) error
 }

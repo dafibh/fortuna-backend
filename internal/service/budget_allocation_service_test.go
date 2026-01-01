@@ -626,3 +626,178 @@ func TestGetCategoryTransactions_Empty(t *testing.T) {
 		t.Errorf("expected 0 transactions, got %d", len(result.Transactions))
 	}
 }
+
+// Tests for month boundary scenarios (Story 4-5)
+
+
+func TestGetMonthlyProgress_CopiesFromPreviousMonth(t *testing.T) {
+	allocationRepo := testutil.NewMockBudgetAllocationRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	service := NewBudgetAllocationService(allocationRepo, categoryRepo)
+
+	workspaceID := int32(1)
+	year := 2026
+	month := 2 // February - new month with no allocations
+
+	// Set count for target month to 0 (no allocations yet)
+	allocationRepo.SetAllocationCount(workspaceID, year, month, 0)
+
+	// Setup previous month (January) with allocations
+	allocationRepo.SetAllocationCount(workspaceID, year, 1, 2)
+	allocationRepo.SetCategoriesWithAllocations(workspaceID, year, 1, []*domain.BudgetCategoryWithAllocation{
+		{CategoryID: 1, CategoryName: "Food & Dining", Allocated: decimal.NewFromInt(2000)},
+		{CategoryID: 2, CategoryName: "Transport", Allocated: decimal.NewFromInt(500)},
+	})
+
+	// Track if copy was called
+	copyWasCalled := false
+	allocationRepo.CopyAllocationsToMonthFn = func(wID int32, fromYear, fromMonth, toYear, toMonth int) error {
+		copyWasCalled = true
+		if wID != workspaceID || fromYear != year || fromMonth != 1 || toYear != year || toMonth != month {
+			t.Errorf("CopyAllocationsToMonth called with wrong params")
+		}
+		// Simulate copy by updating the count
+		allocationRepo.SetAllocationCount(wID, toYear, toMonth, 2)
+		allocationRepo.SetCategoriesWithAllocations(wID, toYear, toMonth, []*domain.BudgetCategoryWithAllocation{
+			{CategoryID: 1, CategoryName: "Food & Dining", Allocated: decimal.NewFromInt(2000)},
+			{CategoryID: 2, CategoryName: "Transport", Allocated: decimal.NewFromInt(500)},
+		})
+		return nil
+	}
+
+	result, err := service.GetMonthlyProgress(workspaceID, year, month)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if !copyWasCalled {
+		t.Error("expected CopyAllocationsToMonth to be called")
+	}
+
+	if !result.CopiedFromPreviousMonth {
+		t.Error("expected CopiedFromPreviousMonth to be true")
+	}
+
+	if !result.Initialized {
+		t.Error("expected Initialized to be true")
+	}
+}
+
+func TestGetMonthlyProgress_NoCopyWhenAllocationsExist(t *testing.T) {
+	allocationRepo := testutil.NewMockBudgetAllocationRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	service := NewBudgetAllocationService(allocationRepo, categoryRepo)
+
+	workspaceID := int32(1)
+	year := 2026
+	month := 2
+
+	// Set count for target month to non-zero (allocations already exist)
+	allocationRepo.SetAllocationCount(workspaceID, year, month, 2)
+	allocationRepo.SetCategoriesWithAllocations(workspaceID, year, month, []*domain.BudgetCategoryWithAllocation{
+		{CategoryID: 1, CategoryName: "Food & Dining", Allocated: decimal.NewFromInt(2000)},
+		{CategoryID: 2, CategoryName: "Transport", Allocated: decimal.NewFromInt(500)},
+	})
+
+	copyWasCalled := false
+	allocationRepo.CopyAllocationsToMonthFn = func(wID int32, fromYear, fromMonth, toYear, toMonth int) error {
+		copyWasCalled = true
+		return nil
+	}
+
+	result, err := service.GetMonthlyProgress(workspaceID, year, month)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if copyWasCalled {
+		t.Error("expected CopyAllocationsToMonth NOT to be called when allocations exist")
+	}
+
+	if result.CopiedFromPreviousMonth {
+		t.Error("expected CopiedFromPreviousMonth to be false when allocations already existed")
+	}
+}
+
+func TestGetMonthlyProgress_FirstMonthEver(t *testing.T) {
+	allocationRepo := testutil.NewMockBudgetAllocationRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	service := NewBudgetAllocationService(allocationRepo, categoryRepo)
+
+	workspaceID := int32(1)
+	year := 2026
+	month := 1
+
+	// No allocations for target month
+	allocationRepo.SetAllocationCount(workspaceID, year, month, 0)
+	// No allocations for previous month (Dec 2025)
+	allocationRepo.SetAllocationCount(workspaceID, 2025, 12, 0)
+
+	allocationRepo.CopyAllocationsToMonthFn = func(wID int32, fromYear, fromMonth, toYear, toMonth int) error {
+		// Copy is called but does nothing (no previous allocations)
+		return nil
+	}
+
+	result, err := service.GetMonthlyProgress(workspaceID, year, month)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// No allocations copied because previous month was empty
+	if result.CopiedFromPreviousMonth {
+		t.Error("expected CopiedFromPreviousMonth to be false for first month ever")
+	}
+
+	if len(result.Categories) != 0 {
+		t.Errorf("expected 0 categories for first month, got %d", len(result.Categories))
+	}
+}
+
+func TestGetMonthlyProgress_YearBoundaryCopy(t *testing.T) {
+	allocationRepo := testutil.NewMockBudgetAllocationRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	service := NewBudgetAllocationService(allocationRepo, categoryRepo)
+
+	workspaceID := int32(1)
+
+	// January 2026 - should copy from December 2025
+	year := 2026
+	month := 1
+
+	// No allocations for Jan 2026
+	allocationRepo.SetAllocationCount(workspaceID, year, month, 0)
+
+	// Allocations exist for Dec 2025
+	allocationRepo.SetAllocationCount(workspaceID, 2025, 12, 2)
+	allocationRepo.SetCategoriesWithAllocations(workspaceID, 2025, 12, []*domain.BudgetCategoryWithAllocation{
+		{CategoryID: 1, CategoryName: "Food & Dining", Allocated: decimal.NewFromInt(2000)},
+		{CategoryID: 2, CategoryName: "Transport", Allocated: decimal.NewFromInt(500)},
+	})
+
+	copyFromYear := 0
+	copyFromMonth := 0
+	allocationRepo.CopyAllocationsToMonthFn = func(wID int32, fromYear, fromMonth, toYear, toMonth int) error {
+		copyFromYear = fromYear
+		copyFromMonth = fromMonth
+		// Simulate successful copy
+		allocationRepo.SetAllocationCount(wID, toYear, toMonth, 2)
+		allocationRepo.SetCategoriesWithAllocations(wID, toYear, toMonth, []*domain.BudgetCategoryWithAllocation{
+			{CategoryID: 1, CategoryName: "Food & Dining", Allocated: decimal.NewFromInt(2000)},
+			{CategoryID: 2, CategoryName: "Transport", Allocated: decimal.NewFromInt(500)},
+		})
+		return nil
+	}
+
+	result, err := service.GetMonthlyProgress(workspaceID, year, month)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if copyFromYear != 2025 || copyFromMonth != 12 {
+		t.Errorf("expected copy from Dec 2025, got %d/%d", copyFromYear, copyFromMonth)
+	}
+
+	if !result.CopiedFromPreviousMonth {
+		t.Error("expected CopiedFromPreviousMonth to be true")
+	}
+}

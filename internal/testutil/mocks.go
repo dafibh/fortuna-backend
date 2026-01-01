@@ -1043,6 +1043,7 @@ type MockBudgetAllocationRepository struct {
 	ByWorkspaceMonth          map[string][]*domain.BudgetAllocation
 	CategoriesWithAllocations map[string][]*domain.BudgetCategoryWithAllocation
 	SpendingByCategory        map[string][]*domain.CategorySpending
+	AllocationCounts          map[string]int64
 	NextID                    int32
 	UpsertFn                  func(allocation *domain.BudgetAllocation) (*domain.BudgetAllocation, error)
 	UpsertBatchFn             func(allocations []*domain.BudgetAllocation) error
@@ -1052,6 +1053,8 @@ type MockBudgetAllocationRepository struct {
 	GetCategoriesWithAllocationsFn func(workspaceID int32, year, month int) ([]*domain.BudgetCategoryWithAllocation, error)
 	GetSpendingByCategoryFn        func(workspaceID int32, year, month int) ([]*domain.CategorySpending, error)
 	GetCategoryTransactionsFn      func(workspaceID int32, categoryID int32, year, month int) ([]*domain.CategoryTransaction, error)
+	CountAllocationsForMonthFn     func(workspaceID int32, year, month int) (int64, error)
+	CopyAllocationsToMonthFn       func(workspaceID int32, fromYear, fromMonth, toYear, toMonth int) error
 }
 
 // NewMockBudgetAllocationRepository creates a new MockBudgetAllocationRepository
@@ -1061,6 +1064,7 @@ func NewMockBudgetAllocationRepository() *MockBudgetAllocationRepository {
 		ByWorkspaceMonth:          make(map[string][]*domain.BudgetAllocation),
 		CategoriesWithAllocations: make(map[string][]*domain.BudgetCategoryWithAllocation),
 		SpendingByCategory:        make(map[string][]*domain.CategorySpending),
+		AllocationCounts:          make(map[string]int64),
 		NextID:                    1,
 	}
 }
@@ -1211,4 +1215,49 @@ func (m *MockBudgetAllocationRepository) AddAllocation(allocation *domain.Budget
 	monthKey := allocationMonthKey(allocation.WorkspaceID, allocation.Year, allocation.Month)
 	m.Allocations[key] = allocation
 	m.ByWorkspaceMonth[monthKey] = append(m.ByWorkspaceMonth[monthKey], allocation)
+}
+
+// CountAllocationsForMonth returns the count of allocations for a specific month
+func (m *MockBudgetAllocationRepository) CountAllocationsForMonth(workspaceID int32, year, month int) (int64, error) {
+	if m.CountAllocationsForMonthFn != nil {
+		return m.CountAllocationsForMonthFn(workspaceID, year, month)
+	}
+	key := allocationMonthKey(workspaceID, year, month)
+	// Check if a count was explicitly set for this month
+	if count, ok := m.AllocationCounts[key]; ok {
+		return count, nil
+	}
+	// Fall back to counting allocations in the ByWorkspaceMonth map
+	allocations := m.ByWorkspaceMonth[key]
+	return int64(len(allocations)), nil
+}
+
+// SetAllocationCount sets the allocation count for a month (helper for tests)
+func (m *MockBudgetAllocationRepository) SetAllocationCount(workspaceID int32, year, month int, count int64) {
+	key := allocationMonthKey(workspaceID, year, month)
+	m.AllocationCounts[key] = count
+}
+
+// CopyAllocationsToMonth copies all allocations from one month to another
+func (m *MockBudgetAllocationRepository) CopyAllocationsToMonth(workspaceID int32, fromYear, fromMonth, toYear, toMonth int) error {
+	if m.CopyAllocationsToMonthFn != nil {
+		return m.CopyAllocationsToMonthFn(workspaceID, fromYear, fromMonth, toYear, toMonth)
+	}
+	fromKey := allocationMonthKey(workspaceID, fromYear, fromMonth)
+	fromAllocations := m.ByWorkspaceMonth[fromKey]
+
+	for _, alloc := range fromAllocations {
+		newAlloc := &domain.BudgetAllocation{
+			WorkspaceID: alloc.WorkspaceID,
+			CategoryID:  alloc.CategoryID,
+			Year:        toYear,
+			Month:       toMonth,
+			Amount:      alloc.Amount,
+		}
+		_, err := m.Upsert(newAlloc)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

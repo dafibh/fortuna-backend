@@ -58,3 +58,20 @@ WHERE t.workspace_id = @workspace_id
     AND EXTRACT(YEAR FROM t.transaction_date) = @year::int
     AND EXTRACT(MONTH FROM t.transaction_date) = @month::int
 ORDER BY t.transaction_date DESC;
+
+-- name: CountAllocationsForMonth :one
+-- Returns the count of allocations for a specific month (for lazy initialization check)
+SELECT COUNT(*) FROM budget_allocations
+WHERE workspace_id = $1 AND year = $2 AND month = $3;
+
+-- name: CopyAllocationsToMonth :exec
+-- Copies all allocations from one month to another (atomic, skips deleted categories)
+INSERT INTO budget_allocations (workspace_id, category_id, year, month, amount)
+SELECT ba.workspace_id, ba.category_id, @to_year::int, @to_month::int, ba.amount
+FROM budget_allocations ba
+JOIN budget_categories bc ON ba.category_id = bc.id
+WHERE ba.workspace_id = @workspace_id
+    AND ba.year = @from_year::int
+    AND ba.month = @from_month::int
+    AND bc.deleted_at IS NULL
+ON CONFLICT (workspace_id, category_id, year, month) DO NOTHING;
