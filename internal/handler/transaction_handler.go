@@ -17,11 +17,15 @@ import (
 // TransactionHandler handles transaction-related HTTP requests
 type TransactionHandler struct {
 	transactionService *service.TransactionService
+	recurringService   *service.RecurringService
 }
 
 // NewTransactionHandler creates a new TransactionHandler
-func NewTransactionHandler(transactionService *service.TransactionService) *TransactionHandler {
-	return &TransactionHandler{transactionService: transactionService}
+func NewTransactionHandler(transactionService *service.TransactionService, recurringService *service.RecurringService) *TransactionHandler {
+	return &TransactionHandler{
+		transactionService: transactionService,
+		recurringService:   recurringService,
+	}
 }
 
 // CreateTransactionRequest represents the create transaction request body
@@ -39,21 +43,22 @@ type CreateTransactionRequest struct {
 
 // TransactionResponse represents a transaction in API responses
 type TransactionResponse struct {
-	ID                 int32   `json:"id"`
-	WorkspaceID        int32   `json:"workspaceId"`
-	AccountID          int32   `json:"accountId"`
-	Name               string  `json:"name"`
-	Amount             string  `json:"amount"`
-	Type               string  `json:"type"`
-	TransactionDate    string  `json:"transactionDate"`
-	IsPaid             bool    `json:"isPaid"`
-	CCSettlementIntent *string `json:"ccSettlementIntent,omitempty"`
-	Notes              *string `json:"notes,omitempty"`
-	TransferPairID     *string `json:"transferPairId,omitempty"`
-	CategoryID         *int32  `json:"categoryId,omitempty"`
-	CategoryName       *string `json:"categoryName,omitempty"`
-	CreatedAt          string  `json:"createdAt"`
-	UpdatedAt          string  `json:"updatedAt"`
+	ID                     int32   `json:"id"`
+	WorkspaceID            int32   `json:"workspaceId"`
+	AccountID              int32   `json:"accountId"`
+	Name                   string  `json:"name"`
+	Amount                 string  `json:"amount"`
+	Type                   string  `json:"type"`
+	TransactionDate        string  `json:"transactionDate"`
+	IsPaid                 bool    `json:"isPaid"`
+	CCSettlementIntent     *string `json:"ccSettlementIntent,omitempty"`
+	Notes                  *string `json:"notes,omitempty"`
+	TransferPairID         *string `json:"transferPairId,omitempty"`
+	CategoryID             *int32  `json:"categoryId,omitempty"`
+	CategoryName           *string `json:"categoryName,omitempty"`
+	RecurringTransactionID *int32  `json:"recurringTransactionId,omitempty"`
+	CreatedAt              string  `json:"createdAt"`
+	UpdatedAt              string  `json:"updatedAt"`
 }
 
 // CreateTransferRequest represents the create transfer request body
@@ -258,6 +263,40 @@ func (h *TransactionHandler) GetTransactions(c echo.Context) error {
 			pageSize = domain.MaxPageSize
 		}
 		filters.PageSize = pageSize
+	}
+
+	// Lazy generation: if date range includes current month, generate recurring transactions.
+	// Performance note: This adds minimal overhead because:
+	// 1. Idempotency check is a fast indexed query (recurring_transaction_id + year/month)
+	// 2. After first call each month, all templates are skipped (already exist)
+	// 3. Only runs when viewing current month's transactions
+	// For high-volume usage, consider migrating to a cron job (Task 6.2 in story).
+	if h.recurringService != nil {
+		now := time.Now()
+		currentYear, currentMonth := now.Year(), now.Month()
+		includesCurrentMonth := true
+
+		if filters.StartDate != nil {
+			// If start date is after current month end, exclude
+			endOfCurrentMonth := time.Date(currentYear, currentMonth+1, 0, 23, 59, 59, 0, time.UTC)
+			if filters.StartDate.After(endOfCurrentMonth) {
+				includesCurrentMonth = false
+			}
+		}
+		if filters.EndDate != nil {
+			// If end date is before current month start, exclude
+			startOfCurrentMonth := time.Date(currentYear, currentMonth, 1, 0, 0, 0, 0, time.UTC)
+			if filters.EndDate.Before(startOfCurrentMonth) {
+				includesCurrentMonth = false
+			}
+		}
+
+		if includesCurrentMonth {
+			if _, err := h.recurringService.GenerateRecurringTransactions(workspaceID, currentYear, currentMonth); err != nil {
+				// Log but don't fail - recurring generation is non-critical
+				log.Warn().Err(err).Int32("workspace_id", workspaceID).Msg("Failed to generate recurring transactions")
+			}
+		}
 	}
 
 	result, err := h.transactionService.GetTransactions(workspaceID, filters)
@@ -665,6 +704,9 @@ func toTransactionResponse(transaction *domain.Transaction) TransactionResponse 
 	}
 	if transaction.CategoryName != nil {
 		resp.CategoryName = transaction.CategoryName
+	}
+	if transaction.RecurringTransactionID != nil {
+		resp.RecurringTransactionID = transaction.RecurringTransactionID
 	}
 	return resp
 }

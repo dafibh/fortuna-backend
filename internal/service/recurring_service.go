@@ -10,21 +10,24 @@ import (
 
 // RecurringService handles recurring transaction business logic
 type RecurringService struct {
-	recurringRepo domain.RecurringRepository
-	accountRepo   domain.AccountRepository
-	categoryRepo  domain.BudgetCategoryRepository
+	recurringRepo   domain.RecurringRepository
+	transactionRepo domain.TransactionRepository
+	accountRepo     domain.AccountRepository
+	categoryRepo    domain.BudgetCategoryRepository
 }
 
 // NewRecurringService creates a new RecurringService
 func NewRecurringService(
 	recurringRepo domain.RecurringRepository,
+	transactionRepo domain.TransactionRepository,
 	accountRepo domain.AccountRepository,
 	categoryRepo domain.BudgetCategoryRepository,
 ) *RecurringService {
 	return &RecurringService{
-		recurringRepo: recurringRepo,
-		accountRepo:   accountRepo,
-		categoryRepo:  categoryRepo,
+		recurringRepo:   recurringRepo,
+		transactionRepo: transactionRepo,
+		accountRepo:     accountRepo,
+		categoryRepo:    categoryRepo,
 	}
 }
 
@@ -214,4 +217,69 @@ func CalculateActualDueDate(dueDay int32, year int, month time.Month) time.Time 
 	}
 
 	return time.Date(year, month, actualDay, 0, 0, 0, 0, time.UTC)
+}
+
+// GenerationResult holds the result of generating recurring transactions
+type GenerationResult struct {
+	Generated []*domain.Transaction `json:"generated"`
+	Skipped   int                   `json:"skipped"`
+	Errors    []string              `json:"errors,omitempty"`
+}
+
+// GenerateRecurringTransactions generates transactions from active recurring templates
+// for the specified month/year. Uses idempotency check to skip already-generated transactions.
+func (s *RecurringService) GenerateRecurringTransactions(workspaceID int32, year int, month time.Month) (*GenerationResult, error) {
+	result := &GenerationResult{
+		Generated: make([]*domain.Transaction, 0),
+		Skipped:   0,
+		Errors:    make([]string, 0),
+	}
+
+	// Get all active recurring transactions
+	activeOnly := true
+	recurring, err := s.recurringRepo.ListByWorkspace(workspaceID, &activeOnly)
+	if err != nil {
+		return nil, err
+	}
+
+	// Process each recurring template
+	for _, rt := range recurring {
+		// Check if transaction already exists for this month
+		exists, err := s.recurringRepo.CheckTransactionExists(rt.ID, workspaceID, year, int(month))
+		if err != nil {
+			result.Errors = append(result.Errors, "Failed to check existing for "+rt.Name+": "+err.Error())
+			continue
+		}
+
+		if exists {
+			result.Skipped++
+			continue
+		}
+
+		// Calculate actual due date for this month
+		dueDate := CalculateActualDueDate(rt.DueDay, year, month)
+
+		// Create the transaction
+		tx := &domain.Transaction{
+			WorkspaceID:            workspaceID,
+			AccountID:              rt.AccountID,
+			Name:                   rt.Name,
+			Amount:                 rt.Amount,
+			Type:                   rt.Type,
+			TransactionDate:        dueDate,
+			IsPaid:                 false,
+			CategoryID:             rt.CategoryID,
+			RecurringTransactionID: &rt.ID,
+		}
+
+		created, err := s.transactionRepo.Create(tx)
+		if err != nil {
+			result.Errors = append(result.Errors, "Failed to create for "+rt.Name+": "+err.Error())
+			continue
+		}
+
+		result.Generated = append(result.Generated, created)
+	}
+
+	return result, nil
 }

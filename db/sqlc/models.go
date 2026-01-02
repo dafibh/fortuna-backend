@@ -85,6 +85,8 @@ type Transaction struct {
 	TransferPairID     pgtype.UUID        `json:"transfer_pair_id"`
 	CategoryID         pgtype.Int4        `json:"category_id"`
 	IsCcPayment        bool               `json:"is_cc_payment"`
+	// Links transaction to recurring template if auto-generated
+	RecurringTransactionID pgtype.Int4 `json:"recurring_transaction_id"`
 }
 
 type User struct {

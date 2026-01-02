@@ -9,18 +9,19 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-func setupRecurringServiceTest() (*RecurringService, *testutil.MockRecurringRepository, *testutil.MockAccountRepository, *testutil.MockBudgetCategoryRepository) {
+func setupRecurringServiceTest() (*RecurringService, *testutil.MockRecurringRepository, *testutil.MockTransactionRepository, *testutil.MockAccountRepository, *testutil.MockBudgetCategoryRepository) {
 	recurringRepo := testutil.NewMockRecurringRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
-	service := NewRecurringService(recurringRepo, accountRepo, categoryRepo)
-	return service, recurringRepo, accountRepo, categoryRepo
+	service := NewRecurringService(recurringRepo, transactionRepo, accountRepo, categoryRepo)
+	return service, recurringRepo, transactionRepo, accountRepo, categoryRepo
 }
 
 // CreateRecurring tests
 
 func TestCreateRecurring_Success(t *testing.T) {
-	service, _, accountRepo, _ := setupRecurringServiceTest()
+	service, _, _, accountRepo, _ := setupRecurringServiceTest()
 
 	workspaceID := int32(1)
 	accountID := int32(1)
@@ -67,7 +68,7 @@ func TestCreateRecurring_Success(t *testing.T) {
 }
 
 func TestCreateRecurring_WithCategory(t *testing.T) {
-	service, _, accountRepo, categoryRepo := setupRecurringServiceTest()
+	service, _, _, accountRepo, categoryRepo := setupRecurringServiceTest()
 
 	workspaceID := int32(1)
 	accountID := int32(1)
@@ -108,7 +109,7 @@ func TestCreateRecurring_WithCategory(t *testing.T) {
 }
 
 func TestCreateRecurring_DefaultDueDay(t *testing.T) {
-	service, _, accountRepo, _ := setupRecurringServiceTest()
+	service, _, _, accountRepo, _ := setupRecurringServiceTest()
 
 	workspaceID := int32(1)
 	accountID := int32(1)
@@ -139,7 +140,7 @@ func TestCreateRecurring_DefaultDueDay(t *testing.T) {
 }
 
 func TestCreateRecurring_EmptyName(t *testing.T) {
-	service, _, accountRepo, _ := setupRecurringServiceTest()
+	service, _, _, accountRepo, _ := setupRecurringServiceTest()
 
 	workspaceID := int32(1)
 	accountID := int32(1)
@@ -165,7 +166,7 @@ func TestCreateRecurring_EmptyName(t *testing.T) {
 }
 
 func TestCreateRecurring_WhitespaceOnlyName(t *testing.T) {
-	service, _, accountRepo, _ := setupRecurringServiceTest()
+	service, _, _, accountRepo, _ := setupRecurringServiceTest()
 
 	workspaceID := int32(1)
 	accountID := int32(1)
@@ -191,7 +192,7 @@ func TestCreateRecurring_WhitespaceOnlyName(t *testing.T) {
 }
 
 func TestCreateRecurring_ZeroAmount(t *testing.T) {
-	service, _, accountRepo, _ := setupRecurringServiceTest()
+	service, _, _, accountRepo, _ := setupRecurringServiceTest()
 
 	workspaceID := int32(1)
 	accountID := int32(1)
@@ -217,7 +218,7 @@ func TestCreateRecurring_ZeroAmount(t *testing.T) {
 }
 
 func TestCreateRecurring_NegativeAmount(t *testing.T) {
-	service, _, accountRepo, _ := setupRecurringServiceTest()
+	service, _, _, accountRepo, _ := setupRecurringServiceTest()
 
 	workspaceID := int32(1)
 	accountID := int32(1)
@@ -243,7 +244,7 @@ func TestCreateRecurring_NegativeAmount(t *testing.T) {
 }
 
 func TestCreateRecurring_InvalidType(t *testing.T) {
-	service, _, accountRepo, _ := setupRecurringServiceTest()
+	service, _, _, accountRepo, _ := setupRecurringServiceTest()
 
 	workspaceID := int32(1)
 	accountID := int32(1)
@@ -269,7 +270,7 @@ func TestCreateRecurring_InvalidType(t *testing.T) {
 }
 
 func TestCreateRecurring_InvalidFrequency(t *testing.T) {
-	service, _, accountRepo, _ := setupRecurringServiceTest()
+	service, _, _, accountRepo, _ := setupRecurringServiceTest()
 
 	workspaceID := int32(1)
 	accountID := int32(1)
@@ -295,7 +296,7 @@ func TestCreateRecurring_InvalidFrequency(t *testing.T) {
 }
 
 func TestCreateRecurring_InvalidDueDay_TooLow(t *testing.T) {
-	service, _, accountRepo, _ := setupRecurringServiceTest()
+	service, _, _, accountRepo, _ := setupRecurringServiceTest()
 
 	workspaceID := int32(1)
 	accountID := int32(1)
@@ -321,7 +322,7 @@ func TestCreateRecurring_InvalidDueDay_TooLow(t *testing.T) {
 }
 
 func TestCreateRecurring_InvalidDueDay_TooHigh(t *testing.T) {
-	service, _, accountRepo, _ := setupRecurringServiceTest()
+	service, _, _, accountRepo, _ := setupRecurringServiceTest()
 
 	workspaceID := int32(1)
 	accountID := int32(1)
@@ -347,7 +348,7 @@ func TestCreateRecurring_InvalidDueDay_TooHigh(t *testing.T) {
 }
 
 func TestCreateRecurring_AccountNotFound(t *testing.T) {
-	service, _, _, _ := setupRecurringServiceTest()
+	service, _, _, _, _ := setupRecurringServiceTest()
 
 	workspaceID := int32(1)
 
@@ -367,7 +368,7 @@ func TestCreateRecurring_AccountNotFound(t *testing.T) {
 }
 
 func TestCreateRecurring_AccountWrongWorkspace(t *testing.T) {
-	service, _, accountRepo, _ := setupRecurringServiceTest()
+	service, _, _, accountRepo, _ := setupRecurringServiceTest()
 
 	accountRepo.AddAccount(&domain.Account{
 		ID:          1,
@@ -391,7 +392,7 @@ func TestCreateRecurring_AccountWrongWorkspace(t *testing.T) {
 }
 
 func TestCreateRecurring_CategoryNotFound(t *testing.T) {
-	service, _, accountRepo, _ := setupRecurringServiceTest()
+	service, _, _, accountRepo, _ := setupRecurringServiceTest()
 
 	workspaceID := int32(1)
 	accountID := int32(1)
@@ -421,7 +422,7 @@ func TestCreateRecurring_CategoryNotFound(t *testing.T) {
 // ListRecurring tests
 
 func TestListRecurring_Success(t *testing.T) {
-	service, recurringRepo, _, _ := setupRecurringServiceTest()
+	service, recurringRepo, _, _, _ := setupRecurringServiceTest()
 
 	workspaceID := int32(1)
 
@@ -449,7 +450,7 @@ func TestListRecurring_Success(t *testing.T) {
 }
 
 func TestListRecurring_FilterActiveOnly(t *testing.T) {
-	service, recurringRepo, _, _ := setupRecurringServiceTest()
+	service, recurringRepo, _, _, _ := setupRecurringServiceTest()
 
 	workspaceID := int32(1)
 
@@ -481,7 +482,7 @@ func TestListRecurring_FilterActiveOnly(t *testing.T) {
 }
 
 func TestListRecurring_EmptyList(t *testing.T) {
-	service, _, _, _ := setupRecurringServiceTest()
+	service, _, _, _, _ := setupRecurringServiceTest()
 
 	workspaceID := int32(1)
 
@@ -496,7 +497,7 @@ func TestListRecurring_EmptyList(t *testing.T) {
 }
 
 func TestListRecurring_WorkspaceIsolation(t *testing.T) {
-	service, recurringRepo, _, _ := setupRecurringServiceTest()
+	service, recurringRepo, _, _, _ := setupRecurringServiceTest()
 
 	recurringRepo.AddRecurring(&domain.RecurringTransaction{
 		ID:          1,
@@ -527,7 +528,7 @@ func TestListRecurring_WorkspaceIsolation(t *testing.T) {
 // GetRecurringByID tests
 
 func TestGetRecurringByID_Success(t *testing.T) {
-	service, recurringRepo, _, _ := setupRecurringServiceTest()
+	service, recurringRepo, _, _, _ := setupRecurringServiceTest()
 
 	workspaceID := int32(1)
 
@@ -548,7 +549,7 @@ func TestGetRecurringByID_Success(t *testing.T) {
 }
 
 func TestGetRecurringByID_NotFound(t *testing.T) {
-	service, _, _, _ := setupRecurringServiceTest()
+	service, _, _, _, _ := setupRecurringServiceTest()
 
 	_, err := service.GetRecurringByID(1, 999)
 	if err != domain.ErrRecurringNotFound {
@@ -557,7 +558,7 @@ func TestGetRecurringByID_NotFound(t *testing.T) {
 }
 
 func TestGetRecurringByID_WrongWorkspace(t *testing.T) {
-	service, recurringRepo, _, _ := setupRecurringServiceTest()
+	service, recurringRepo, _, _, _ := setupRecurringServiceTest()
 
 	recurringRepo.AddRecurring(&domain.RecurringTransaction{
 		ID:          1,
@@ -574,7 +575,7 @@ func TestGetRecurringByID_WrongWorkspace(t *testing.T) {
 // UpdateRecurring tests
 
 func TestUpdateRecurring_Success(t *testing.T) {
-	service, recurringRepo, accountRepo, _ := setupRecurringServiceTest()
+	service, recurringRepo, _, accountRepo, _ := setupRecurringServiceTest()
 
 	workspaceID := int32(1)
 	accountID := int32(1)
@@ -626,7 +627,7 @@ func TestUpdateRecurring_Success(t *testing.T) {
 }
 
 func TestUpdateRecurring_NotFound(t *testing.T) {
-	service, _, accountRepo, _ := setupRecurringServiceTest()
+	service, _, _, accountRepo, _ := setupRecurringServiceTest()
 
 	workspaceID := int32(1)
 	accountID := int32(1)
@@ -653,7 +654,7 @@ func TestUpdateRecurring_NotFound(t *testing.T) {
 }
 
 func TestUpdateRecurring_InvalidInput(t *testing.T) {
-	service, recurringRepo, accountRepo, _ := setupRecurringServiceTest()
+	service, recurringRepo, _, accountRepo, _ := setupRecurringServiceTest()
 
 	workspaceID := int32(1)
 	accountID := int32(1)
@@ -690,7 +691,7 @@ func TestUpdateRecurring_InvalidInput(t *testing.T) {
 // DeleteRecurring tests
 
 func TestDeleteRecurring_Success(t *testing.T) {
-	service, recurringRepo, _, _ := setupRecurringServiceTest()
+	service, recurringRepo, _, _, _ := setupRecurringServiceTest()
 
 	workspaceID := int32(1)
 
@@ -713,7 +714,7 @@ func TestDeleteRecurring_Success(t *testing.T) {
 }
 
 func TestDeleteRecurring_NotFound(t *testing.T) {
-	service, _, _, _ := setupRecurringServiceTest()
+	service, _, _, _, _ := setupRecurringServiceTest()
 
 	err := service.DeleteRecurring(1, 999)
 	if err != domain.ErrRecurringNotFound {
@@ -722,7 +723,7 @@ func TestDeleteRecurring_NotFound(t *testing.T) {
 }
 
 func TestDeleteRecurring_WrongWorkspace(t *testing.T) {
-	service, recurringRepo, _, _ := setupRecurringServiceTest()
+	service, recurringRepo, _, _, _ := setupRecurringServiceTest()
 
 	recurringRepo.AddRecurring(&domain.RecurringTransaction{
 		ID:          1,
@@ -737,7 +738,7 @@ func TestDeleteRecurring_WrongWorkspace(t *testing.T) {
 }
 
 func TestDeleteRecurring_AlreadyDeleted(t *testing.T) {
-	service, recurringRepo, _, _ := setupRecurringServiceTest()
+	service, recurringRepo, _, _, _ := setupRecurringServiceTest()
 
 	workspaceID := int32(1)
 
@@ -876,5 +877,358 @@ func TestCalculateActualDueDate_InvalidDayNegative(t *testing.T) {
 	expected := time.Date(2025, time.March, 1, 0, 0, 0, 0, time.UTC)
 	if !result.Equal(expected) {
 		t.Errorf("Expected %v, got %v", expected, result)
+	}
+}
+
+// GenerateRecurringTransactions tests
+
+func TestGenerateRecurringTransactions_Success(t *testing.T) {
+	service, recurringRepo, transactionRepo, _, _ := setupRecurringServiceTest()
+
+	workspaceID := int32(1)
+
+	// Add active recurring templates
+	recurringRepo.AddRecurring(&domain.RecurringTransaction{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Rent",
+		Amount:      decimal.NewFromFloat(1200.00),
+		AccountID:   1,
+		Type:        domain.TransactionTypeExpense,
+		Frequency:   domain.FrequencyMonthly,
+		DueDay:      1,
+		IsActive:    true,
+	})
+	recurringRepo.AddRecurring(&domain.RecurringTransaction{
+		ID:          2,
+		WorkspaceID: workspaceID,
+		Name:        "Salary",
+		Amount:      decimal.NewFromFloat(5000.00),
+		AccountID:   1,
+		Type:        domain.TransactionTypeIncome,
+		Frequency:   domain.FrequencyMonthly,
+		DueDay:      25,
+		IsActive:    true,
+	})
+
+	result, err := service.GenerateRecurringTransactions(workspaceID, 2025, time.January)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if len(result.Generated) != 2 {
+		t.Errorf("Expected 2 generated transactions, got %d", len(result.Generated))
+	}
+	if result.Skipped != 0 {
+		t.Errorf("Expected 0 skipped, got %d", result.Skipped)
+	}
+	if len(result.Errors) != 0 {
+		t.Errorf("Expected 0 errors, got %d: %v", len(result.Errors), result.Errors)
+	}
+
+	// Verify transactions were created in transaction repo
+	txs := transactionRepo.ByWorkspace[workspaceID]
+	if len(txs) != 2 {
+		t.Errorf("Expected 2 transactions in repo, got %d", len(txs))
+	}
+}
+
+func TestGenerateRecurringTransactions_Idempotency(t *testing.T) {
+	service, recurringRepo, transactionRepo, _, _ := setupRecurringServiceTest()
+
+	workspaceID := int32(1)
+
+	recurringRepo.AddRecurring(&domain.RecurringTransaction{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Rent",
+		Amount:      decimal.NewFromFloat(1200.00),
+		AccountID:   1,
+		Type:        domain.TransactionTypeExpense,
+		Frequency:   domain.FrequencyMonthly,
+		DueDay:      1,
+		IsActive:    true,
+	})
+
+	// First generation
+	result1, err := service.GenerateRecurringTransactions(workspaceID, 2025, time.January)
+	if err != nil {
+		t.Fatalf("First generation failed: %v", err)
+	}
+	if len(result1.Generated) != 1 {
+		t.Errorf("Expected 1 generated on first run, got %d", len(result1.Generated))
+	}
+
+	// Mark as existing for second run
+	recurringRepo.SetTransactionExists(1, 2025, 1)
+
+	// Second generation should skip
+	result2, err := service.GenerateRecurringTransactions(workspaceID, 2025, time.January)
+	if err != nil {
+		t.Fatalf("Second generation failed: %v", err)
+	}
+	if len(result2.Generated) != 0 {
+		t.Errorf("Expected 0 generated on second run, got %d", len(result2.Generated))
+	}
+	if result2.Skipped != 1 {
+		t.Errorf("Expected 1 skipped on second run, got %d", result2.Skipped)
+	}
+
+	// Verify only 1 transaction was created (not 2)
+	txs := transactionRepo.ByWorkspace[workspaceID]
+	if len(txs) != 1 {
+		t.Errorf("Expected 1 transaction total in repo, got %d", len(txs))
+	}
+}
+
+func TestGenerateRecurringTransactions_SkipInactive(t *testing.T) {
+	service, recurringRepo, transactionRepo, _, _ := setupRecurringServiceTest()
+
+	workspaceID := int32(1)
+
+	// Add one active and one inactive
+	recurringRepo.AddRecurring(&domain.RecurringTransaction{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Active Rent",
+		Amount:      decimal.NewFromFloat(1200.00),
+		AccountID:   1,
+		Type:        domain.TransactionTypeExpense,
+		Frequency:   domain.FrequencyMonthly,
+		DueDay:      1,
+		IsActive:    true,
+	})
+	recurringRepo.AddRecurring(&domain.RecurringTransaction{
+		ID:          2,
+		WorkspaceID: workspaceID,
+		Name:        "Paused Subscription",
+		Amount:      decimal.NewFromFloat(15.00),
+		AccountID:   1,
+		Type:        domain.TransactionTypeExpense,
+		Frequency:   domain.FrequencyMonthly,
+		DueDay:      10,
+		IsActive:    false, // Inactive
+	})
+
+	result, err := service.GenerateRecurringTransactions(workspaceID, 2025, time.January)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// Only active template should be generated
+	if len(result.Generated) != 1 {
+		t.Errorf("Expected 1 generated (only active), got %d", len(result.Generated))
+	}
+	if result.Generated[0].Name != "Active Rent" {
+		t.Errorf("Expected 'Active Rent', got %s", result.Generated[0].Name)
+	}
+
+	// Verify only 1 transaction in repo
+	txs := transactionRepo.ByWorkspace[workspaceID]
+	if len(txs) != 1 {
+		t.Errorf("Expected 1 transaction in repo, got %d", len(txs))
+	}
+}
+
+func TestGenerateRecurringTransactions_NoTemplates(t *testing.T) {
+	service, _, _, _, _ := setupRecurringServiceTest()
+
+	workspaceID := int32(1)
+
+	result, err := service.GenerateRecurringTransactions(workspaceID, 2025, time.January)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if len(result.Generated) != 0 {
+		t.Errorf("Expected 0 generated, got %d", len(result.Generated))
+	}
+	if result.Skipped != 0 {
+		t.Errorf("Expected 0 skipped, got %d", result.Skipped)
+	}
+}
+
+func TestGenerateRecurringTransactions_DueDayAdjustment(t *testing.T) {
+	service, recurringRepo, _, _, _ := setupRecurringServiceTest()
+
+	workspaceID := int32(1)
+
+	// Template with due day 31
+	recurringRepo.AddRecurring(&domain.RecurringTransaction{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "End of Month",
+		Amount:      decimal.NewFromFloat(100.00),
+		AccountID:   1,
+		Type:        domain.TransactionTypeExpense,
+		Frequency:   domain.FrequencyMonthly,
+		DueDay:      31, // February doesn't have 31 days
+		IsActive:    true,
+	})
+
+	// Generate for February 2025 (non-leap year, 28 days)
+	result, err := service.GenerateRecurringTransactions(workspaceID, 2025, time.February)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if len(result.Generated) != 1 {
+		t.Fatalf("Expected 1 generated, got %d", len(result.Generated))
+	}
+
+	// Transaction date should be Feb 28, not Feb 31
+	expectedDate := time.Date(2025, time.February, 28, 0, 0, 0, 0, time.UTC)
+	if !result.Generated[0].TransactionDate.Equal(expectedDate) {
+		t.Errorf("Expected transaction date %v, got %v", expectedDate, result.Generated[0].TransactionDate)
+	}
+}
+
+func TestGenerateRecurringTransactions_SetsRecurringTransactionID(t *testing.T) {
+	service, recurringRepo, _, _, _ := setupRecurringServiceTest()
+
+	workspaceID := int32(1)
+	recurringID := int32(42)
+
+	recurringRepo.AddRecurring(&domain.RecurringTransaction{
+		ID:          recurringID,
+		WorkspaceID: workspaceID,
+		Name:        "Test",
+		Amount:      decimal.NewFromFloat(100.00),
+		AccountID:   1,
+		Type:        domain.TransactionTypeExpense,
+		Frequency:   domain.FrequencyMonthly,
+		DueDay:      1,
+		IsActive:    true,
+	})
+
+	result, err := service.GenerateRecurringTransactions(workspaceID, 2025, time.January)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if len(result.Generated) != 1 {
+		t.Fatalf("Expected 1 generated, got %d", len(result.Generated))
+	}
+
+	// Verify recurring_transaction_id is set
+	if result.Generated[0].RecurringTransactionID == nil {
+		t.Error("Expected RecurringTransactionID to be set")
+	} else if *result.Generated[0].RecurringTransactionID != recurringID {
+		t.Errorf("Expected RecurringTransactionID %d, got %d", recurringID, *result.Generated[0].RecurringTransactionID)
+	}
+}
+
+func TestGenerateRecurringTransactions_WorkspaceIsolation(t *testing.T) {
+	service, recurringRepo, transactionRepo, _, _ := setupRecurringServiceTest()
+
+	// Add recurring to workspace 1
+	recurringRepo.AddRecurring(&domain.RecurringTransaction{
+		ID:          1,
+		WorkspaceID: 1,
+		Name:        "Workspace 1 Rent",
+		Amount:      decimal.NewFromFloat(1200.00),
+		AccountID:   1,
+		Type:        domain.TransactionTypeExpense,
+		Frequency:   domain.FrequencyMonthly,
+		DueDay:      1,
+		IsActive:    true,
+	})
+	// Add recurring to workspace 2
+	recurringRepo.AddRecurring(&domain.RecurringTransaction{
+		ID:          2,
+		WorkspaceID: 2,
+		Name:        "Workspace 2 Rent",
+		Amount:      decimal.NewFromFloat(800.00),
+		AccountID:   2,
+		Type:        domain.TransactionTypeExpense,
+		Frequency:   domain.FrequencyMonthly,
+		DueDay:      1,
+		IsActive:    true,
+	})
+
+	// Generate for workspace 1 only
+	result, err := service.GenerateRecurringTransactions(1, 2025, time.January)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if len(result.Generated) != 1 {
+		t.Errorf("Expected 1 generated for workspace 1, got %d", len(result.Generated))
+	}
+	if result.Generated[0].Name != "Workspace 1 Rent" {
+		t.Errorf("Expected 'Workspace 1 Rent', got %s", result.Generated[0].Name)
+	}
+
+	// Workspace 2 should have no transactions
+	if len(transactionRepo.ByWorkspace[2]) != 0 {
+		t.Errorf("Expected 0 transactions in workspace 2, got %d", len(transactionRepo.ByWorkspace[2]))
+	}
+}
+
+func TestGenerateRecurringTransactions_CopiesCategory(t *testing.T) {
+	service, recurringRepo, _, _, _ := setupRecurringServiceTest()
+
+	workspaceID := int32(1)
+	categoryID := int32(5)
+
+	recurringRepo.AddRecurring(&domain.RecurringTransaction{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Rent with Category",
+		Amount:      decimal.NewFromFloat(1200.00),
+		AccountID:   1,
+		Type:        domain.TransactionTypeExpense,
+		CategoryID:  &categoryID,
+		Frequency:   domain.FrequencyMonthly,
+		DueDay:      1,
+		IsActive:    true,
+	})
+
+	result, err := service.GenerateRecurringTransactions(workspaceID, 2025, time.January)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if len(result.Generated) != 1 {
+		t.Fatalf("Expected 1 generated, got %d", len(result.Generated))
+	}
+
+	// Verify category is copied
+	if result.Generated[0].CategoryID == nil {
+		t.Error("Expected CategoryID to be set")
+	} else if *result.Generated[0].CategoryID != categoryID {
+		t.Errorf("Expected CategoryID %d, got %d", categoryID, *result.Generated[0].CategoryID)
+	}
+}
+
+func TestGenerateRecurringTransactions_TransactionIsPaidFalse(t *testing.T) {
+	service, recurringRepo, _, _, _ := setupRecurringServiceTest()
+
+	workspaceID := int32(1)
+
+	recurringRepo.AddRecurring(&domain.RecurringTransaction{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Rent",
+		Amount:      decimal.NewFromFloat(1200.00),
+		AccountID:   1,
+		Type:        domain.TransactionTypeExpense,
+		Frequency:   domain.FrequencyMonthly,
+		DueDay:      1,
+		IsActive:    true,
+	})
+
+	result, err := service.GenerateRecurringTransactions(workspaceID, 2025, time.January)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if len(result.Generated) != 1 {
+		t.Fatalf("Expected 1 generated, got %d", len(result.Generated))
+	}
+
+	// Generated transactions should be unpaid
+	if result.Generated[0].IsPaid {
+		t.Error("Expected IsPaid to be false for generated transaction")
 	}
 }

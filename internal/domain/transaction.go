@@ -22,23 +22,24 @@ const (
 )
 
 type Transaction struct {
-	ID                 int32               `json:"id"`
-	WorkspaceID        int32               `json:"workspaceId"`
-	AccountID          int32               `json:"accountId"`
-	Name               string              `json:"name"`
-	Amount             decimal.Decimal     `json:"amount"`
-	Type               TransactionType     `json:"type"`
-	TransactionDate    time.Time           `json:"transactionDate"`
-	IsPaid             bool                `json:"isPaid"`
-	CCSettlementIntent *CCSettlementIntent `json:"ccSettlementIntent,omitempty"`
-	Notes              *string             `json:"notes,omitempty"`
-	TransferPairID     *uuid.UUID          `json:"transferPairId,omitempty"`
-	CategoryID         *int32              `json:"categoryId,omitempty"`
-	CategoryName       *string             `json:"categoryName,omitempty"`
-	IsCCPayment        bool                `json:"isCcPayment"`
-	CreatedAt          time.Time           `json:"createdAt"`
-	UpdatedAt          time.Time           `json:"updatedAt"`
-	DeletedAt          *time.Time          `json:"deletedAt,omitempty"`
+	ID                     int32               `json:"id"`
+	WorkspaceID            int32               `json:"workspaceId"`
+	AccountID              int32               `json:"accountId"`
+	Name                   string              `json:"name"`
+	Amount                 decimal.Decimal     `json:"amount"`
+	Type                   TransactionType     `json:"type"`
+	TransactionDate        time.Time           `json:"transactionDate"`
+	IsPaid                 bool                `json:"isPaid"`
+	CCSettlementIntent     *CCSettlementIntent `json:"ccSettlementIntent,omitempty"`
+	Notes                  *string             `json:"notes,omitempty"`
+	TransferPairID         *uuid.UUID          `json:"transferPairId,omitempty"`
+	CategoryID             *int32              `json:"categoryId,omitempty"`
+	CategoryName           *string             `json:"categoryName,omitempty"`
+	IsCCPayment            bool                `json:"isCcPayment"`
+	RecurringTransactionID *int32              `json:"recurringTransactionId,omitempty"`
+	CreatedAt              time.Time           `json:"createdAt"`
+	UpdatedAt              time.Time           `json:"updatedAt"`
+	DeletedAt              *time.Time          `json:"deletedAt,omitempty"`
 }
 
 // TransferResult represents the result of creating a transfer

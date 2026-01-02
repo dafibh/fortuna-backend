@@ -16,9 +16,10 @@ import (
 
 func setupRecurringHandler() (*RecurringHandler, *testutil.MockRecurringRepository, *testutil.MockAccountRepository, *testutil.MockBudgetCategoryRepository) {
 	recurringRepo := testutil.NewMockRecurringRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
-	recurringService := service.NewRecurringService(recurringRepo, accountRepo, categoryRepo)
+	recurringService := service.NewRecurringService(recurringRepo, transactionRepo, accountRepo, categoryRepo)
 	handler := NewRecurringHandler(recurringService)
 	return handler, recurringRepo, accountRepo, categoryRepo
 }

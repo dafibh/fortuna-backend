@@ -65,19 +65,26 @@ func (r *TransactionRepository) Create(transaction *domain.Transaction) (*domain
 		categoryID.Valid = true
 	}
 
+	var recurringTransactionID pgtype.Int4
+	if transaction.RecurringTransactionID != nil {
+		recurringTransactionID.Int32 = *transaction.RecurringTransactionID
+		recurringTransactionID.Valid = true
+	}
+
 	created, err := r.queries.CreateTransaction(ctx, sqlc.CreateTransactionParams{
-		WorkspaceID:        transaction.WorkspaceID,
-		AccountID:          transaction.AccountID,
-		Name:               transaction.Name,
-		Amount:             amount,
-		Type:               string(transaction.Type),
-		TransactionDate:    transactionDate,
-		IsPaid:             transaction.IsPaid,
-		CcSettlementIntent: ccSettlementIntent,
-		Notes:              notes,
-		TransferPairID:     transferPairID,
-		CategoryID:         categoryID,
-		IsCcPayment:        transaction.IsCCPayment,
+		WorkspaceID:            transaction.WorkspaceID,
+		AccountID:              transaction.AccountID,
+		Name:                   transaction.Name,
+		Amount:                 amount,
+		Type:                   string(transaction.Type),
+		TransactionDate:        transactionDate,
+		IsPaid:                 transaction.IsPaid,
+		CcSettlementIntent:     ccSettlementIntent,
+		Notes:                  notes,
+		TransferPairID:         transferPairID,
+		CategoryID:             categoryID,
+		IsCcPayment:            transaction.IsCCPayment,
+		RecurringTransactionID: recurringTransactionID,
 	})
 	if err != nil {
 		return nil, err
@@ -625,6 +632,9 @@ func sqlcTransactionToDomain(t sqlc.Transaction) *domain.Transaction {
 	if t.CategoryID.Valid {
 		transaction.CategoryID = &t.CategoryID.Int32
 	}
+	if t.RecurringTransactionID.Valid {
+		transaction.RecurringTransactionID = &t.RecurringTransactionID.Int32
+	}
 	return transaction
 }
 
@@ -661,6 +671,9 @@ func sqlcTransactionWithCategoryToDomain(t sqlc.GetTransactionsWithCategoryRow) 
 	}
 	if t.CategoryName.Valid {
 		transaction.CategoryName = &t.CategoryName.String
+	}
+	if t.RecurringTransactionID.Valid {
+		transaction.RecurringTransactionID = &t.RecurringTransactionID.Int32
 	}
 	return transaction
 }

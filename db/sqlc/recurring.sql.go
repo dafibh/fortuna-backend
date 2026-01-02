@@ -11,6 +11,36 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const checkRecurringTransactionExists = `-- name: CheckRecurringTransactionExists :one
+SELECT COUNT(*)::INTEGER as count
+FROM transactions
+WHERE recurring_transaction_id = $1::INTEGER
+    AND workspace_id = $2::INTEGER
+    AND EXTRACT(YEAR FROM transaction_date) = $3::INTEGER
+    AND EXTRACT(MONTH FROM transaction_date) = $4::INTEGER
+    AND deleted_at IS NULL
+`
+
+type CheckRecurringTransactionExistsParams struct {
+	RecurringID int32 `json:"recurring_id"`
+	WorkspaceID int32 `json:"workspace_id"`
+	Year        int32 `json:"year"`
+	Month       int32 `json:"month"`
+}
+
+// Check if a transaction already exists for a recurring template in a specific month
+func (q *Queries) CheckRecurringTransactionExists(ctx context.Context, arg CheckRecurringTransactionExistsParams) (int32, error) {
+	row := q.db.QueryRow(ctx, checkRecurringTransactionExists,
+		arg.RecurringID,
+		arg.WorkspaceID,
+		arg.Year,
+		arg.Month,
+	)
+	var count int32
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createRecurringTransaction = `-- name: CreateRecurringTransaction :one
 INSERT INTO recurring_transactions (
     workspace_id, name, amount, account_id, type, category_id, frequency, due_day, is_active

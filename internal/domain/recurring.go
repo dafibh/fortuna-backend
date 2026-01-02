@@ -35,4 +35,5 @@ type RecurringRepository interface {
 	ListByWorkspace(workspaceID int32, activeOnly *bool) ([]*RecurringTransaction, error)
 	Update(rt *RecurringTransaction) (*RecurringTransaction, error)
 	Delete(workspaceID int32, id int32) error
+	CheckTransactionExists(recurringID, workspaceID int32, year, month int) (bool, error)
 }

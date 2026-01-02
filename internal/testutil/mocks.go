@@ -1297,14 +1297,15 @@ func (m *MockBudgetAllocationRepository) CopyAllocationsToMonth(workspaceID int3
 
 // MockRecurringRepository is a mock implementation of domain.RecurringRepository
 type MockRecurringRepository struct {
-	Recurring     map[int32]*domain.RecurringTransaction
-	ByWorkspace   map[int32][]*domain.RecurringTransaction
-	NextID        int32
-	CreateFn      func(rt *domain.RecurringTransaction) (*domain.RecurringTransaction, error)
-	GetByIDFn     func(workspaceID int32, id int32) (*domain.RecurringTransaction, error)
-	ListFn        func(workspaceID int32, activeOnly *bool) ([]*domain.RecurringTransaction, error)
-	UpdateFn      func(rt *domain.RecurringTransaction) (*domain.RecurringTransaction, error)
-	DeleteFn      func(workspaceID int32, id int32) error
+	Recurring            map[int32]*domain.RecurringTransaction
+	ByWorkspace          map[int32][]*domain.RecurringTransaction
+	NextID               int32
+	ExistingTransactions map[string]bool // Tracks recurring+year+month combos for idempotency testing
+	CreateFn             func(rt *domain.RecurringTransaction) (*domain.RecurringTransaction, error)
+	GetByIDFn            func(workspaceID int32, id int32) (*domain.RecurringTransaction, error)
+	ListFn               func(workspaceID int32, activeOnly *bool) ([]*domain.RecurringTransaction, error)
+	UpdateFn             func(rt *domain.RecurringTransaction) (*domain.RecurringTransaction, error)
+	DeleteFn             func(workspaceID int32, id int32) error
 }
 
 // NewMockRecurringRepository creates a new MockRecurringRepository
@@ -1415,4 +1416,29 @@ func (m *MockRecurringRepository) Delete(workspaceID int32, id int32) error {
 func (m *MockRecurringRepository) AddRecurring(rt *domain.RecurringTransaction) {
 	m.Recurring[rt.ID] = rt
 	m.ByWorkspace[rt.WorkspaceID] = append(m.ByWorkspace[rt.WorkspaceID], rt)
+}
+
+// CheckTransactionExistsFn allows tests to override the behavior
+var CheckTransactionExistsFn func(recurringID, workspaceID int32, year, month int) (bool, error)
+
+// ExistingRecurringTransactions tracks which recurring+month combos exist (for idempotency testing)
+// Key format: "recurringID-year-month"
+func (m *MockRecurringRepository) SetTransactionExists(recurringID int32, year, month int) {
+	if m.ExistingTransactions == nil {
+		m.ExistingTransactions = make(map[string]bool)
+	}
+	key := fmt.Sprintf("%d-%d-%d", recurringID, year, month)
+	m.ExistingTransactions[key] = true
+}
+
+// CheckTransactionExists checks if a transaction already exists for a recurring template in a specific month
+func (m *MockRecurringRepository) CheckTransactionExists(recurringID, workspaceID int32, year, month int) (bool, error) {
+	if CheckTransactionExistsFn != nil {
+		return CheckTransactionExistsFn(recurringID, workspaceID, year, month)
+	}
+	if m.ExistingTransactions == nil {
+		return false, nil
+	}
+	key := fmt.Sprintf("%d-%d-%d", recurringID, year, month)
+	return m.ExistingTransactions[key], nil
 }

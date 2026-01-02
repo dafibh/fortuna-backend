@@ -282,6 +282,68 @@ func (h *RecurringHandler) handleServiceError(c echo.Context, err error, workspa
 	return NewInternalError(c, "Failed to "+operation)
 }
 
+// GenerateRecurringRequest represents the request to generate transactions from recurring templates
+type GenerateRecurringRequest struct {
+	Year  *int `json:"year,omitempty"`  // Optional: defaults to current year
+	Month *int `json:"month,omitempty"` // Optional: defaults to current month
+}
+
+// GenerateRecurringResponse represents the response from generating recurring transactions
+type GenerateRecurringResponse struct {
+	GeneratedCount int      `json:"generatedCount"`
+	SkippedCount   int      `json:"skippedCount"`
+	Errors         []string `json:"errors,omitempty"`
+}
+
+// GenerateRecurring handles POST /api/v1/recurring-transactions/generate
+func (h *RecurringHandler) GenerateRecurring(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	var req GenerateRecurringRequest
+	if err := c.Bind(&req); err != nil {
+		return NewValidationError(c, "Invalid request body", nil)
+	}
+
+	// Default to current month/year if not specified
+	now := time.Now()
+	year := now.Year()
+	month := now.Month()
+
+	if req.Year != nil {
+		if *req.Year < 1970 || *req.Year > 2100 {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "year", Message: "Year must be between 1970 and 2100"},
+			})
+		}
+		year = *req.Year
+	}
+	if req.Month != nil {
+		if *req.Month < 1 || *req.Month > 12 {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "month", Message: "Month must be between 1 and 12"},
+			})
+		}
+		month = time.Month(*req.Month)
+	}
+
+	result, err := h.recurringService.GenerateRecurringTransactions(workspaceID, year, month)
+	if err != nil {
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("year", year).Int("month", int(month)).Msg("Failed to generate recurring transactions")
+		return NewInternalError(c, "Failed to generate recurring transactions")
+	}
+
+	log.Info().Int32("workspace_id", workspaceID).Int("year", year).Int("month", int(month)).Int("generated", len(result.Generated)).Int("skipped", result.Skipped).Msg("Generated recurring transactions")
+
+	return c.JSON(http.StatusOK, GenerateRecurringResponse{
+		GeneratedCount: len(result.Generated),
+		SkippedCount:   result.Skipped,
+		Errors:         result.Errors,
+	})
+}
+
 // Helper function to convert domain.RecurringTransaction to RecurringResponse
 func toRecurringResponse(rt *domain.RecurringTransaction) RecurringResponse {
 	resp := RecurringResponse{

@@ -219,7 +219,7 @@ func (q *Queries) GetCategoriesWithAllocations(ctx context.Context, arg GetCateg
 }
 
 const getCategoryTransactions = `-- name: GetCategoryTransactions :many
-SELECT t.id, t.workspace_id, t.account_id, t.name, t.amount, t.type, t.transaction_date, t.is_paid, t.cc_settlement_intent, t.notes, t.created_at, t.updated_at, t.deleted_at, t.transfer_pair_id, t.category_id, t.is_cc_payment, a.name AS account_name
+SELECT t.id, t.workspace_id, t.account_id, t.name, t.amount, t.type, t.transaction_date, t.is_paid, t.cc_settlement_intent, t.notes, t.created_at, t.updated_at, t.deleted_at, t.transfer_pair_id, t.category_id, t.is_cc_payment, t.recurring_transaction_id, a.name AS account_name
 FROM transactions t
 JOIN accounts a ON t.account_id = a.id
 WHERE t.workspace_id = $1
@@ -239,23 +239,24 @@ type GetCategoryTransactionsParams struct {
 }
 
 type GetCategoryTransactionsRow struct {
-	ID                 int32              `json:"id"`
-	WorkspaceID        int32              `json:"workspace_id"`
-	AccountID          int32              `json:"account_id"`
-	Name               string             `json:"name"`
-	Amount             pgtype.Numeric     `json:"amount"`
-	Type               string             `json:"type"`
-	TransactionDate    pgtype.Date        `json:"transaction_date"`
-	IsPaid             bool               `json:"is_paid"`
-	CcSettlementIntent pgtype.Text        `json:"cc_settlement_intent"`
-	Notes              pgtype.Text        `json:"notes"`
-	CreatedAt          pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
-	DeletedAt          pgtype.Timestamptz `json:"deleted_at"`
-	TransferPairID     pgtype.UUID        `json:"transfer_pair_id"`
-	CategoryID         pgtype.Int4        `json:"category_id"`
-	IsCcPayment        bool               `json:"is_cc_payment"`
-	AccountName        string             `json:"account_name"`
+	ID                     int32              `json:"id"`
+	WorkspaceID            int32              `json:"workspace_id"`
+	AccountID              int32              `json:"account_id"`
+	Name                   string             `json:"name"`
+	Amount                 pgtype.Numeric     `json:"amount"`
+	Type                   string             `json:"type"`
+	TransactionDate        pgtype.Date        `json:"transaction_date"`
+	IsPaid                 bool               `json:"is_paid"`
+	CcSettlementIntent     pgtype.Text        `json:"cc_settlement_intent"`
+	Notes                  pgtype.Text        `json:"notes"`
+	CreatedAt              pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt              pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt              pgtype.Timestamptz `json:"deleted_at"`
+	TransferPairID         pgtype.UUID        `json:"transfer_pair_id"`
+	CategoryID             pgtype.Int4        `json:"category_id"`
+	IsCcPayment            bool               `json:"is_cc_payment"`
+	RecurringTransactionID pgtype.Int4        `json:"recurring_transaction_id"`
+	AccountName            string             `json:"account_name"`
 }
 
 // Returns all transactions for a specific category in a month
@@ -290,6 +291,7 @@ func (q *Queries) GetCategoryTransactions(ctx context.Context, arg GetCategoryTr
 			&i.TransferPairID,
 			&i.CategoryID,
 			&i.IsCcPayment,
+			&i.RecurringTransactionID,
 			&i.AccountName,
 		); err != nil {
 			return nil, err

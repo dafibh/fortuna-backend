@@ -26,3 +26,13 @@ RETURNING *;
 UPDATE recurring_transactions
 SET deleted_at = NOW(), updated_at = NOW()
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL;
+
+-- name: CheckRecurringTransactionExists :one
+-- Check if a transaction already exists for a recurring template in a specific month
+SELECT COUNT(*)::INTEGER as count
+FROM transactions
+WHERE recurring_transaction_id = sqlc.arg(recurring_id)::INTEGER
+    AND workspace_id = sqlc.arg(workspace_id)::INTEGER
+    AND EXTRACT(YEAR FROM transaction_date) = sqlc.arg(year)::INTEGER
+    AND EXTRACT(MONTH FROM transaction_date) = sqlc.arg(month)::INTEGER
+    AND deleted_at IS NULL;

@@ -11,6 +11,8 @@ import (
 )
 
 type Querier interface {
+	// Check if a transaction already exists for a recurring template in a specific month
+	CheckRecurringTransactionExists(ctx context.Context, arg CheckRecurringTransactionExistsParams) (int32, error)
 	// Copies all allocations from one month to another (atomic, skips deleted categories)
 	CopyAllocationsToMonth(ctx context.Context, arg CopyAllocationsToMonthParams) error
 	// Returns the count of allocations for a specific month (for lazy initialization check)

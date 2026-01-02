@@ -67,7 +67,7 @@ func main() {
 	budgetCategoryService := service.NewBudgetCategoryService(budgetCategoryRepo)
 	budgetAllocationService := service.NewBudgetAllocationService(budgetAllocationRepo, budgetCategoryRepo)
 	ccService := service.NewCCService(transactionRepo, accountRepo)
-	recurringService := service.NewRecurringService(recurringRepo, accountRepo, budgetCategoryRepo)
+	recurringService := service.NewRecurringService(recurringRepo, transactionRepo, accountRepo, budgetCategoryRepo)
 
 	// Create workspace provider adapter for auth middleware
 	workspaceProvider := &workspaceProviderAdapter{authService: authService}
@@ -82,7 +82,7 @@ func main() {
 	authHandler := handler.NewAuthHandler(authService)
 	profileHandler := handler.NewProfileHandler(profileService)
 	accountHandler := handler.NewAccountHandler(accountService, calculationService)
-	transactionHandler := handler.NewTransactionHandler(transactionService)
+	transactionHandler := handler.NewTransactionHandler(transactionService, recurringService)
 	monthHandler := handler.NewMonthHandler(monthService)
 	dashboardHandler := handler.NewDashboardHandler(dashboardService)
 	budgetCategoryHandler := handler.NewBudgetCategoryHandler(budgetCategoryService)

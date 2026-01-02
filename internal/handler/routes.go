@@ -84,6 +84,7 @@ func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, aut
 	recurring.Use(authMiddleware.Authenticate())
 	recurring.POST("", recurringHandler.CreateRecurring)
 	recurring.GET("", recurringHandler.GetRecurringTransactions)
+	recurring.POST("/generate", recurringHandler.GenerateRecurring)
 	recurring.GET("/:id", recurringHandler.GetRecurringTransaction)
 	recurring.PUT("/:id", recurringHandler.UpdateRecurring)
 	recurring.DELETE("/:id", recurringHandler.DeleteRecurring)

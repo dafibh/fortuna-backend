@@ -153,6 +153,23 @@ func (r *RecurringRepository) Delete(workspaceID int32, id int32) error {
 	return nil
 }
 
+// CheckTransactionExists checks if a transaction already exists for a recurring template in a specific month
+func (r *RecurringRepository) CheckTransactionExists(recurringID, workspaceID int32, year, month int) (bool, error) {
+	ctx := context.Background()
+
+	count, err := r.queries.CheckRecurringTransactionExists(ctx, sqlc.CheckRecurringTransactionExistsParams{
+		RecurringID: recurringID,
+		WorkspaceID: workspaceID,
+		Year:        int32(year),
+		Month:       int32(month),
+	})
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
+}
+
 // Helper function to convert sqlc model to domain model
 func sqlcRecurringToDomain(rt sqlc.RecurringTransaction) *domain.RecurringTransaction {
 	recurring := &domain.RecurringTransaction{
