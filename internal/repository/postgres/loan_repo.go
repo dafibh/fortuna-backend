@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/dafibh/fortuna/fortuna-backend/db/sqlc"
@@ -28,7 +29,22 @@ func NewLoanRepository(pool *pgxpool.Pool) *LoanRepository {
 // Create creates a new loan
 func (r *LoanRepository) Create(loan *domain.Loan) (*domain.Loan, error) {
 	ctx := context.Background()
+	return r.createLoan(ctx, r.queries, loan)
+}
 
+// CreateTx creates a new loan within a transaction
+func (r *LoanRepository) CreateTx(tx interface{}, loan *domain.Loan) (*domain.Loan, error) {
+	ctx := context.Background()
+	pgxTx, ok := tx.(pgx.Tx)
+	if !ok {
+		return nil, errors.New("invalid transaction type")
+	}
+	qtx := r.queries.WithTx(pgxTx)
+	return r.createLoan(ctx, qtx, loan)
+}
+
+// createLoan is the internal implementation for creating a loan
+func (r *LoanRepository) createLoan(ctx context.Context, q *sqlc.Queries, loan *domain.Loan) (*domain.Loan, error) {
 	totalAmount, err := decimalToPgNumeric(loan.TotalAmount)
 	if err != nil {
 		return nil, err
@@ -55,7 +71,7 @@ func (r *LoanRepository) Create(loan *domain.Loan) (*domain.Loan, error) {
 		notes.Valid = true
 	}
 
-	created, err := r.queries.CreateLoan(ctx, sqlc.CreateLoanParams{
+	created, err := q.CreateLoan(ctx, sqlc.CreateLoanParams{
 		WorkspaceID:       loan.WorkspaceID,
 		ProviderID:        loan.ProviderID,
 		ItemName:          loan.ItemName,

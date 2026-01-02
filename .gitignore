@@ -4,6 +4,7 @@
 *.dll
 *.so
 *.dylib
+/api
 /cmd/api/api
 /tmp
 

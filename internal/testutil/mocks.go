@@ -1613,6 +1613,11 @@ func (m *MockLoanRepository) Create(loan *domain.Loan) (*domain.Loan, error) {
 	return loan, nil
 }
 
+// CreateTx creates a new loan within a transaction (mock just calls Create)
+func (m *MockLoanRepository) CreateTx(tx interface{}, loan *domain.Loan) (*domain.Loan, error) {
+	return m.Create(loan)
+}
+
 // GetByID retrieves a loan by ID
 func (m *MockLoanRepository) GetByID(workspaceID int32, id int32) (*domain.Loan, error) {
 	if m.GetByIDFn != nil {
@@ -1778,4 +1783,148 @@ func (m *MockLoanRepository) SetCompletedLoans(workspaceID int32, year, month in
 func (m *MockLoanRepository) SetActiveLoanCount(workspaceID, providerID int32, year, month int, count int64) {
 	key := loanProviderMonthKey(workspaceID, providerID, year, month)
 	m.ActiveLoanCounts[key] = count
+}
+
+// MockLoanPaymentRepository is a mock implementation of domain.LoanPaymentRepository
+type MockLoanPaymentRepository struct {
+	Payments    map[int32]*domain.LoanPayment
+	ByLoanID    map[int32][]*domain.LoanPayment
+	ByMonth     map[string][]*domain.LoanPayment
+	NextID      int32
+	CreateFn    func(payment *domain.LoanPayment) (*domain.LoanPayment, error)
+	GetByIDFn   func(id int32) (*domain.LoanPayment, error)
+}
+
+// NewMockLoanPaymentRepository creates a new MockLoanPaymentRepository
+func NewMockLoanPaymentRepository() *MockLoanPaymentRepository {
+	return &MockLoanPaymentRepository{
+		Payments: make(map[int32]*domain.LoanPayment),
+		ByLoanID: make(map[int32][]*domain.LoanPayment),
+		ByMonth:  make(map[string][]*domain.LoanPayment),
+		NextID:   1,
+	}
+}
+
+func paymentMonthKey(workspaceID int32, year, month int) string {
+	return fmt.Sprintf("%d-%d-%d", workspaceID, year, month)
+}
+
+// Create creates a new loan payment
+func (m *MockLoanPaymentRepository) Create(payment *domain.LoanPayment) (*domain.LoanPayment, error) {
+	if m.CreateFn != nil {
+		return m.CreateFn(payment)
+	}
+	payment.ID = m.NextID
+	m.NextID++
+	payment.CreatedAt = time.Now()
+	payment.UpdatedAt = time.Now()
+	m.Payments[payment.ID] = payment
+	m.ByLoanID[payment.LoanID] = append(m.ByLoanID[payment.LoanID], payment)
+	return payment, nil
+}
+
+// CreateBatch creates multiple loan payments
+func (m *MockLoanPaymentRepository) CreateBatch(payments []*domain.LoanPayment) error {
+	for _, payment := range payments {
+		_, err := m.Create(payment)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// CreateBatchTx creates multiple loan payments within a transaction (mock just calls CreateBatch)
+func (m *MockLoanPaymentRepository) CreateBatchTx(tx interface{}, payments []*domain.LoanPayment) error {
+	return m.CreateBatch(payments)
+}
+
+// GetByID retrieves a loan payment by ID
+func (m *MockLoanPaymentRepository) GetByID(id int32) (*domain.LoanPayment, error) {
+	if m.GetByIDFn != nil {
+		return m.GetByIDFn(id)
+	}
+	payment, ok := m.Payments[id]
+	if !ok {
+		return nil, domain.ErrLoanPaymentNotFound
+	}
+	return payment, nil
+}
+
+// GetByLoanID retrieves all payments for a loan
+func (m *MockLoanPaymentRepository) GetByLoanID(loanID int32) ([]*domain.LoanPayment, error) {
+	payments := m.ByLoanID[loanID]
+	if payments == nil {
+		return []*domain.LoanPayment{}, nil
+	}
+	return payments, nil
+}
+
+// GetByLoanAndNumber retrieves a specific payment by loan ID and payment number
+func (m *MockLoanPaymentRepository) GetByLoanAndNumber(loanID int32, paymentNumber int32) (*domain.LoanPayment, error) {
+	payments := m.ByLoanID[loanID]
+	for _, p := range payments {
+		if p.PaymentNumber == paymentNumber {
+			return p, nil
+		}
+	}
+	return nil, domain.ErrLoanPaymentNotFound
+}
+
+// UpdateAmount updates the amount of a specific payment
+func (m *MockLoanPaymentRepository) UpdateAmount(id int32, amount decimal.Decimal) (*domain.LoanPayment, error) {
+	payment, ok := m.Payments[id]
+	if !ok {
+		return nil, domain.ErrLoanPaymentNotFound
+	}
+	payment.Amount = amount
+	payment.UpdatedAt = time.Now()
+	return payment, nil
+}
+
+// TogglePaid toggles the paid status of a payment
+func (m *MockLoanPaymentRepository) TogglePaid(id int32, paid bool, paidDate *time.Time) (*domain.LoanPayment, error) {
+	payment, ok := m.Payments[id]
+	if !ok {
+		return nil, domain.ErrLoanPaymentNotFound
+	}
+	payment.Paid = paid
+	payment.PaidDate = paidDate
+	payment.UpdatedAt = time.Now()
+	return payment, nil
+}
+
+// GetByMonth retrieves all loan payments due in a specific month
+func (m *MockLoanPaymentRepository) GetByMonth(workspaceID int32, year, month int) ([]*domain.LoanPayment, error) {
+	key := paymentMonthKey(workspaceID, year, month)
+	payments := m.ByMonth[key]
+	if payments == nil {
+		return []*domain.LoanPayment{}, nil
+	}
+	return payments, nil
+}
+
+// GetUnpaidByMonth retrieves unpaid loan payments due in a specific month
+func (m *MockLoanPaymentRepository) GetUnpaidByMonth(workspaceID int32, year, month int) ([]*domain.LoanPayment, error) {
+	key := paymentMonthKey(workspaceID, year, month)
+	payments := m.ByMonth[key]
+	var unpaid []*domain.LoanPayment
+	for _, p := range payments {
+		if !p.Paid {
+			unpaid = append(unpaid, p)
+		}
+	}
+	return unpaid, nil
+}
+
+// AddPayment adds a payment to the mock repository (helper for tests)
+func (m *MockLoanPaymentRepository) AddPayment(payment *domain.LoanPayment) {
+	m.Payments[payment.ID] = payment
+	m.ByLoanID[payment.LoanID] = append(m.ByLoanID[payment.LoanID], payment)
+}
+
+// SetPaymentsByMonth sets payments for a specific month (helper for tests)
+func (m *MockLoanPaymentRepository) SetPaymentsByMonth(workspaceID int32, year, month int, payments []*domain.LoanPayment) {
+	key := paymentMonthKey(workspaceID, year, month)
+	m.ByMonth[key] = payments
 }

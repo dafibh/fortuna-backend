@@ -24,6 +24,7 @@ type Querier interface {
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
 	CreateBudgetCategory(ctx context.Context, arg CreateBudgetCategoryParams) (BudgetCategory, error)
 	CreateLoan(ctx context.Context, arg CreateLoanParams) (Loan, error)
+	CreateLoanPayment(ctx context.Context, arg CreateLoanPaymentParams) (LoanPayment, error)
 	CreateLoanProvider(ctx context.Context, arg CreateLoanProviderParams) (LoanProvider, error)
 	CreateMonth(ctx context.Context, arg CreateMonthParams) (Month, error)
 	CreateOrGetUserByAuth0ID(ctx context.Context, arg CreateOrGetUserByAuth0IDParams) (User, error)
@@ -58,6 +59,10 @@ type Querier interface {
 	GetCategoryTransactions(ctx context.Context, arg GetCategoryTransactionsParams) ([]GetCategoryTransactionsRow, error)
 	GetLatestMonth(ctx context.Context, workspaceID int32) (Month, error)
 	GetLoanByID(ctx context.Context, arg GetLoanByIDParams) (Loan, error)
+	GetLoanPaymentByID(ctx context.Context, id int32) (LoanPayment, error)
+	GetLoanPaymentByLoanAndNumber(ctx context.Context, arg GetLoanPaymentByLoanAndNumberParams) (LoanPayment, error)
+	GetLoanPaymentsByLoanID(ctx context.Context, loanID int32) ([]LoanPayment, error)
+	GetLoanPaymentsByMonth(ctx context.Context, arg GetLoanPaymentsByMonthParams) ([]LoanPayment, error)
 	GetLoanProviderByID(ctx context.Context, arg GetLoanProviderByIDParams) (LoanProvider, error)
 	GetMonthByYearMonth(ctx context.Context, arg GetMonthByYearMonthParams) (Month, error)
 	// Batch query to get income/expense totals grouped by year/month for N+1 prevention
@@ -73,6 +78,7 @@ type Querier interface {
 	GetTransactionsByWorkspace(ctx context.Context, arg GetTransactionsByWorkspaceParams) ([]Transaction, error)
 	// Returns transactions with category name joined for display
 	GetTransactionsWithCategory(ctx context.Context, arg GetTransactionsWithCategoryParams) ([]GetTransactionsWithCategoryRow, error)
+	GetUnpaidLoanPaymentsByMonth(ctx context.Context, arg GetUnpaidLoanPaymentsByMonthParams) ([]LoanPayment, error)
 	GetUserByAuth0ID(ctx context.Context, auth0ID string) (User, error)
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	GetWorkspaceByID(ctx context.Context, id int32) (Workspace, error)
@@ -94,10 +100,12 @@ type Querier interface {
 	SumTransactionsByTypeAndDateRange(ctx context.Context, arg SumTransactionsByTypeAndDateRangeParams) (pgtype.Numeric, error)
 	// Sum unpaid expenses within a date range for disposable income calculation
 	SumUnpaidExpensesByDateRange(ctx context.Context, arg SumUnpaidExpensesByDateRangeParams) (pgtype.Numeric, error)
+	ToggleLoanPaymentPaid(ctx context.Context, arg ToggleLoanPaymentPaidParams) (LoanPayment, error)
 	ToggleTransactionPaidStatus(ctx context.Context, arg ToggleTransactionPaidStatusParams) (Transaction, error)
 	UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error)
 	UpdateBudgetCategory(ctx context.Context, arg UpdateBudgetCategoryParams) (BudgetCategory, error)
 	UpdateLoan(ctx context.Context, arg UpdateLoanParams) (Loan, error)
+	UpdateLoanPaymentAmount(ctx context.Context, arg UpdateLoanPaymentAmountParams) (LoanPayment, error)
 	UpdateLoanProvider(ctx context.Context, arg UpdateLoanProviderParams) (LoanProvider, error)
 	UpdateMonthStartingBalance(ctx context.Context, arg UpdateMonthStartingBalanceParams) error
 	UpdateRecurringTransaction(ctx context.Context, arg UpdateRecurringTransactionParams) (RecurringTransaction, error)

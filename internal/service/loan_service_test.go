@@ -161,7 +161,7 @@ func TestCalculateFirstPaymentMonth_CutoffDay1(t *testing.T) {
 func TestCreateLoan_Success(t *testing.T) {
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	service := NewLoanService(loanRepo, providerRepo)
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
 
 	workspaceID := int32(1)
 	providerRepo.AddLoanProvider(&domain.LoanProvider{
@@ -203,7 +203,7 @@ func TestCreateLoan_Success(t *testing.T) {
 func TestCreateLoan_WithInterestRateOverride(t *testing.T) {
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	service := NewLoanService(loanRepo, providerRepo)
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
 
 	workspaceID := int32(1)
 	providerRepo.AddLoanProvider(&domain.LoanProvider{
@@ -245,7 +245,7 @@ func TestCreateLoan_WithInterestRateOverride(t *testing.T) {
 func TestCreateLoan_UsesProviderDefaultRate(t *testing.T) {
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	service := NewLoanService(loanRepo, providerRepo)
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
 
 	workspaceID := int32(1)
 	providerRepo.AddLoanProvider(&domain.LoanProvider{
@@ -277,7 +277,7 @@ func TestCreateLoan_UsesProviderDefaultRate(t *testing.T) {
 func TestCreateLoan_EmptyItemName(t *testing.T) {
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	service := NewLoanService(loanRepo, providerRepo)
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
 
 	input := CreateLoanInput{
 		ProviderID:   1,
@@ -296,7 +296,7 @@ func TestCreateLoan_EmptyItemName(t *testing.T) {
 func TestCreateLoan_ItemNameTooLong(t *testing.T) {
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	service := NewLoanService(loanRepo, providerRepo)
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
 
 	// Create a name that's 201 characters long
 	longName := ""
@@ -321,7 +321,7 @@ func TestCreateLoan_ItemNameTooLong(t *testing.T) {
 func TestCreateLoan_ZeroAmount(t *testing.T) {
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	service := NewLoanService(loanRepo, providerRepo)
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
 
 	input := CreateLoanInput{
 		ProviderID:   1,
@@ -340,7 +340,7 @@ func TestCreateLoan_ZeroAmount(t *testing.T) {
 func TestCreateLoan_NegativeAmount(t *testing.T) {
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	service := NewLoanService(loanRepo, providerRepo)
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
 
 	input := CreateLoanInput{
 		ProviderID:   1,
@@ -359,7 +359,7 @@ func TestCreateLoan_NegativeAmount(t *testing.T) {
 func TestCreateLoan_ZeroMonths(t *testing.T) {
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	service := NewLoanService(loanRepo, providerRepo)
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
 
 	input := CreateLoanInput{
 		ProviderID:   1,
@@ -378,7 +378,7 @@ func TestCreateLoan_ZeroMonths(t *testing.T) {
 func TestCreateLoan_InvalidProvider(t *testing.T) {
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	service := NewLoanService(loanRepo, providerRepo)
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
 
 	input := CreateLoanInput{
 		ProviderID:   0,
@@ -397,7 +397,7 @@ func TestCreateLoan_InvalidProvider(t *testing.T) {
 func TestCreateLoan_ProviderNotFound(t *testing.T) {
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	service := NewLoanService(loanRepo, providerRepo)
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
 
 	input := CreateLoanInput{
 		ProviderID:   999, // Non-existent provider
@@ -416,7 +416,7 @@ func TestCreateLoan_ProviderNotFound(t *testing.T) {
 func TestCreateLoan_ProviderWrongWorkspace(t *testing.T) {
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	service := NewLoanService(loanRepo, providerRepo)
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
 
 	// Provider belongs to workspace 2
 	providerRepo.AddLoanProvider(&domain.LoanProvider{
@@ -444,7 +444,7 @@ func TestCreateLoan_ProviderWrongWorkspace(t *testing.T) {
 func TestCreateLoan_WithNotes(t *testing.T) {
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	service := NewLoanService(loanRepo, providerRepo)
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
 
 	workspaceID := int32(1)
 	providerRepo.AddLoanProvider(&domain.LoanProvider{
@@ -479,7 +479,7 @@ func TestCreateLoan_WithNotes(t *testing.T) {
 func TestPreviewLoan_Success(t *testing.T) {
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	service := NewLoanService(loanRepo, providerRepo)
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
 
 	workspaceID := int32(1)
 	providerRepo.AddLoanProvider(&domain.LoanProvider{
@@ -515,7 +515,7 @@ func TestPreviewLoan_Success(t *testing.T) {
 func TestPreviewLoan_InvalidProvider(t *testing.T) {
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	service := NewLoanService(loanRepo, providerRepo)
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
 
 	input := PreviewLoanInput{
 		ProviderID:   999,
@@ -535,7 +535,7 @@ func TestPreviewLoan_InvalidProvider(t *testing.T) {
 func TestGetLoans_Success(t *testing.T) {
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	service := NewLoanService(loanRepo, providerRepo)
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
 
 	workspaceID := int32(1)
 	loanRepo.AddLoan(&domain.Loan{
@@ -562,7 +562,7 @@ func TestGetLoans_Success(t *testing.T) {
 func TestGetLoans_Empty(t *testing.T) {
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	service := NewLoanService(loanRepo, providerRepo)
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
 
 	loans, err := service.GetLoans(1)
 	if err != nil {
@@ -579,7 +579,7 @@ func TestGetLoans_Empty(t *testing.T) {
 func TestGetLoanByID_Success(t *testing.T) {
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	service := NewLoanService(loanRepo, providerRepo)
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
 
 	workspaceID := int32(1)
 	loanRepo.AddLoan(&domain.Loan{
@@ -601,7 +601,7 @@ func TestGetLoanByID_Success(t *testing.T) {
 func TestGetLoanByID_NotFound(t *testing.T) {
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	service := NewLoanService(loanRepo, providerRepo)
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
 
 	_, err := service.GetLoanByID(1, 999)
 	if err != domain.ErrLoanNotFound {
@@ -614,7 +614,7 @@ func TestGetLoanByID_NotFound(t *testing.T) {
 func TestDeleteLoan_Success(t *testing.T) {
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	service := NewLoanService(loanRepo, providerRepo)
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
 
 	workspaceID := int32(1)
 	loanRepo.AddLoan(&domain.Loan{
@@ -638,7 +638,7 @@ func TestDeleteLoan_Success(t *testing.T) {
 func TestDeleteLoan_NotFound(t *testing.T) {
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	service := NewLoanService(loanRepo, providerRepo)
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
 
 	err := service.DeleteLoan(1, 999)
 	if err != domain.ErrLoanNotFound {

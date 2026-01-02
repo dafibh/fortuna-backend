@@ -6,7 +6,7 @@ import (
 )
 
 // RegisterRoutes sets up all API routes
-func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler, recurringHandler *RecurringHandler, loanProviderHandler *LoanProviderHandler, loanHandler *LoanHandler) {
+func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler, recurringHandler *RecurringHandler, loanProviderHandler *LoanProviderHandler, loanHandler *LoanHandler, loanPaymentHandler *LoanPaymentHandler) {
 	// API version 1
 	api := e.Group("/api/v1")
 
@@ -107,4 +107,9 @@ func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, aut
 	loans.POST("/preview", loanHandler.PreviewLoan)
 	loans.GET("/:id", loanHandler.GetLoan)
 	loans.DELETE("/:id", loanHandler.DeleteLoan)
+
+	// Loan Payment routes (nested under loans)
+	loans.GET("/:loanId/payments", loanPaymentHandler.GetPaymentsByLoanID)
+	loans.PATCH("/:loanId/payments/:paymentId", loanPaymentHandler.UpdatePaymentAmount)
+	loans.PUT("/:loanId/payments/:paymentId/toggle-paid", loanPaymentHandler.TogglePaymentPaid)
 }

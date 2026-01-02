@@ -77,6 +77,7 @@ func (l *Loan) GetLastPaymentYearMonth() (year, month int) {
 
 type LoanRepository interface {
 	Create(loan *Loan) (*Loan, error)
+	CreateTx(tx interface{}, loan *Loan) (*Loan, error) // Transactional create
 	GetByID(workspaceID int32, id int32) (*Loan, error)
 	GetAllByWorkspace(workspaceID int32) ([]*Loan, error)
 	GetActiveByWorkspace(workspaceID int32, currentYear, currentMonth int) ([]*Loan, error)

@@ -1,24 +1,30 @@
 package service
 
 import (
+	"context"
 	"strings"
 	"time"
 
 	"github.com/dafibh/fortuna/fortuna-backend/internal/domain"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
 )
 
 // LoanService handles loan business logic
 type LoanService struct {
+	pool         *pgxpool.Pool
 	loanRepo     domain.LoanRepository
 	providerRepo domain.LoanProviderRepository
+	paymentRepo  domain.LoanPaymentRepository
 }
 
 // NewLoanService creates a new LoanService
-func NewLoanService(loanRepo domain.LoanRepository, providerRepo domain.LoanProviderRepository) *LoanService {
+func NewLoanService(pool *pgxpool.Pool, loanRepo domain.LoanRepository, providerRepo domain.LoanProviderRepository, paymentRepo domain.LoanPaymentRepository) *LoanService {
 	return &LoanService{
+		pool:         pool,
 		loanRepo:     loanRepo,
 		providerRepo: providerRepo,
+		paymentRepo:  paymentRepo,
 	}
 }
 
@@ -33,7 +39,7 @@ type CreateLoanInput struct {
 	Notes        *string
 }
 
-// CreateLoan creates a new loan with calculated values
+// CreateLoan creates a new loan with calculated values and generates payment schedule
 func (s *LoanService) CreateLoan(workspaceID int32, input CreateLoanInput) (*domain.Loan, error) {
 	// Validate item name
 	itemName := strings.TrimSpace(input.ItemName)
@@ -93,6 +99,44 @@ func (s *LoanService) CreateLoan(workspaceID int32, input CreateLoanInput) (*dom
 		Notes:             input.Notes,
 	}
 
+	// Use transaction if pool is available (for payment generation)
+	if s.pool != nil {
+		ctx := context.Background()
+		tx, err := s.pool.Begin(ctx)
+		if err != nil {
+			return nil, err
+		}
+		defer tx.Rollback(ctx)
+
+		// Create loan in transaction
+		createdLoan, err := s.loanRepo.CreateTx(tx, loan)
+		if err != nil {
+			return nil, err
+		}
+
+		// Generate payment schedule
+		payments := GeneratePaymentSchedule(
+			createdLoan.ID,
+			createdLoan.MonthlyPayment,
+			int(createdLoan.NumMonths),
+			int(createdLoan.FirstPaymentYear),
+			int(createdLoan.FirstPaymentMonth),
+		)
+
+		// Create payments in transaction
+		if err := s.paymentRepo.CreateBatchTx(tx, payments); err != nil {
+			return nil, err
+		}
+
+		// Commit transaction
+		if err := tx.Commit(ctx); err != nil {
+			return nil, err
+		}
+
+		return createdLoan, nil
+	}
+
+	// Fallback without transaction (for backwards compatibility in tests)
 	return s.loanRepo.Create(loan)
 }
 
@@ -209,4 +253,31 @@ func CalculateFirstPaymentMonth(purchaseDate time.Time, cutoffDay int) (year, mo
 	// Next month
 	nextMonth := purchaseDate.AddDate(0, 1, 0)
 	return nextMonth.Year(), int(nextMonth.Month())
+}
+
+// GeneratePaymentSchedule generates all payment entries for a loan
+func GeneratePaymentSchedule(loanID int32, monthlyPayment decimal.Decimal, numMonths int, firstPaymentYear, firstPaymentMonth int) []*domain.LoanPayment {
+	payments := make([]*domain.LoanPayment, numMonths)
+	year := firstPaymentYear
+	month := firstPaymentMonth
+
+	for i := 0; i < numMonths; i++ {
+		payments[i] = &domain.LoanPayment{
+			LoanID:        loanID,
+			PaymentNumber: int32(i + 1), // 1-indexed
+			Amount:        monthlyPayment,
+			DueYear:       int32(year),
+			DueMonth:      int32(month),
+			Paid:          false,
+		}
+
+		// Advance to next month
+		month++
+		if month > 12 {
+			month = 1
+			year++
+		}
+	}
+
+	return payments
 }

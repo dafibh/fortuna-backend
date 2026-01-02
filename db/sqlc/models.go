@@ -58,6 +58,19 @@ type Loan struct {
 	DeletedAt         pgtype.Timestamptz `json:"deleted_at"`
 }
 
+type LoanPayment struct {
+	ID            int32              `json:"id"`
+	LoanID        int32              `json:"loan_id"`
+	PaymentNumber int32              `json:"payment_number"`
+	Amount        pgtype.Numeric     `json:"amount"`
+	DueYear       int32              `json:"due_year"`
+	DueMonth      int32              `json:"due_month"`
+	Paid          bool               `json:"paid"`
+	PaidDate      pgtype.Date        `json:"paid_date"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
 type LoanProvider struct {
 	ID                  int32              `json:"id"`
 	WorkspaceID         int32              `json:"workspace_id"`
