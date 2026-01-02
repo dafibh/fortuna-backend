@@ -1442,3 +1442,121 @@ func (m *MockRecurringRepository) CheckTransactionExists(recurringID, workspaceI
 	key := fmt.Sprintf("%d-%d-%d", recurringID, year, month)
 	return m.ExistingTransactions[key], nil
 }
+
+// MockLoanProviderRepository is a mock implementation of domain.LoanProviderRepository
+type MockLoanProviderRepository struct {
+	Providers   map[int32]*domain.LoanProvider
+	ByWorkspace map[int32][]*domain.LoanProvider
+	NextID      int32
+	CreateFn    func(provider *domain.LoanProvider) (*domain.LoanProvider, error)
+	GetByIDFn   func(workspaceID int32, id int32) (*domain.LoanProvider, error)
+	GetAllFn    func(workspaceID int32) ([]*domain.LoanProvider, error)
+	UpdateFn    func(provider *domain.LoanProvider) (*domain.LoanProvider, error)
+	DeleteFn    func(workspaceID int32, id int32) error
+}
+
+// NewMockLoanProviderRepository creates a new MockLoanProviderRepository
+func NewMockLoanProviderRepository() *MockLoanProviderRepository {
+	return &MockLoanProviderRepository{
+		Providers:   make(map[int32]*domain.LoanProvider),
+		ByWorkspace: make(map[int32][]*domain.LoanProvider),
+		NextID:      1,
+	}
+}
+
+// Create creates a new loan provider
+func (m *MockLoanProviderRepository) Create(provider *domain.LoanProvider) (*domain.LoanProvider, error) {
+	if m.CreateFn != nil {
+		return m.CreateFn(provider)
+	}
+	provider.ID = m.NextID
+	m.NextID++
+	provider.CreatedAt = time.Now()
+	provider.UpdatedAt = time.Now()
+	m.Providers[provider.ID] = provider
+	m.ByWorkspace[provider.WorkspaceID] = append(m.ByWorkspace[provider.WorkspaceID], provider)
+	return provider, nil
+}
+
+// GetByID retrieves a loan provider by ID
+func (m *MockLoanProviderRepository) GetByID(workspaceID int32, id int32) (*domain.LoanProvider, error) {
+	if m.GetByIDFn != nil {
+		return m.GetByIDFn(workspaceID, id)
+	}
+	provider, ok := m.Providers[id]
+	if !ok || provider.WorkspaceID != workspaceID {
+		return nil, domain.ErrLoanProviderNotFound
+	}
+	if provider.DeletedAt != nil {
+		return nil, domain.ErrLoanProviderNotFound
+	}
+	return provider, nil
+}
+
+// GetAllByWorkspace retrieves all loan providers for a workspace
+func (m *MockLoanProviderRepository) GetAllByWorkspace(workspaceID int32) ([]*domain.LoanProvider, error) {
+	if m.GetAllFn != nil {
+		return m.GetAllFn(workspaceID)
+	}
+	providers := m.ByWorkspace[workspaceID]
+	if providers == nil {
+		return []*domain.LoanProvider{}, nil
+	}
+	var result []*domain.LoanProvider
+	for _, p := range providers {
+		if p.DeletedAt == nil {
+			result = append(result, p)
+		}
+	}
+	if result == nil {
+		return []*domain.LoanProvider{}, nil
+	}
+	return result, nil
+}
+
+// Update updates a loan provider
+func (m *MockLoanProviderRepository) Update(provider *domain.LoanProvider) (*domain.LoanProvider, error) {
+	if m.UpdateFn != nil {
+		return m.UpdateFn(provider)
+	}
+	existing, ok := m.Providers[provider.ID]
+	if !ok || existing.WorkspaceID != provider.WorkspaceID {
+		return nil, domain.ErrLoanProviderNotFound
+	}
+	if existing.DeletedAt != nil {
+		return nil, domain.ErrLoanProviderNotFound
+	}
+	provider.UpdatedAt = time.Now()
+	m.Providers[provider.ID] = provider
+	// Update in workspace list
+	for i, p := range m.ByWorkspace[provider.WorkspaceID] {
+		if p.ID == provider.ID {
+			m.ByWorkspace[provider.WorkspaceID][i] = provider
+			break
+		}
+	}
+	return provider, nil
+}
+
+// SoftDelete soft-deletes a loan provider
+func (m *MockLoanProviderRepository) SoftDelete(workspaceID int32, id int32) error {
+	if m.DeleteFn != nil {
+		return m.DeleteFn(workspaceID, id)
+	}
+	provider, ok := m.Providers[id]
+	if !ok || provider.WorkspaceID != workspaceID {
+		return domain.ErrLoanProviderNotFound
+	}
+	if provider.DeletedAt != nil {
+		return domain.ErrLoanProviderNotFound
+	}
+	now := time.Now()
+	provider.DeletedAt = &now
+	return nil
+}
+
+// AddLoanProvider adds a loan provider to the mock repository (helper for tests)
+func (m *MockLoanProviderRepository) AddLoanProvider(provider *domain.LoanProvider) {
+	m.Providers[provider.ID] = provider
+	m.ByWorkspace[provider.WorkspaceID] = append(m.ByWorkspace[provider.WorkspaceID], provider)
+}

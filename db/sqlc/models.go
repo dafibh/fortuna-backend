@@ -40,6 +40,17 @@ type BudgetCategory struct {
 	DeletedAt   pgtype.Timestamptz `json:"deleted_at"`
 }
 
+type LoanProvider struct {
+	ID                  int32              `json:"id"`
+	WorkspaceID         int32              `json:"workspace_id"`
+	Name                string             `json:"name"`
+	CutoffDay           int32              `json:"cutoff_day"`
+	DefaultInterestRate pgtype.Numeric     `json:"default_interest_rate"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt           pgtype.Timestamptz `json:"deleted_at"`
+}
+
 type Month struct {
 	ID              int32              `json:"id"`
 	WorkspaceID     int32              `json:"workspace_id"`
