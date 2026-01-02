@@ -2,6 +2,7 @@ package service
 
 import (
 	"strings"
+	"time"
 
 	"github.com/dafibh/fortuna/fortuna-backend/internal/domain"
 	"github.com/shopspring/decimal"
@@ -191,4 +192,26 @@ func (s *RecurringService) UpdateRecurring(workspaceID int32, id int32, input Up
 // DeleteRecurring soft-deletes a recurring transaction
 func (s *RecurringService) DeleteRecurring(workspaceID int32, id int32) error {
 	return s.recurringRepo.Delete(workspaceID, id)
+}
+
+// CalculateActualDueDate returns the actual due date for a recurring transaction
+// given the due day and target month/year. For months with fewer days than the
+// due day (e.g., due day 31 in February), returns the last day of that month.
+// Invalid due days (<= 0) are clamped to 1.
+func CalculateActualDueDate(dueDay int32, year int, month time.Month) time.Time {
+	// Clamp invalid due days to 1 (defensive)
+	actualDay := int(dueDay)
+	if actualDay < 1 {
+		actualDay = 1
+	}
+
+	// Get last day of month by going to day 0 of next month
+	lastDay := time.Date(year, month+1, 0, 0, 0, 0, 0, time.UTC).Day()
+
+	// Clamp to last day of month if needed
+	if actualDay > lastDay {
+		actualDay = lastDay
+	}
+
+	return time.Date(year, month, actualDay, 0, 0, 0, 0, time.UTC)
 }

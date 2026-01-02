@@ -2,6 +2,7 @@ package service
 
 import (
 	"testing"
+	"time"
 
 	"github.com/dafibh/fortuna/fortuna-backend/internal/domain"
 	"github.com/dafibh/fortuna/fortuna-backend/internal/testutil"
@@ -756,5 +757,124 @@ func TestDeleteRecurring_AlreadyDeleted(t *testing.T) {
 	err = service.DeleteRecurring(workspaceID, 1)
 	if err != domain.ErrRecurringNotFound {
 		t.Errorf("Expected ErrRecurringNotFound for already deleted, got %v", err)
+	}
+}
+
+// CalculateActualDueDate tests
+
+func TestCalculateActualDueDate_January31(t *testing.T) {
+	// Due day 31 in January (31 days) → Jan 31
+	result := CalculateActualDueDate(31, 2025, time.January)
+	expected := time.Date(2025, time.January, 31, 0, 0, 0, 0, time.UTC)
+	if !result.Equal(expected) {
+		t.Errorf("Expected %v, got %v", expected, result)
+	}
+}
+
+func TestCalculateActualDueDate_February31_NonLeap(t *testing.T) {
+	// Due day 31 in February (28 days in non-leap year) → Feb 28
+	result := CalculateActualDueDate(31, 2025, time.February)
+	expected := time.Date(2025, time.February, 28, 0, 0, 0, 0, time.UTC)
+	if !result.Equal(expected) {
+		t.Errorf("Expected %v, got %v", expected, result)
+	}
+}
+
+func TestCalculateActualDueDate_February31_LeapYear(t *testing.T) {
+	// Due day 31 in February (29 days in leap year) → Feb 29
+	result := CalculateActualDueDate(31, 2024, time.February)
+	expected := time.Date(2024, time.February, 29, 0, 0, 0, 0, time.UTC)
+	if !result.Equal(expected) {
+		t.Errorf("Expected %v, got %v", expected, result)
+	}
+}
+
+func TestCalculateActualDueDate_February29_NonLeap(t *testing.T) {
+	// Due day 29 in February (28 days in non-leap year) → Feb 28
+	result := CalculateActualDueDate(29, 2025, time.February)
+	expected := time.Date(2025, time.February, 28, 0, 0, 0, 0, time.UTC)
+	if !result.Equal(expected) {
+		t.Errorf("Expected %v, got %v", expected, result)
+	}
+}
+
+func TestCalculateActualDueDate_February29_LeapYear(t *testing.T) {
+	// Due day 29 in February (29 days in leap year) → Feb 29
+	result := CalculateActualDueDate(29, 2024, time.February)
+	expected := time.Date(2024, time.February, 29, 0, 0, 0, 0, time.UTC)
+	if !result.Equal(expected) {
+		t.Errorf("Expected %v, got %v", expected, result)
+	}
+}
+
+func TestCalculateActualDueDate_February30(t *testing.T) {
+	// Due day 30 in February (28 days) → Feb 28
+	result := CalculateActualDueDate(30, 2025, time.February)
+	expected := time.Date(2025, time.February, 28, 0, 0, 0, 0, time.UTC)
+	if !result.Equal(expected) {
+		t.Errorf("Expected %v, got %v", expected, result)
+	}
+}
+
+func TestCalculateActualDueDate_April31(t *testing.T) {
+	// Due day 31 in April (30 days) → Apr 30
+	result := CalculateActualDueDate(31, 2025, time.April)
+	expected := time.Date(2025, time.April, 30, 0, 0, 0, 0, time.UTC)
+	if !result.Equal(expected) {
+		t.Errorf("Expected %v, got %v", expected, result)
+	}
+}
+
+func TestCalculateActualDueDate_NormalDay(t *testing.T) {
+	// Due day 15 in any month → 15th of that month
+	result := CalculateActualDueDate(15, 2025, time.March)
+	expected := time.Date(2025, time.March, 15, 0, 0, 0, 0, time.UTC)
+	if !result.Equal(expected) {
+		t.Errorf("Expected %v, got %v", expected, result)
+	}
+}
+
+func TestCalculateActualDueDate_FirstDay(t *testing.T) {
+	// Due day 1 in any month → 1st of that month
+	result := CalculateActualDueDate(1, 2025, time.July)
+	expected := time.Date(2025, time.July, 1, 0, 0, 0, 0, time.UTC)
+	if !result.Equal(expected) {
+		t.Errorf("Expected %v, got %v", expected, result)
+	}
+}
+
+func TestCalculateActualDueDate_December31(t *testing.T) {
+	// Due day 31 in December (31 days) → Dec 31 (tests year boundary in month+1)
+	result := CalculateActualDueDate(31, 2025, time.December)
+	expected := time.Date(2025, time.December, 31, 0, 0, 0, 0, time.UTC)
+	if !result.Equal(expected) {
+		t.Errorf("Expected %v, got %v", expected, result)
+	}
+}
+
+func TestCalculateActualDueDate_June30(t *testing.T) {
+	// Due day 31 in June (30 days) → Jun 30 (another 30-day month)
+	result := CalculateActualDueDate(31, 2025, time.June)
+	expected := time.Date(2025, time.June, 30, 0, 0, 0, 0, time.UTC)
+	if !result.Equal(expected) {
+		t.Errorf("Expected %v, got %v", expected, result)
+	}
+}
+
+func TestCalculateActualDueDate_InvalidDayZero(t *testing.T) {
+	// Due day 0 should be clamped to 1 (defensive)
+	result := CalculateActualDueDate(0, 2025, time.March)
+	expected := time.Date(2025, time.March, 1, 0, 0, 0, 0, time.UTC)
+	if !result.Equal(expected) {
+		t.Errorf("Expected %v, got %v", expected, result)
+	}
+}
+
+func TestCalculateActualDueDate_InvalidDayNegative(t *testing.T) {
+	// Negative due day should be clamped to 1 (defensive)
+	result := CalculateActualDueDate(-5, 2025, time.March)
+	expected := time.Date(2025, time.March, 1, 0, 0, 0, 0, time.UTC)
+	if !result.Equal(expected) {
+		t.Errorf("Expected %v, got %v", expected, result)
 	}
 }
