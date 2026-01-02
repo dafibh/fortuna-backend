@@ -6,7 +6,7 @@ import (
 )
 
 // RegisterRoutes sets up all API routes
-func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler, recurringHandler *RecurringHandler, loanProviderHandler *LoanProviderHandler) {
+func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler, recurringHandler *RecurringHandler, loanProviderHandler *LoanProviderHandler, loanHandler *LoanHandler) {
 	// API version 1
 	api := e.Group("/api/v1")
 
@@ -98,4 +98,13 @@ func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, aut
 	loanProviders.GET("/:id", loanProviderHandler.GetLoanProvider)
 	loanProviders.PUT("/:id", loanProviderHandler.UpdateLoanProvider)
 	loanProviders.DELETE("/:id", loanProviderHandler.DeleteLoanProvider)
+
+	// Loan routes (protected)
+	loans := api.Group("/loans")
+	loans.Use(authMiddleware.Authenticate())
+	loans.POST("", loanHandler.CreateLoan)
+	loans.GET("", loanHandler.GetLoans)
+	loans.POST("/preview", loanHandler.PreviewLoan)
+	loans.GET("/:id", loanHandler.GetLoan)
+	loans.DELETE("/:id", loanHandler.DeleteLoan)
 }

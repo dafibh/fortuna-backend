@@ -1560,3 +1560,222 @@ func (m *MockLoanProviderRepository) AddLoanProvider(provider *domain.LoanProvid
 	m.Providers[provider.ID] = provider
 	m.ByWorkspace[provider.WorkspaceID] = append(m.ByWorkspace[provider.WorkspaceID], provider)
 }
+
+// MockLoanRepository is a mock implementation of domain.LoanRepository
+type MockLoanRepository struct {
+	Loans            map[int32]*domain.Loan
+	ByWorkspace      map[int32][]*domain.Loan
+	ActiveLoans      map[string][]*domain.Loan
+	CompletedLoans   map[string][]*domain.Loan
+	ActiveLoanCounts map[string]int64
+	NextID           int32
+	CreateFn         func(loan *domain.Loan) (*domain.Loan, error)
+	GetByIDFn        func(workspaceID int32, id int32) (*domain.Loan, error)
+	GetAllFn         func(workspaceID int32) ([]*domain.Loan, error)
+	GetActiveFn      func(workspaceID int32, currentYear, currentMonth int) ([]*domain.Loan, error)
+	GetCompletedFn   func(workspaceID int32, currentYear, currentMonth int) ([]*domain.Loan, error)
+	UpdateFn         func(loan *domain.Loan) (*domain.Loan, error)
+	DeleteFn         func(workspaceID int32, id int32) error
+	CountActiveFn    func(workspaceID int32, providerID int32, currentYear, currentMonth int) (int64, error)
+}
+
+// NewMockLoanRepository creates a new MockLoanRepository
+func NewMockLoanRepository() *MockLoanRepository {
+	return &MockLoanRepository{
+		Loans:            make(map[int32]*domain.Loan),
+		ByWorkspace:      make(map[int32][]*domain.Loan),
+		ActiveLoans:      make(map[string][]*domain.Loan),
+		CompletedLoans:   make(map[string][]*domain.Loan),
+		ActiveLoanCounts: make(map[string]int64),
+		NextID:           1,
+	}
+}
+
+func loanMonthKey(workspaceID int32, year, month int) string {
+	return fmt.Sprintf("%d-%d-%d", workspaceID, year, month)
+}
+
+func loanProviderMonthKey(workspaceID, providerID int32, year, month int) string {
+	return fmt.Sprintf("%d-%d-%d-%d", workspaceID, providerID, year, month)
+}
+
+// Create creates a new loan
+func (m *MockLoanRepository) Create(loan *domain.Loan) (*domain.Loan, error) {
+	if m.CreateFn != nil {
+		return m.CreateFn(loan)
+	}
+	loan.ID = m.NextID
+	m.NextID++
+	loan.CreatedAt = time.Now()
+	loan.UpdatedAt = time.Now()
+	m.Loans[loan.ID] = loan
+	m.ByWorkspace[loan.WorkspaceID] = append(m.ByWorkspace[loan.WorkspaceID], loan)
+	return loan, nil
+}
+
+// GetByID retrieves a loan by ID
+func (m *MockLoanRepository) GetByID(workspaceID int32, id int32) (*domain.Loan, error) {
+	if m.GetByIDFn != nil {
+		return m.GetByIDFn(workspaceID, id)
+	}
+	loan, ok := m.Loans[id]
+	if !ok || loan.WorkspaceID != workspaceID {
+		return nil, domain.ErrLoanNotFound
+	}
+	if loan.DeletedAt != nil {
+		return nil, domain.ErrLoanNotFound
+	}
+	return loan, nil
+}
+
+// GetAllByWorkspace retrieves all loans for a workspace
+func (m *MockLoanRepository) GetAllByWorkspace(workspaceID int32) ([]*domain.Loan, error) {
+	if m.GetAllFn != nil {
+		return m.GetAllFn(workspaceID)
+	}
+	loans := m.ByWorkspace[workspaceID]
+	if loans == nil {
+		return []*domain.Loan{}, nil
+	}
+	var result []*domain.Loan
+	for _, l := range loans {
+		if l.DeletedAt == nil {
+			result = append(result, l)
+		}
+	}
+	if result == nil {
+		return []*domain.Loan{}, nil
+	}
+	return result, nil
+}
+
+// GetActiveByWorkspace retrieves active loans for a workspace
+func (m *MockLoanRepository) GetActiveByWorkspace(workspaceID int32, currentYear, currentMonth int) ([]*domain.Loan, error) {
+	if m.GetActiveFn != nil {
+		return m.GetActiveFn(workspaceID, currentYear, currentMonth)
+	}
+	key := loanMonthKey(workspaceID, currentYear, currentMonth)
+	if loans, ok := m.ActiveLoans[key]; ok {
+		return loans, nil
+	}
+	// Calculate active loans from all loans
+	allLoans := m.ByWorkspace[workspaceID]
+	var result []*domain.Loan
+	for _, l := range allLoans {
+		if l.DeletedAt == nil && l.IsActive(currentYear, currentMonth) {
+			result = append(result, l)
+		}
+	}
+	if result == nil {
+		return []*domain.Loan{}, nil
+	}
+	return result, nil
+}
+
+// GetCompletedByWorkspace retrieves completed loans for a workspace
+func (m *MockLoanRepository) GetCompletedByWorkspace(workspaceID int32, currentYear, currentMonth int) ([]*domain.Loan, error) {
+	if m.GetCompletedFn != nil {
+		return m.GetCompletedFn(workspaceID, currentYear, currentMonth)
+	}
+	key := loanMonthKey(workspaceID, currentYear, currentMonth)
+	if loans, ok := m.CompletedLoans[key]; ok {
+		return loans, nil
+	}
+	// Calculate completed loans from all loans
+	allLoans := m.ByWorkspace[workspaceID]
+	var result []*domain.Loan
+	for _, l := range allLoans {
+		if l.DeletedAt == nil && !l.IsActive(currentYear, currentMonth) {
+			result = append(result, l)
+		}
+	}
+	if result == nil {
+		return []*domain.Loan{}, nil
+	}
+	return result, nil
+}
+
+// Update updates a loan
+func (m *MockLoanRepository) Update(loan *domain.Loan) (*domain.Loan, error) {
+	if m.UpdateFn != nil {
+		return m.UpdateFn(loan)
+	}
+	existing, ok := m.Loans[loan.ID]
+	if !ok || existing.WorkspaceID != loan.WorkspaceID {
+		return nil, domain.ErrLoanNotFound
+	}
+	if existing.DeletedAt != nil {
+		return nil, domain.ErrLoanNotFound
+	}
+	loan.UpdatedAt = time.Now()
+	m.Loans[loan.ID] = loan
+	// Update in workspace list
+	for i, l := range m.ByWorkspace[loan.WorkspaceID] {
+		if l.ID == loan.ID {
+			m.ByWorkspace[loan.WorkspaceID][i] = loan
+			break
+		}
+	}
+	return loan, nil
+}
+
+// SoftDelete soft-deletes a loan
+func (m *MockLoanRepository) SoftDelete(workspaceID int32, id int32) error {
+	if m.DeleteFn != nil {
+		return m.DeleteFn(workspaceID, id)
+	}
+	loan, ok := m.Loans[id]
+	if !ok || loan.WorkspaceID != workspaceID {
+		return domain.ErrLoanNotFound
+	}
+	if loan.DeletedAt != nil {
+		return domain.ErrLoanNotFound
+	}
+	now := time.Now()
+	loan.DeletedAt = &now
+	return nil
+}
+
+// CountActiveLoansByProvider counts active loans for a provider
+func (m *MockLoanRepository) CountActiveLoansByProvider(workspaceID int32, providerID int32, currentYear, currentMonth int) (int64, error) {
+	if m.CountActiveFn != nil {
+		return m.CountActiveFn(workspaceID, providerID, currentYear, currentMonth)
+	}
+	key := loanProviderMonthKey(workspaceID, providerID, currentYear, currentMonth)
+	if count, ok := m.ActiveLoanCounts[key]; ok {
+		return count, nil
+	}
+	// Calculate from all loans
+	allLoans := m.ByWorkspace[workspaceID]
+	var count int64
+	for _, l := range allLoans {
+		if l.DeletedAt == nil && l.ProviderID == providerID && l.IsActive(currentYear, currentMonth) {
+			count++
+		}
+	}
+	return count, nil
+}
+
+// AddLoan adds a loan to the mock repository (helper for tests)
+func (m *MockLoanRepository) AddLoan(loan *domain.Loan) {
+	m.Loans[loan.ID] = loan
+	m.ByWorkspace[loan.WorkspaceID] = append(m.ByWorkspace[loan.WorkspaceID], loan)
+}
+
+// SetActiveLoans sets the active loans for testing (helper for tests)
+func (m *MockLoanRepository) SetActiveLoans(workspaceID int32, year, month int, loans []*domain.Loan) {
+	key := loanMonthKey(workspaceID, year, month)
+	m.ActiveLoans[key] = loans
+}
+
+// SetCompletedLoans sets the completed loans for testing (helper for tests)
+func (m *MockLoanRepository) SetCompletedLoans(workspaceID int32, year, month int, loans []*domain.Loan) {
+	key := loanMonthKey(workspaceID, year, month)
+	m.CompletedLoans[key] = loans
+}
+
+// SetActiveLoanCount sets the active loan count for a provider (helper for tests)
+func (m *MockLoanRepository) SetActiveLoanCount(workspaceID, providerID int32, year, month int, count int64) {
+	key := loanProviderMonthKey(workspaceID, providerID, year, month)
+	m.ActiveLoanCounts[key] = count
+}

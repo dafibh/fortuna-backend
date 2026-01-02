@@ -15,6 +15,7 @@ type Querier interface {
 	CheckRecurringTransactionExists(ctx context.Context, arg CheckRecurringTransactionExistsParams) (int32, error)
 	// Copies all allocations from one month to another (atomic, skips deleted categories)
 	CopyAllocationsToMonth(ctx context.Context, arg CopyAllocationsToMonthParams) error
+	CountActiveLoansByProvider(ctx context.Context, arg CountActiveLoansByProviderParams) (int64, error)
 	// Returns the count of allocations for a specific month (for lazy initialization check)
 	CountAllocationsForMonth(ctx context.Context, arg CountAllocationsForMonthParams) (int64, error)
 	// Count transactions assigned to a specific category
@@ -22,6 +23,7 @@ type Querier interface {
 	CountTransactionsByWorkspace(ctx context.Context, arg CountTransactionsByWorkspaceParams) (int64, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
 	CreateBudgetCategory(ctx context.Context, arg CreateBudgetCategoryParams) (BudgetCategory, error)
+	CreateLoan(ctx context.Context, arg CreateLoanParams) (Loan, error)
 	CreateLoanProvider(ctx context.Context, arg CreateLoanProviderParams) (LoanProvider, error)
 	CreateMonth(ctx context.Context, arg CreateMonthParams) (Month, error)
 	CreateOrGetUserByAuth0ID(ctx context.Context, arg CreateOrGetUserByAuth0IDParams) (User, error)
@@ -30,6 +32,7 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams) (Workspace, error)
 	DeleteBudgetAllocation(ctx context.Context, arg DeleteBudgetAllocationParams) error
+	DeleteLoan(ctx context.Context, arg DeleteLoanParams) error
 	DeleteLoanProvider(ctx context.Context, arg DeleteLoanProviderParams) error
 	DeleteWorkspace(ctx context.Context, id int32) error
 	GetAccountByID(ctx context.Context, arg GetAccountByIDParams) (Account, error)
@@ -54,6 +57,7 @@ type Querier interface {
 	// Returns all transactions for a specific category in a month
 	GetCategoryTransactions(ctx context.Context, arg GetCategoryTransactionsParams) ([]GetCategoryTransactionsRow, error)
 	GetLatestMonth(ctx context.Context, workspaceID int32) (Month, error)
+	GetLoanByID(ctx context.Context, arg GetLoanByIDParams) (Loan, error)
 	GetLoanProviderByID(ctx context.Context, arg GetLoanProviderByIDParams) (LoanProvider, error)
 	GetMonthByYearMonth(ctx context.Context, arg GetMonthByYearMonthParams) (Month, error)
 	// Batch query to get income/expense totals grouped by year/month for N+1 prevention
@@ -75,7 +79,10 @@ type Querier interface {
 	GetWorkspaceByUserAuth0ID(ctx context.Context, auth0ID string) (Workspace, error)
 	GetWorkspaceByUserID(ctx context.Context, userID pgtype.UUID) (Workspace, error)
 	HardDeleteAccount(ctx context.Context, arg HardDeleteAccountParams) error
+	ListActiveLoans(ctx context.Context, arg ListActiveLoansParams) ([]Loan, error)
+	ListCompletedLoans(ctx context.Context, arg ListCompletedLoansParams) ([]Loan, error)
 	ListLoanProviders(ctx context.Context, workspaceID int32) ([]LoanProvider, error)
+	ListLoans(ctx context.Context, workspaceID int32) ([]Loan, error)
 	ListRecurringTransactions(ctx context.Context, arg ListRecurringTransactionsParams) ([]RecurringTransaction, error)
 	SoftDeleteAccount(ctx context.Context, arg SoftDeleteAccountParams) (int64, error)
 	SoftDeleteBudgetCategory(ctx context.Context, arg SoftDeleteBudgetCategoryParams) error
@@ -90,6 +97,7 @@ type Querier interface {
 	ToggleTransactionPaidStatus(ctx context.Context, arg ToggleTransactionPaidStatusParams) (Transaction, error)
 	UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error)
 	UpdateBudgetCategory(ctx context.Context, arg UpdateBudgetCategoryParams) (BudgetCategory, error)
+	UpdateLoan(ctx context.Context, arg UpdateLoanParams) (Loan, error)
 	UpdateLoanProvider(ctx context.Context, arg UpdateLoanProviderParams) (LoanProvider, error)
 	UpdateMonthStartingBalance(ctx context.Context, arg UpdateMonthStartingBalanceParams) error
 	UpdateRecurringTransaction(ctx context.Context, arg UpdateRecurringTransactionParams) (RecurringTransaction, error)
