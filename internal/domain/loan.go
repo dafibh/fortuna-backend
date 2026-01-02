@@ -34,6 +34,26 @@ type Loan struct {
 	DeletedAt         *time.Time      `json:"deletedAt,omitempty"`
 }
 
+// LoanWithStats includes loan data plus payment statistics
+type LoanWithStats struct {
+	Loan
+	LastPaymentYear  int32           `json:"lastPaymentYear"`
+	LastPaymentMonth int32           `json:"lastPaymentMonth"`
+	TotalCount       int32           `json:"totalCount"`
+	PaidCount        int32           `json:"paidCount"`
+	RemainingBalance decimal.Decimal `json:"remainingBalance"`
+	Progress         float64         `json:"progress"` // Calculated: paidCount/totalCount * 100
+}
+
+// LoanFilter defines the filter options for listing loans
+type LoanFilter string
+
+const (
+	LoanFilterAll       LoanFilter = "all"
+	LoanFilterActive    LoanFilter = "active"    // remaining_balance > 0
+	LoanFilterCompleted LoanFilter = "completed" // remaining_balance = 0
+)
+
 func (l *Loan) Validate() error {
 	if l.ItemName == "" {
 		return ErrLoanItemNameEmpty
@@ -85,4 +105,8 @@ type LoanRepository interface {
 	Update(loan *Loan) (*Loan, error)
 	SoftDelete(workspaceID int32, id int32) error
 	CountActiveLoansByProvider(workspaceID int32, providerID int32, currentYear, currentMonth int) (int64, error)
+	// Stats methods - joins with loan_payments for aggregated data
+	GetAllWithStats(workspaceID int32) ([]*LoanWithStats, error)
+	GetActiveWithStats(workspaceID int32) ([]*LoanWithStats, error)
+	GetCompletedWithStats(workspaceID int32) ([]*LoanWithStats, error)
 }

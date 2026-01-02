@@ -1563,20 +1563,23 @@ func (m *MockLoanProviderRepository) AddLoanProvider(provider *domain.LoanProvid
 
 // MockLoanRepository is a mock implementation of domain.LoanRepository
 type MockLoanRepository struct {
-	Loans            map[int32]*domain.Loan
-	ByWorkspace      map[int32][]*domain.Loan
-	ActiveLoans      map[string][]*domain.Loan
-	CompletedLoans   map[string][]*domain.Loan
-	ActiveLoanCounts map[string]int64
-	NextID           int32
-	CreateFn         func(loan *domain.Loan) (*domain.Loan, error)
-	GetByIDFn        func(workspaceID int32, id int32) (*domain.Loan, error)
-	GetAllFn         func(workspaceID int32) ([]*domain.Loan, error)
-	GetActiveFn      func(workspaceID int32, currentYear, currentMonth int) ([]*domain.Loan, error)
-	GetCompletedFn   func(workspaceID int32, currentYear, currentMonth int) ([]*domain.Loan, error)
-	UpdateFn         func(loan *domain.Loan) (*domain.Loan, error)
-	DeleteFn         func(workspaceID int32, id int32) error
-	CountActiveFn    func(workspaceID int32, providerID int32, currentYear, currentMonth int) (int64, error)
+	Loans              map[int32]*domain.Loan
+	ByWorkspace        map[int32][]*domain.Loan
+	ActiveLoans        map[string][]*domain.Loan
+	CompletedLoans     map[string][]*domain.Loan
+	ActiveLoanCounts   map[string]int64
+	LoansWithStats     []*domain.LoanWithStats
+	ActiveWithStats    []*domain.LoanWithStats
+	CompletedWithStats []*domain.LoanWithStats
+	NextID             int32
+	CreateFn           func(loan *domain.Loan) (*domain.Loan, error)
+	GetByIDFn          func(workspaceID int32, id int32) (*domain.Loan, error)
+	GetAllFn           func(workspaceID int32) ([]*domain.Loan, error)
+	GetActiveFn        func(workspaceID int32, currentYear, currentMonth int) ([]*domain.Loan, error)
+	GetCompletedFn     func(workspaceID int32, currentYear, currentMonth int) ([]*domain.Loan, error)
+	UpdateFn           func(loan *domain.Loan) (*domain.Loan, error)
+	DeleteFn           func(workspaceID int32, id int32) error
+	CountActiveFn      func(workspaceID int32, providerID int32, currentYear, currentMonth int) (int64, error)
 }
 
 // NewMockLoanRepository creates a new MockLoanRepository
@@ -1783,6 +1786,45 @@ func (m *MockLoanRepository) SetCompletedLoans(workspaceID int32, year, month in
 func (m *MockLoanRepository) SetActiveLoanCount(workspaceID, providerID int32, year, month int, count int64) {
 	key := loanProviderMonthKey(workspaceID, providerID, year, month)
 	m.ActiveLoanCounts[key] = count
+}
+
+// GetAllWithStats retrieves all loans with payment statistics
+func (m *MockLoanRepository) GetAllWithStats(workspaceID int32) ([]*domain.LoanWithStats, error) {
+	if m.LoansWithStats != nil {
+		return m.LoansWithStats, nil
+	}
+	return []*domain.LoanWithStats{}, nil
+}
+
+// GetActiveWithStats retrieves active loans with payment statistics
+func (m *MockLoanRepository) GetActiveWithStats(workspaceID int32) ([]*domain.LoanWithStats, error) {
+	if m.ActiveWithStats != nil {
+		return m.ActiveWithStats, nil
+	}
+	return []*domain.LoanWithStats{}, nil
+}
+
+// GetCompletedWithStats retrieves completed loans with payment statistics
+func (m *MockLoanRepository) GetCompletedWithStats(workspaceID int32) ([]*domain.LoanWithStats, error) {
+	if m.CompletedWithStats != nil {
+		return m.CompletedWithStats, nil
+	}
+	return []*domain.LoanWithStats{}, nil
+}
+
+// SetLoansWithStats sets the loans with stats for testing (helper for tests)
+func (m *MockLoanRepository) SetLoansWithStats(loans []*domain.LoanWithStats) {
+	m.LoansWithStats = loans
+}
+
+// SetActiveWithStats sets the active loans with stats for testing (helper for tests)
+func (m *MockLoanRepository) SetActiveWithStats(loans []*domain.LoanWithStats) {
+	m.ActiveWithStats = loans
+}
+
+// SetCompletedWithStats sets the completed loans with stats for testing (helper for tests)
+func (m *MockLoanRepository) SetCompletedWithStats(loans []*domain.LoanWithStats) {
+	m.CompletedWithStats = loans
 }
 
 // MockLoanPaymentRepository is a mock implementation of domain.LoanPaymentRepository

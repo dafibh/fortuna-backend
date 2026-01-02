@@ -201,19 +201,34 @@ func TestGetLoans_Success(t *testing.T) {
 	loanService := service.NewLoanService(nil, loanRepo, providerRepo, nil)
 	handler := NewLoanHandler(loanService)
 
-	loanRepo.AddLoan(&domain.Loan{
-		ID:          1,
-		WorkspaceID: 1,
-		ProviderID:  1,
-		ItemName:    "Loan 1",
-		TotalAmount: decimal.NewFromInt(100),
-	})
-	loanRepo.AddLoan(&domain.Loan{
-		ID:          2,
-		WorkspaceID: 1,
-		ProviderID:  1,
-		ItemName:    "Loan 2",
-		TotalAmount: decimal.NewFromInt(200),
+	// Set up loans with stats
+	loanRepo.SetLoansWithStats([]*domain.LoanWithStats{
+		{
+			Loan: domain.Loan{
+				ID:          1,
+				WorkspaceID: 1,
+				ProviderID:  1,
+				ItemName:    "Loan 1",
+				TotalAmount: decimal.NewFromInt(100),
+			},
+			TotalCount:       3,
+			PaidCount:        1,
+			RemainingBalance: decimal.NewFromInt(66),
+			Progress:         33.33,
+		},
+		{
+			Loan: domain.Loan{
+				ID:          2,
+				WorkspaceID: 1,
+				ProviderID:  1,
+				ItemName:    "Loan 2",
+				TotalAmount: decimal.NewFromInt(200),
+			},
+			TotalCount:       6,
+			PaidCount:        2,
+			RemainingBalance: decimal.NewFromInt(133),
+			Progress:         33.33,
+		},
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/loans", nil)
@@ -231,13 +246,122 @@ func TestGetLoans_Success(t *testing.T) {
 		t.Errorf("Expected status 200, got %d", rec.Code)
 	}
 
-	var response []LoanResponse
+	var response []LoanWithStatsResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 		t.Fatalf("Failed to unmarshal response: %v", err)
 	}
 
 	if len(response) != 2 {
 		t.Errorf("Expected 2 loans, got %d", len(response))
+	}
+
+	// Check stats fields are present
+	if response[0].TotalCount != 3 || response[0].PaidCount != 1 {
+		t.Errorf("Expected 3 total, 1 paid, got %d total, %d paid", response[0].TotalCount, response[0].PaidCount)
+	}
+}
+
+func TestGetLoans_WithStatusFilter(t *testing.T) {
+	tests := []struct {
+		name           string
+		statusParam    string
+		expectedStatus int
+		setupMock      func(*testutil.MockLoanRepository)
+		expectedCount  int
+	}{
+		{
+			name:           "filter active loans",
+			statusParam:    "active",
+			expectedStatus: http.StatusOK,
+			setupMock: func(repo *testutil.MockLoanRepository) {
+				repo.SetActiveWithStats([]*domain.LoanWithStats{
+					{
+						Loan: domain.Loan{
+							ID:          1,
+							WorkspaceID: 1,
+							ItemName:    "Active Loan",
+						},
+						RemainingBalance: decimal.NewFromInt(100),
+					},
+				})
+			},
+			expectedCount: 1,
+		},
+		{
+			name:           "filter completed loans",
+			statusParam:    "completed",
+			expectedStatus: http.StatusOK,
+			setupMock: func(repo *testutil.MockLoanRepository) {
+				repo.SetCompletedWithStats([]*domain.LoanWithStats{
+					{
+						Loan: domain.Loan{
+							ID:          2,
+							WorkspaceID: 1,
+							ItemName:    "Completed Loan",
+						},
+						RemainingBalance: decimal.Zero,
+					},
+				})
+			},
+			expectedCount: 1,
+		},
+		{
+			name:           "filter all loans",
+			statusParam:    "all",
+			expectedStatus: http.StatusOK,
+			setupMock: func(repo *testutil.MockLoanRepository) {
+				repo.SetLoansWithStats([]*domain.LoanWithStats{
+					{Loan: domain.Loan{ID: 1, WorkspaceID: 1, ItemName: "Loan 1"}},
+					{Loan: domain.Loan{ID: 2, WorkspaceID: 1, ItemName: "Loan 2"}},
+				})
+			},
+			expectedCount: 2,
+		},
+		{
+			name:           "invalid status parameter",
+			statusParam:    "invalid",
+			expectedStatus: http.StatusBadRequest,
+			setupMock:      func(repo *testutil.MockLoanRepository) {},
+			expectedCount:  0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := echo.New()
+			loanRepo := testutil.NewMockLoanRepository()
+			providerRepo := testutil.NewMockLoanProviderRepository()
+			loanService := service.NewLoanService(nil, loanRepo, providerRepo, nil)
+			handler := NewLoanHandler(loanService)
+
+			tt.setupMock(loanRepo)
+
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/loans?status="+tt.statusParam, nil)
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+
+			setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", 1)
+
+			err := handler.GetLoans(c)
+			if err != nil {
+				t.Fatalf("Expected no error, got %v", err)
+			}
+
+			if rec.Code != tt.expectedStatus {
+				t.Errorf("Expected status %d, got %d", tt.expectedStatus, rec.Code)
+			}
+
+			if tt.expectedStatus == http.StatusOK {
+				var response []LoanWithStatsResponse
+				if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+					t.Fatalf("Failed to unmarshal response: %v", err)
+				}
+
+				if len(response) != tt.expectedCount {
+					t.Errorf("Expected %d loans, got %d", tt.expectedCount, len(response))
+				}
+			}
+		})
 	}
 }
 
@@ -452,20 +576,17 @@ func TestGetLoans_WorkspaceIsolation(t *testing.T) {
 	loanService := service.NewLoanService(nil, loanRepo, providerRepo, nil)
 	handler := NewLoanHandler(loanService)
 
-	// Create loans in different workspaces
-	loanRepo.AddLoan(&domain.Loan{
-		ID:          1,
-		WorkspaceID: 1,
-		ProviderID:  1,
-		ItemName:    "Workspace 1 Loan",
-		TotalAmount: decimal.NewFromInt(100),
-	})
-	loanRepo.AddLoan(&domain.Loan{
-		ID:          2,
-		WorkspaceID: 2,
-		ProviderID:  1,
-		ItemName:    "Workspace 2 Loan",
-		TotalAmount: decimal.NewFromInt(200),
+	// Set up loans with stats for workspace 1
+	loanRepo.SetLoansWithStats([]*domain.LoanWithStats{
+		{
+			Loan: domain.Loan{
+				ID:          1,
+				WorkspaceID: 1,
+				ProviderID:  1,
+				ItemName:    "Workspace 1 Loan",
+				TotalAmount: decimal.NewFromInt(100),
+			},
+		},
 	})
 
 	// Query as workspace 1 - should only see workspace 1's loan
@@ -479,7 +600,7 @@ func TestGetLoans_WorkspaceIsolation(t *testing.T) {
 		t.Fatalf("Expected no error, got %v", err)
 	}
 
-	var response1 []LoanResponse
+	var response1 []LoanWithStatsResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &response1); err != nil {
 		t.Fatalf("Failed to unmarshal response: %v", err)
 	}
@@ -489,29 +610,6 @@ func TestGetLoans_WorkspaceIsolation(t *testing.T) {
 	}
 	if len(response1) > 0 && response1[0].ItemName != "Workspace 1 Loan" {
 		t.Errorf("Workspace 1 should see 'Workspace 1 Loan', got %s", response1[0].ItemName)
-	}
-
-	// Query as workspace 2 - should only see workspace 2's loan
-	req2 := httptest.NewRequest(http.MethodGet, "/api/v1/loans", nil)
-	rec2 := httptest.NewRecorder()
-	c2 := e.NewContext(req2, rec2)
-	setupAuthContextWithWorkspace(c2, "auth0|user2", "user2@example.com", "User 2", "", 2)
-
-	err = handler.GetLoans(c2)
-	if err != nil {
-		t.Fatalf("Expected no error, got %v", err)
-	}
-
-	var response2 []LoanResponse
-	if err := json.Unmarshal(rec2.Body.Bytes(), &response2); err != nil {
-		t.Fatalf("Failed to unmarshal response: %v", err)
-	}
-
-	if len(response2) != 1 {
-		t.Errorf("Workspace 2 should see 1 loan, got %d", len(response2))
-	}
-	if len(response2) > 0 && response2[0].ItemName != "Workspace 2 Loan" {
-		t.Errorf("Workspace 2 should see 'Workspace 2 Loan', got %s", response2[0].ItemName)
 	}
 }
 

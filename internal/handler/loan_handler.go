@@ -73,6 +73,32 @@ type PreviewLoanResponse struct {
 	InterestRate      string `json:"interestRate"`
 }
 
+// LoanWithStatsResponse represents a loan with payment statistics in API responses
+type LoanWithStatsResponse struct {
+	ID                int32   `json:"id"`
+	WorkspaceID       int32   `json:"workspaceId"`
+	ProviderID        int32   `json:"providerId"`
+	ItemName          string  `json:"itemName"`
+	TotalAmount       string  `json:"totalAmount"`
+	NumMonths         int32   `json:"numMonths"`
+	PurchaseDate      string  `json:"purchaseDate"`
+	InterestRate      string  `json:"interestRate"`
+	MonthlyPayment    string  `json:"monthlyPayment"`
+	FirstPaymentYear  int32   `json:"firstPaymentYear"`
+	FirstPaymentMonth int32   `json:"firstPaymentMonth"`
+	LastPaymentYear   int32   `json:"lastPaymentYear"`
+	LastPaymentMonth  int32   `json:"lastPaymentMonth"`
+	Notes             *string `json:"notes,omitempty"`
+	CreatedAt         string  `json:"createdAt"`
+	UpdatedAt         string  `json:"updatedAt"`
+	DeletedAt         *string `json:"deletedAt,omitempty"`
+	// Stats fields
+	TotalCount       int32   `json:"totalCount"`
+	PaidCount        int32   `json:"paidCount"`
+	RemainingBalance string  `json:"remainingBalance"`
+	Progress         float64 `json:"progress"`
+}
+
 // CreateLoan handles POST /api/v1/loans
 func (h *LoanHandler) CreateLoan(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
@@ -160,44 +186,38 @@ func (h *LoanHandler) CreateLoan(c echo.Context) error {
 }
 
 // GetLoans handles GET /api/v1/loans
+// Supports ?status=active|completed|all query parameter (default: all)
 func (h *LoanHandler) GetLoans(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
 	if workspaceID == 0 {
 		return NewUnauthorizedError(c, "Workspace required")
 	}
 
-	// Optional active filter
-	activeParam := c.QueryParam("active")
-
-	var loans []*domain.Loan
-	var err error
-
-	if activeParam != "" {
-		now := time.Now()
-		currentYear := now.Year()
-		currentMonth := int(now.Month())
-
-		if activeParam == "true" {
-			loans, err = h.loanService.GetActiveLoans(workspaceID, currentYear, currentMonth)
-		} else if activeParam == "false" {
-			loans, err = h.loanService.GetCompletedLoans(workspaceID, currentYear, currentMonth)
-		} else {
-			return NewValidationError(c, "Invalid active parameter", []ValidationError{
-				{Field: "active", Message: "Must be 'true' or 'false'"},
-			})
-		}
-	} else {
-		loans, err = h.loanService.GetLoans(workspaceID)
+	// Parse status filter (defaults to "all")
+	statusParam := c.QueryParam("status")
+	var filter domain.LoanFilter
+	switch statusParam {
+	case "active":
+		filter = domain.LoanFilterActive
+	case "completed":
+		filter = domain.LoanFilterCompleted
+	case "all", "":
+		filter = domain.LoanFilterAll
+	default:
+		return NewValidationError(c, "Invalid status parameter", []ValidationError{
+			{Field: "status", Message: "Must be 'all', 'active', or 'completed'"},
+		})
 	}
 
+	loans, err := h.loanService.GetLoansWithStats(workspaceID, filter)
 	if err != nil {
 		log.Error().Err(err).Int32("workspace_id", workspaceID).Msg("Failed to get loans")
 		return NewInternalError(c, "Failed to get loans")
 	}
 
-	response := make([]LoanResponse, len(loans))
+	response := make([]LoanWithStatsResponse, len(loans))
 	for i, loan := range loans {
-		response[i] = toLoanResponse(loan)
+		response[i] = toLoanWithStatsResponse(loan)
 	}
 
 	return c.JSON(http.StatusOK, response)
@@ -351,6 +371,38 @@ func toLoanResponse(loan *domain.Loan) LoanResponse {
 	}
 	if loan.DeletedAt != nil {
 		deletedAt := loan.DeletedAt.Format(time.RFC3339)
+		resp.DeletedAt = &deletedAt
+	}
+	return resp
+}
+
+// Helper function to convert domain.LoanWithStats to LoanWithStatsResponse
+func toLoanWithStatsResponse(loanWithStats *domain.LoanWithStats) LoanWithStatsResponse {
+	resp := LoanWithStatsResponse{
+		ID:                loanWithStats.ID,
+		WorkspaceID:       loanWithStats.WorkspaceID,
+		ProviderID:        loanWithStats.ProviderID,
+		ItemName:          loanWithStats.ItemName,
+		TotalAmount:       loanWithStats.TotalAmount.StringFixed(2),
+		NumMonths:         loanWithStats.NumMonths,
+		PurchaseDate:      loanWithStats.PurchaseDate.Format("2006-01-02"),
+		InterestRate:      loanWithStats.InterestRate.StringFixed(2),
+		MonthlyPayment:    loanWithStats.MonthlyPayment.StringFixed(2),
+		FirstPaymentYear:  loanWithStats.FirstPaymentYear,
+		FirstPaymentMonth: loanWithStats.FirstPaymentMonth,
+		LastPaymentYear:   loanWithStats.LastPaymentYear,
+		LastPaymentMonth:  loanWithStats.LastPaymentMonth,
+		Notes:             loanWithStats.Notes,
+		CreatedAt:         loanWithStats.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:         loanWithStats.UpdatedAt.Format(time.RFC3339),
+		// Stats fields
+		TotalCount:       loanWithStats.TotalCount,
+		PaidCount:        loanWithStats.PaidCount,
+		RemainingBalance: loanWithStats.RemainingBalance.StringFixed(2),
+		Progress:         loanWithStats.Progress,
+	}
+	if loanWithStats.DeletedAt != nil {
+		deletedAt := loanWithStats.DeletedAt.Format(time.RFC3339)
 		resp.DeletedAt = &deletedAt
 	}
 	return resp

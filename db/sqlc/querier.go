@@ -41,6 +41,7 @@ type Querier interface {
 	GetAccountTransactionSummaries(ctx context.Context, workspaceID int32) ([]GetAccountTransactionSummariesRow, error)
 	GetAccountsByWorkspace(ctx context.Context, workspaceID int32) ([]Account, error)
 	GetAccountsByWorkspaceAll(ctx context.Context, workspaceID int32) ([]Account, error)
+	GetActiveLoansWithStats(ctx context.Context, workspaceID int32) ([]GetActiveLoansWithStatsRow, error)
 	GetAllBudgetCategories(ctx context.Context, workspaceID int32) ([]BudgetCategory, error)
 	GetAllMonths(ctx context.Context, workspaceID int32) ([]Month, error)
 	GetBudgetAllocationByCategory(ctx context.Context, arg GetBudgetAllocationByCategoryParams) (BudgetAllocation, error)
@@ -57,6 +58,7 @@ type Querier interface {
 	GetCategoriesWithAllocations(ctx context.Context, arg GetCategoriesWithAllocationsParams) ([]GetCategoriesWithAllocationsRow, error)
 	// Returns all transactions for a specific category in a month
 	GetCategoryTransactions(ctx context.Context, arg GetCategoryTransactionsParams) ([]GetCategoryTransactionsRow, error)
+	GetCompletedLoansWithStats(ctx context.Context, workspaceID int32) ([]GetCompletedLoansWithStatsRow, error)
 	GetLatestMonth(ctx context.Context, workspaceID int32) (Month, error)
 	GetLoanByID(ctx context.Context, arg GetLoanByIDParams) (Loan, error)
 	GetLoanPaymentByID(ctx context.Context, id int32) (LoanPayment, error)
@@ -64,6 +66,7 @@ type Querier interface {
 	GetLoanPaymentsByLoanID(ctx context.Context, loanID int32) ([]LoanPayment, error)
 	GetLoanPaymentsByMonth(ctx context.Context, arg GetLoanPaymentsByMonthParams) ([]LoanPayment, error)
 	GetLoanProviderByID(ctx context.Context, arg GetLoanProviderByIDParams) (LoanProvider, error)
+	GetLoansWithStats(ctx context.Context, workspaceID int32) ([]GetLoansWithStatsRow, error)
 	GetMonthByYearMonth(ctx context.Context, arg GetMonthByYearMonthParams) (Month, error)
 	// Batch query to get income/expense totals grouped by year/month for N+1 prevention
 	GetMonthlyTransactionSummaries(ctx context.Context, workspaceID int32) ([]GetMonthlyTransactionSummariesRow, error)

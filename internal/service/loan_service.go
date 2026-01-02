@@ -217,6 +217,18 @@ func (s *LoanService) GetCompletedLoans(workspaceID int32, currentYear, currentM
 	return s.loanRepo.GetCompletedByWorkspace(workspaceID, currentYear, currentMonth)
 }
 
+// GetLoansWithStats retrieves loans with payment statistics based on filter
+func (s *LoanService) GetLoansWithStats(workspaceID int32, filter domain.LoanFilter) ([]*domain.LoanWithStats, error) {
+	switch filter {
+	case domain.LoanFilterActive:
+		return s.loanRepo.GetActiveWithStats(workspaceID)
+	case domain.LoanFilterCompleted:
+		return s.loanRepo.GetCompletedWithStats(workspaceID)
+	default:
+		return s.loanRepo.GetAllWithStats(workspaceID)
+	}
+}
+
 // GetLoanByID retrieves a loan by ID within a workspace
 func (s *LoanService) GetLoanByID(workspaceID int32, id int32) (*domain.Loan, error) {
 	return s.loanRepo.GetByID(workspaceID, id)

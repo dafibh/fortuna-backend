@@ -126,6 +126,194 @@ func (q *Queries) DeleteLoan(ctx context.Context, arg DeleteLoanParams) error {
 	return err
 }
 
+const getActiveLoansWithStats = `-- name: GetActiveLoansWithStats :many
+SELECT
+    l.id,
+    l.workspace_id,
+    l.provider_id,
+    l.item_name,
+    l.total_amount,
+    l.num_months,
+    l.purchase_date,
+    l.interest_rate,
+    l.monthly_payment,
+    l.first_payment_year,
+    l.first_payment_month,
+    l.notes,
+    l.created_at,
+    l.updated_at,
+    l.deleted_at,
+    (l.first_payment_year + ((l.first_payment_month - 1 + l.num_months - 1) / 12))::INTEGER as last_payment_year,
+    (((l.first_payment_month - 1 + l.num_months - 1) % 12) + 1)::INTEGER as last_payment_month,
+    COUNT(lp.id)::INTEGER as total_count,
+    COUNT(lp.id) FILTER (WHERE lp.paid = true)::INTEGER as paid_count,
+    COALESCE(SUM(lp.amount) FILTER (WHERE lp.paid = false), 0)::NUMERIC(12,2) as remaining_balance
+FROM loans l
+LEFT JOIN loan_payments lp ON lp.loan_id = l.id
+WHERE l.workspace_id = $1 AND l.deleted_at IS NULL
+GROUP BY l.id
+HAVING COALESCE(SUM(lp.amount) FILTER (WHERE lp.paid = false), 0) > 0
+ORDER BY l.created_at DESC
+`
+
+type GetActiveLoansWithStatsRow struct {
+	ID                int32              `json:"id"`
+	WorkspaceID       int32              `json:"workspace_id"`
+	ProviderID        int32              `json:"provider_id"`
+	ItemName          string             `json:"item_name"`
+	TotalAmount       pgtype.Numeric     `json:"total_amount"`
+	NumMonths         int32              `json:"num_months"`
+	PurchaseDate      pgtype.Date        `json:"purchase_date"`
+	InterestRate      pgtype.Numeric     `json:"interest_rate"`
+	MonthlyPayment    pgtype.Numeric     `json:"monthly_payment"`
+	FirstPaymentYear  int32              `json:"first_payment_year"`
+	FirstPaymentMonth int32              `json:"first_payment_month"`
+	Notes             pgtype.Text        `json:"notes"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt         pgtype.Timestamptz `json:"deleted_at"`
+	LastPaymentYear   int32              `json:"last_payment_year"`
+	LastPaymentMonth  int32              `json:"last_payment_month"`
+	TotalCount        int32              `json:"total_count"`
+	PaidCount         int32              `json:"paid_count"`
+	RemainingBalance  pgtype.Numeric     `json:"remaining_balance"`
+}
+
+func (q *Queries) GetActiveLoansWithStats(ctx context.Context, workspaceID int32) ([]GetActiveLoansWithStatsRow, error) {
+	rows, err := q.db.Query(ctx, getActiveLoansWithStats, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetActiveLoansWithStatsRow{}
+	for rows.Next() {
+		var i GetActiveLoansWithStatsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.ProviderID,
+			&i.ItemName,
+			&i.TotalAmount,
+			&i.NumMonths,
+			&i.PurchaseDate,
+			&i.InterestRate,
+			&i.MonthlyPayment,
+			&i.FirstPaymentYear,
+			&i.FirstPaymentMonth,
+			&i.Notes,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.LastPaymentYear,
+			&i.LastPaymentMonth,
+			&i.TotalCount,
+			&i.PaidCount,
+			&i.RemainingBalance,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCompletedLoansWithStats = `-- name: GetCompletedLoansWithStats :many
+SELECT
+    l.id,
+    l.workspace_id,
+    l.provider_id,
+    l.item_name,
+    l.total_amount,
+    l.num_months,
+    l.purchase_date,
+    l.interest_rate,
+    l.monthly_payment,
+    l.first_payment_year,
+    l.first_payment_month,
+    l.notes,
+    l.created_at,
+    l.updated_at,
+    l.deleted_at,
+    (l.first_payment_year + ((l.first_payment_month - 1 + l.num_months - 1) / 12))::INTEGER as last_payment_year,
+    (((l.first_payment_month - 1 + l.num_months - 1) % 12) + 1)::INTEGER as last_payment_month,
+    COUNT(lp.id)::INTEGER as total_count,
+    COUNT(lp.id) FILTER (WHERE lp.paid = true)::INTEGER as paid_count,
+    COALESCE(SUM(lp.amount) FILTER (WHERE lp.paid = false), 0)::NUMERIC(12,2) as remaining_balance
+FROM loans l
+LEFT JOIN loan_payments lp ON lp.loan_id = l.id
+WHERE l.workspace_id = $1 AND l.deleted_at IS NULL
+GROUP BY l.id
+HAVING COALESCE(SUM(lp.amount) FILTER (WHERE lp.paid = false), 0) = 0
+ORDER BY l.created_at DESC
+`
+
+type GetCompletedLoansWithStatsRow struct {
+	ID                int32              `json:"id"`
+	WorkspaceID       int32              `json:"workspace_id"`
+	ProviderID        int32              `json:"provider_id"`
+	ItemName          string             `json:"item_name"`
+	TotalAmount       pgtype.Numeric     `json:"total_amount"`
+	NumMonths         int32              `json:"num_months"`
+	PurchaseDate      pgtype.Date        `json:"purchase_date"`
+	InterestRate      pgtype.Numeric     `json:"interest_rate"`
+	MonthlyPayment    pgtype.Numeric     `json:"monthly_payment"`
+	FirstPaymentYear  int32              `json:"first_payment_year"`
+	FirstPaymentMonth int32              `json:"first_payment_month"`
+	Notes             pgtype.Text        `json:"notes"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt         pgtype.Timestamptz `json:"deleted_at"`
+	LastPaymentYear   int32              `json:"last_payment_year"`
+	LastPaymentMonth  int32              `json:"last_payment_month"`
+	TotalCount        int32              `json:"total_count"`
+	PaidCount         int32              `json:"paid_count"`
+	RemainingBalance  pgtype.Numeric     `json:"remaining_balance"`
+}
+
+func (q *Queries) GetCompletedLoansWithStats(ctx context.Context, workspaceID int32) ([]GetCompletedLoansWithStatsRow, error) {
+	rows, err := q.db.Query(ctx, getCompletedLoansWithStats, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetCompletedLoansWithStatsRow{}
+	for rows.Next() {
+		var i GetCompletedLoansWithStatsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.ProviderID,
+			&i.ItemName,
+			&i.TotalAmount,
+			&i.NumMonths,
+			&i.PurchaseDate,
+			&i.InterestRate,
+			&i.MonthlyPayment,
+			&i.FirstPaymentYear,
+			&i.FirstPaymentMonth,
+			&i.Notes,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.LastPaymentYear,
+			&i.LastPaymentMonth,
+			&i.TotalCount,
+			&i.PaidCount,
+			&i.RemainingBalance,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getLoanByID = `-- name: GetLoanByID :one
 SELECT id, workspace_id, provider_id, item_name, total_amount, num_months, purchase_date, interest_rate, monthly_payment, first_payment_year, first_payment_month, notes, created_at, updated_at, deleted_at FROM loans
 WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL
@@ -157,6 +345,101 @@ func (q *Queries) GetLoanByID(ctx context.Context, arg GetLoanByIDParams) (Loan,
 		&i.DeletedAt,
 	)
 	return i, err
+}
+
+const getLoansWithStats = `-- name: GetLoansWithStats :many
+SELECT
+    l.id,
+    l.workspace_id,
+    l.provider_id,
+    l.item_name,
+    l.total_amount,
+    l.num_months,
+    l.purchase_date,
+    l.interest_rate,
+    l.monthly_payment,
+    l.first_payment_year,
+    l.first_payment_month,
+    l.notes,
+    l.created_at,
+    l.updated_at,
+    l.deleted_at,
+    -- Calculated last payment month/year
+    (l.first_payment_year + ((l.first_payment_month - 1 + l.num_months - 1) / 12))::INTEGER as last_payment_year,
+    (((l.first_payment_month - 1 + l.num_months - 1) % 12) + 1)::INTEGER as last_payment_month,
+    -- Payment stats
+    COUNT(lp.id)::INTEGER as total_count,
+    COUNT(lp.id) FILTER (WHERE lp.paid = true)::INTEGER as paid_count,
+    COALESCE(SUM(lp.amount) FILTER (WHERE lp.paid = false), 0)::NUMERIC(12,2) as remaining_balance
+FROM loans l
+LEFT JOIN loan_payments lp ON lp.loan_id = l.id
+WHERE l.workspace_id = $1 AND l.deleted_at IS NULL
+GROUP BY l.id
+ORDER BY l.created_at DESC
+`
+
+type GetLoansWithStatsRow struct {
+	ID                int32              `json:"id"`
+	WorkspaceID       int32              `json:"workspace_id"`
+	ProviderID        int32              `json:"provider_id"`
+	ItemName          string             `json:"item_name"`
+	TotalAmount       pgtype.Numeric     `json:"total_amount"`
+	NumMonths         int32              `json:"num_months"`
+	PurchaseDate      pgtype.Date        `json:"purchase_date"`
+	InterestRate      pgtype.Numeric     `json:"interest_rate"`
+	MonthlyPayment    pgtype.Numeric     `json:"monthly_payment"`
+	FirstPaymentYear  int32              `json:"first_payment_year"`
+	FirstPaymentMonth int32              `json:"first_payment_month"`
+	Notes             pgtype.Text        `json:"notes"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt         pgtype.Timestamptz `json:"deleted_at"`
+	LastPaymentYear   int32              `json:"last_payment_year"`
+	LastPaymentMonth  int32              `json:"last_payment_month"`
+	TotalCount        int32              `json:"total_count"`
+	PaidCount         int32              `json:"paid_count"`
+	RemainingBalance  pgtype.Numeric     `json:"remaining_balance"`
+}
+
+func (q *Queries) GetLoansWithStats(ctx context.Context, workspaceID int32) ([]GetLoansWithStatsRow, error) {
+	rows, err := q.db.Query(ctx, getLoansWithStats, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetLoansWithStatsRow{}
+	for rows.Next() {
+		var i GetLoansWithStatsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.ProviderID,
+			&i.ItemName,
+			&i.TotalAmount,
+			&i.NumMonths,
+			&i.PurchaseDate,
+			&i.InterestRate,
+			&i.MonthlyPayment,
+			&i.FirstPaymentYear,
+			&i.FirstPaymentMonth,
+			&i.Notes,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.LastPaymentYear,
+			&i.LastPaymentMonth,
+			&i.TotalCount,
+			&i.PaidCount,
+			&i.RemainingBalance,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listActiveLoans = `-- name: ListActiveLoans :many

@@ -86,3 +86,91 @@ WHERE provider_id = $1 AND workspace_id = $2 AND deleted_at IS NULL
       AND (((first_payment_month - 1 + num_months - 1) % 12) + 1) >= $4
     )
   );
+
+-- name: GetLoansWithStats :many
+SELECT
+    l.id,
+    l.workspace_id,
+    l.provider_id,
+    l.item_name,
+    l.total_amount,
+    l.num_months,
+    l.purchase_date,
+    l.interest_rate,
+    l.monthly_payment,
+    l.first_payment_year,
+    l.first_payment_month,
+    l.notes,
+    l.created_at,
+    l.updated_at,
+    l.deleted_at,
+    -- Calculated last payment month/year
+    (l.first_payment_year + ((l.first_payment_month - 1 + l.num_months - 1) / 12))::INTEGER as last_payment_year,
+    (((l.first_payment_month - 1 + l.num_months - 1) % 12) + 1)::INTEGER as last_payment_month,
+    -- Payment stats
+    COUNT(lp.id)::INTEGER as total_count,
+    COUNT(lp.id) FILTER (WHERE lp.paid = true)::INTEGER as paid_count,
+    COALESCE(SUM(lp.amount) FILTER (WHERE lp.paid = false), 0)::NUMERIC(12,2) as remaining_balance
+FROM loans l
+LEFT JOIN loan_payments lp ON lp.loan_id = l.id
+WHERE l.workspace_id = $1 AND l.deleted_at IS NULL
+GROUP BY l.id
+ORDER BY l.created_at DESC;
+
+-- name: GetActiveLoansWithStats :many
+SELECT
+    l.id,
+    l.workspace_id,
+    l.provider_id,
+    l.item_name,
+    l.total_amount,
+    l.num_months,
+    l.purchase_date,
+    l.interest_rate,
+    l.monthly_payment,
+    l.first_payment_year,
+    l.first_payment_month,
+    l.notes,
+    l.created_at,
+    l.updated_at,
+    l.deleted_at,
+    (l.first_payment_year + ((l.first_payment_month - 1 + l.num_months - 1) / 12))::INTEGER as last_payment_year,
+    (((l.first_payment_month - 1 + l.num_months - 1) % 12) + 1)::INTEGER as last_payment_month,
+    COUNT(lp.id)::INTEGER as total_count,
+    COUNT(lp.id) FILTER (WHERE lp.paid = true)::INTEGER as paid_count,
+    COALESCE(SUM(lp.amount) FILTER (WHERE lp.paid = false), 0)::NUMERIC(12,2) as remaining_balance
+FROM loans l
+LEFT JOIN loan_payments lp ON lp.loan_id = l.id
+WHERE l.workspace_id = $1 AND l.deleted_at IS NULL
+GROUP BY l.id
+HAVING COALESCE(SUM(lp.amount) FILTER (WHERE lp.paid = false), 0) > 0
+ORDER BY l.created_at DESC;
+
+-- name: GetCompletedLoansWithStats :many
+SELECT
+    l.id,
+    l.workspace_id,
+    l.provider_id,
+    l.item_name,
+    l.total_amount,
+    l.num_months,
+    l.purchase_date,
+    l.interest_rate,
+    l.monthly_payment,
+    l.first_payment_year,
+    l.first_payment_month,
+    l.notes,
+    l.created_at,
+    l.updated_at,
+    l.deleted_at,
+    (l.first_payment_year + ((l.first_payment_month - 1 + l.num_months - 1) / 12))::INTEGER as last_payment_year,
+    (((l.first_payment_month - 1 + l.num_months - 1) % 12) + 1)::INTEGER as last_payment_month,
+    COUNT(lp.id)::INTEGER as total_count,
+    COUNT(lp.id) FILTER (WHERE lp.paid = true)::INTEGER as paid_count,
+    COALESCE(SUM(lp.amount) FILTER (WHERE lp.paid = false), 0)::NUMERIC(12,2) as remaining_balance
+FROM loans l
+LEFT JOIN loan_payments lp ON lp.loan_id = l.id
+WHERE l.workspace_id = $1 AND l.deleted_at IS NULL
+GROUP BY l.id
+HAVING COALESCE(SUM(lp.amount) FILTER (WHERE lp.paid = false), 0) = 0
+ORDER BY l.created_at DESC;

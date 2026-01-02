@@ -646,6 +646,146 @@ func TestDeleteLoan_NotFound(t *testing.T) {
 	}
 }
 
+// GetLoansWithStats tests
+
+func TestGetLoansWithStats_AllFilter(t *testing.T) {
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
+
+	workspaceID := int32(1)
+	loanRepo.SetLoansWithStats([]*domain.LoanWithStats{
+		{
+			Loan:             domain.Loan{ID: 1, WorkspaceID: workspaceID, ItemName: "Active Loan"},
+			TotalCount:       6,
+			PaidCount:        2,
+			RemainingBalance: decimal.NewFromInt(400),
+			Progress:         33.33,
+		},
+		{
+			Loan:             domain.Loan{ID: 2, WorkspaceID: workspaceID, ItemName: "Completed Loan"},
+			TotalCount:       3,
+			PaidCount:        3,
+			RemainingBalance: decimal.Zero,
+			Progress:         100,
+		},
+	})
+
+	loans, err := service.GetLoansWithStats(workspaceID, domain.LoanFilterAll)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if len(loans) != 2 {
+		t.Errorf("Expected 2 loans with 'all' filter, got %d", len(loans))
+	}
+}
+
+func TestGetLoansWithStats_ActiveFilter(t *testing.T) {
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
+
+	workspaceID := int32(1)
+	loanRepo.SetActiveWithStats([]*domain.LoanWithStats{
+		{
+			Loan:             domain.Loan{ID: 1, WorkspaceID: workspaceID, ItemName: "Active Loan"},
+			TotalCount:       6,
+			PaidCount:        2,
+			RemainingBalance: decimal.NewFromInt(400),
+			Progress:         33.33,
+		},
+	})
+
+	loans, err := service.GetLoansWithStats(workspaceID, domain.LoanFilterActive)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if len(loans) != 1 {
+		t.Errorf("Expected 1 loan with 'active' filter, got %d", len(loans))
+	}
+
+	if loans[0].ItemName != "Active Loan" {
+		t.Errorf("Expected 'Active Loan', got '%s'", loans[0].ItemName)
+	}
+
+	if !loans[0].RemainingBalance.GreaterThan(decimal.Zero) {
+		t.Errorf("Active loan should have remaining balance > 0")
+	}
+}
+
+func TestGetLoansWithStats_CompletedFilter(t *testing.T) {
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
+
+	workspaceID := int32(1)
+	loanRepo.SetCompletedWithStats([]*domain.LoanWithStats{
+		{
+			Loan:             domain.Loan{ID: 2, WorkspaceID: workspaceID, ItemName: "Completed Loan"},
+			TotalCount:       3,
+			PaidCount:        3,
+			RemainingBalance: decimal.Zero,
+			Progress:         100,
+		},
+	})
+
+	loans, err := service.GetLoansWithStats(workspaceID, domain.LoanFilterCompleted)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if len(loans) != 1 {
+		t.Errorf("Expected 1 loan with 'completed' filter, got %d", len(loans))
+	}
+
+	if loans[0].ItemName != "Completed Loan" {
+		t.Errorf("Expected 'Completed Loan', got '%s'", loans[0].ItemName)
+	}
+
+	if loans[0].Progress != 100 {
+		t.Errorf("Completed loan should have 100%% progress, got %.2f", loans[0].Progress)
+	}
+}
+
+func TestGetLoansWithStats_EmptyResult(t *testing.T) {
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
+
+	loans, err := service.GetLoansWithStats(1, domain.LoanFilterAll)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if len(loans) != 0 {
+		t.Errorf("Expected 0 loans, got %d", len(loans))
+	}
+}
+
+func TestGetLoansWithStats_DefaultsToAll(t *testing.T) {
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
+
+	workspaceID := int32(1)
+	loanRepo.SetLoansWithStats([]*domain.LoanWithStats{
+		{Loan: domain.Loan{ID: 1, WorkspaceID: workspaceID, ItemName: "Loan 1"}},
+		{Loan: domain.Loan{ID: 2, WorkspaceID: workspaceID, ItemName: "Loan 2"}},
+	})
+
+	// Empty string should default to all
+	loans, err := service.GetLoansWithStats(workspaceID, domain.LoanFilter(""))
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if len(loans) != 2 {
+		t.Errorf("Expected 2 loans with empty filter (defaults to all), got %d", len(loans))
+	}
+}
+
 // Domain method tests
 
 func TestLoan_IsActive(t *testing.T) {

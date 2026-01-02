@@ -228,6 +228,48 @@ func (r *LoanRepository) CountActiveLoansByProvider(workspaceID int32, providerI
 	})
 }
 
+// GetAllWithStats retrieves all loans with payment statistics
+func (r *LoanRepository) GetAllWithStats(workspaceID int32) ([]*domain.LoanWithStats, error) {
+	ctx := context.Background()
+	rows, err := r.queries.GetLoansWithStats(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*domain.LoanWithStats, len(rows))
+	for i, row := range rows {
+		result[i] = sqlcLoanWithStatsRowToDomain(row)
+	}
+	return result, nil
+}
+
+// GetActiveWithStats retrieves active loans (remaining_balance > 0) with payment statistics
+func (r *LoanRepository) GetActiveWithStats(workspaceID int32) ([]*domain.LoanWithStats, error) {
+	ctx := context.Background()
+	rows, err := r.queries.GetActiveLoansWithStats(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*domain.LoanWithStats, len(rows))
+	for i, row := range rows {
+		result[i] = sqlcActiveLoansWithStatsRowToDomain(row)
+	}
+	return result, nil
+}
+
+// GetCompletedWithStats retrieves completed loans (remaining_balance = 0) with payment statistics
+func (r *LoanRepository) GetCompletedWithStats(workspaceID int32) ([]*domain.LoanWithStats, error) {
+	ctx := context.Background()
+	rows, err := r.queries.GetCompletedLoansWithStats(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*domain.LoanWithStats, len(rows))
+	for i, row := range rows {
+		result[i] = sqlcCompletedLoansWithStatsRowToDomain(row)
+	}
+	return result, nil
+}
+
 // Helper functions
 
 func sqlcLoanToDomain(l sqlc.Loan) *domain.Loan {
@@ -264,4 +306,131 @@ func sqlcLoanToDomain(l sqlc.Loan) *domain.Loan {
 	}
 
 	return loan
+}
+
+func sqlcLoanWithStatsRowToDomain(row sqlc.GetLoansWithStatsRow) *domain.LoanWithStats {
+	loan := &domain.Loan{
+		ID:                row.ID,
+		WorkspaceID:       row.WorkspaceID,
+		ProviderID:        row.ProviderID,
+		ItemName:          row.ItemName,
+		TotalAmount:       pgNumericToDecimal(row.TotalAmount),
+		NumMonths:         row.NumMonths,
+		InterestRate:      pgNumericToDecimal(row.InterestRate),
+		MonthlyPayment:    pgNumericToDecimal(row.MonthlyPayment),
+		FirstPaymentYear:  row.FirstPaymentYear,
+		FirstPaymentMonth: row.FirstPaymentMonth,
+		CreatedAt:         row.CreatedAt.Time,
+		UpdatedAt:         row.UpdatedAt.Time,
+	}
+
+	if row.PurchaseDate.Valid {
+		loan.PurchaseDate = row.PurchaseDate.Time
+	}
+	if row.Notes.Valid {
+		loan.Notes = &row.Notes.String
+	}
+	if row.DeletedAt.Valid {
+		loan.DeletedAt = &row.DeletedAt.Time
+	}
+
+	// Calculate progress
+	var progress float64
+	if row.TotalCount > 0 {
+		progress = float64(row.PaidCount) / float64(row.TotalCount) * 100
+	}
+
+	return &domain.LoanWithStats{
+		Loan:             *loan,
+		LastPaymentYear:  row.LastPaymentYear,
+		LastPaymentMonth: row.LastPaymentMonth,
+		TotalCount:       row.TotalCount,
+		PaidCount:        row.PaidCount,
+		RemainingBalance: pgNumericToDecimal(row.RemainingBalance),
+		Progress:         progress,
+	}
+}
+
+func sqlcActiveLoansWithStatsRowToDomain(row sqlc.GetActiveLoansWithStatsRow) *domain.LoanWithStats {
+	loan := &domain.Loan{
+		ID:                row.ID,
+		WorkspaceID:       row.WorkspaceID,
+		ProviderID:        row.ProviderID,
+		ItemName:          row.ItemName,
+		TotalAmount:       pgNumericToDecimal(row.TotalAmount),
+		NumMonths:         row.NumMonths,
+		InterestRate:      pgNumericToDecimal(row.InterestRate),
+		MonthlyPayment:    pgNumericToDecimal(row.MonthlyPayment),
+		FirstPaymentYear:  row.FirstPaymentYear,
+		FirstPaymentMonth: row.FirstPaymentMonth,
+		CreatedAt:         row.CreatedAt.Time,
+		UpdatedAt:         row.UpdatedAt.Time,
+	}
+
+	if row.PurchaseDate.Valid {
+		loan.PurchaseDate = row.PurchaseDate.Time
+	}
+	if row.Notes.Valid {
+		loan.Notes = &row.Notes.String
+	}
+	if row.DeletedAt.Valid {
+		loan.DeletedAt = &row.DeletedAt.Time
+	}
+
+	var progress float64
+	if row.TotalCount > 0 {
+		progress = float64(row.PaidCount) / float64(row.TotalCount) * 100
+	}
+
+	return &domain.LoanWithStats{
+		Loan:             *loan,
+		LastPaymentYear:  row.LastPaymentYear,
+		LastPaymentMonth: row.LastPaymentMonth,
+		TotalCount:       row.TotalCount,
+		PaidCount:        row.PaidCount,
+		RemainingBalance: pgNumericToDecimal(row.RemainingBalance),
+		Progress:         progress,
+	}
+}
+
+func sqlcCompletedLoansWithStatsRowToDomain(row sqlc.GetCompletedLoansWithStatsRow) *domain.LoanWithStats {
+	loan := &domain.Loan{
+		ID:                row.ID,
+		WorkspaceID:       row.WorkspaceID,
+		ProviderID:        row.ProviderID,
+		ItemName:          row.ItemName,
+		TotalAmount:       pgNumericToDecimal(row.TotalAmount),
+		NumMonths:         row.NumMonths,
+		InterestRate:      pgNumericToDecimal(row.InterestRate),
+		MonthlyPayment:    pgNumericToDecimal(row.MonthlyPayment),
+		FirstPaymentYear:  row.FirstPaymentYear,
+		FirstPaymentMonth: row.FirstPaymentMonth,
+		CreatedAt:         row.CreatedAt.Time,
+		UpdatedAt:         row.UpdatedAt.Time,
+	}
+
+	if row.PurchaseDate.Valid {
+		loan.PurchaseDate = row.PurchaseDate.Time
+	}
+	if row.Notes.Valid {
+		loan.Notes = &row.Notes.String
+	}
+	if row.DeletedAt.Valid {
+		loan.DeletedAt = &row.DeletedAt.Time
+	}
+
+	var progress float64
+	if row.TotalCount > 0 {
+		progress = float64(row.PaidCount) / float64(row.TotalCount) * 100
+	}
+
+	return &domain.LoanWithStats{
+		Loan:             *loan,
+		LastPaymentYear:  row.LastPaymentYear,
+		LastPaymentMonth: row.LastPaymentMonth,
+		TotalCount:       row.TotalCount,
+		PaidCount:        row.PaidCount,
+		RemainingBalance: pgNumericToDecimal(row.RemainingBalance),
+		Progress:         progress,
+	}
 }
