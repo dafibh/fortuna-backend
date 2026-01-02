@@ -55,3 +55,12 @@ WHERE l.workspace_id = $1
   AND lp.paid = FALSE
   AND l.deleted_at IS NULL
 ORDER BY lp.due_year, lp.due_month, lp.payment_number;
+
+-- name: GetLoanDeleteStats :one
+SELECT
+    COUNT(*)::INTEGER as total_count,
+    COUNT(*) FILTER (WHERE paid = true)::INTEGER as paid_count,
+    COUNT(*) FILTER (WHERE paid = false)::INTEGER as unpaid_count,
+    COALESCE(SUM(amount), 0)::NUMERIC(12,2) as total_amount
+FROM loan_payments
+WHERE loan_id = $1;

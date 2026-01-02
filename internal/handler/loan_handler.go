@@ -301,6 +301,46 @@ func (h *LoanHandler) UpdateLoan(c echo.Context) error {
 	return c.JSON(http.StatusOK, toLoanResponse(loan))
 }
 
+// DeleteCheckResponse represents the response for delete check endpoint
+type DeleteCheckResponse struct {
+	LoanID      int32  `json:"loanId"`
+	ItemName    string `json:"itemName"`
+	PaidCount   int32  `json:"paidCount"`
+	UnpaidCount int32  `json:"unpaidCount"`
+	TotalAmount string `json:"totalAmount"`
+}
+
+// GetDeleteCheck handles GET /api/v1/loans/:id/delete-check
+// Returns payment statistics for delete confirmation dialog
+func (h *LoanHandler) GetDeleteCheck(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return NewValidationError(c, "Invalid loan ID", nil)
+	}
+
+	loan, stats, err := h.loanService.GetDeleteStats(workspaceID, int32(id))
+	if err != nil {
+		if errors.Is(err, domain.ErrLoanNotFound) {
+			return NewNotFoundError(c, "Loan not found")
+		}
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("loan_id", id).Msg("Failed to get delete check stats")
+		return NewInternalError(c, "Failed to get delete check stats")
+	}
+
+	return c.JSON(http.StatusOK, DeleteCheckResponse{
+		LoanID:      loan.ID,
+		ItemName:    loan.ItemName,
+		PaidCount:   stats.PaidCount,
+		UnpaidCount: stats.UnpaidCount,
+		TotalAmount: stats.TotalAmount.StringFixed(2),
+	})
+}
+
 // DeleteLoan handles DELETE /api/v1/loans/:id
 func (h *LoanHandler) DeleteLoan(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)

@@ -262,6 +262,21 @@ func (r *LoanPaymentRepository) GetUnpaidByMonth(workspaceID int32, year, month 
 	return result, nil
 }
 
+// GetDeleteStats retrieves payment statistics for a loan (used for delete confirmation)
+func (r *LoanPaymentRepository) GetDeleteStats(loanID int32) (*domain.LoanDeleteStats, error) {
+	ctx := context.Background()
+	stats, err := r.queries.GetLoanDeleteStats(ctx, loanID)
+	if err != nil {
+		return nil, err
+	}
+	return &domain.LoanDeleteStats{
+		TotalCount:  stats.TotalCount,
+		PaidCount:   stats.PaidCount,
+		UnpaidCount: stats.UnpaidCount,
+		TotalAmount: pgNumericToDecimal(stats.TotalAmount),
+	}, nil
+}
+
 // Helper function to convert sqlc type to domain type
 func sqlcLoanPaymentToDomain(lp sqlc.LoanPayment) *domain.LoanPayment {
 	payment := &domain.LoanPayment{

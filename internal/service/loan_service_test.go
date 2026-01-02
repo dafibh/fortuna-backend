@@ -998,6 +998,115 @@ func TestUpdateLoan_ClearsNotes(t *testing.T) {
 	}
 }
 
+// GetDeleteStats tests
+
+func TestGetDeleteStats_Success(t *testing.T) {
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	paymentRepo := testutil.NewMockLoanPaymentRepository()
+	service := NewLoanService(nil, loanRepo, providerRepo, paymentRepo)
+
+	workspaceID := int32(1)
+	loanRepo.AddLoan(&domain.Loan{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		ItemName:    "Test Loan",
+		TotalAmount: decimal.NewFromInt(300),
+	})
+
+	// Add some payments
+	paymentRepo.AddPayment(&domain.LoanPayment{
+		ID:            1,
+		LoanID:        1,
+		PaymentNumber: 1,
+		Amount:        decimal.NewFromInt(100),
+		Paid:          true,
+	})
+	paymentRepo.AddPayment(&domain.LoanPayment{
+		ID:            2,
+		LoanID:        1,
+		PaymentNumber: 2,
+		Amount:        decimal.NewFromInt(100),
+		Paid:          true,
+	})
+	paymentRepo.AddPayment(&domain.LoanPayment{
+		ID:            3,
+		LoanID:        1,
+		PaymentNumber: 3,
+		Amount:        decimal.NewFromInt(100),
+		Paid:          false,
+	})
+
+	loan, stats, err := service.GetDeleteStats(workspaceID, 1)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if loan.ItemName != "Test Loan" {
+		t.Errorf("Expected 'Test Loan', got '%s'", loan.ItemName)
+	}
+
+	if stats.TotalCount != 3 {
+		t.Errorf("Expected total count 3, got %d", stats.TotalCount)
+	}
+
+	if stats.PaidCount != 2 {
+		t.Errorf("Expected paid count 2, got %d", stats.PaidCount)
+	}
+
+	if stats.UnpaidCount != 1 {
+		t.Errorf("Expected unpaid count 1, got %d", stats.UnpaidCount)
+	}
+
+	expectedTotal := decimal.NewFromInt(300)
+	if !stats.TotalAmount.Equal(expectedTotal) {
+		t.Errorf("Expected total amount %s, got %s", expectedTotal.String(), stats.TotalAmount.String())
+	}
+}
+
+func TestGetDeleteStats_LoanNotFound(t *testing.T) {
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	paymentRepo := testutil.NewMockLoanPaymentRepository()
+	service := NewLoanService(nil, loanRepo, providerRepo, paymentRepo)
+
+	_, _, err := service.GetDeleteStats(1, 999)
+	if err != domain.ErrLoanNotFound {
+		t.Errorf("Expected ErrLoanNotFound, got %v", err)
+	}
+}
+
+func TestGetDeleteStats_NoPayments(t *testing.T) {
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	paymentRepo := testutil.NewMockLoanPaymentRepository()
+	service := NewLoanService(nil, loanRepo, providerRepo, paymentRepo)
+
+	workspaceID := int32(1)
+	loanRepo.AddLoan(&domain.Loan{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		ItemName:    "Test Loan",
+	})
+
+	loan, stats, err := service.GetDeleteStats(workspaceID, 1)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if loan.ItemName != "Test Loan" {
+		t.Errorf("Expected 'Test Loan', got '%s'", loan.ItemName)
+	}
+
+	if stats.TotalCount != 0 {
+		t.Errorf("Expected total count 0, got %d", stats.TotalCount)
+	}
+
+	if stats.PaidCount != 0 {
+		t.Errorf("Expected paid count 0, got %d", stats.PaidCount)
+	}
+}
+
 func TestLoan_GetLastPaymentYearMonth(t *testing.T) {
 	tests := []struct {
 		name              string

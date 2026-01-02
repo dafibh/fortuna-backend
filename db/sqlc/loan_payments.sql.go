@@ -62,6 +62,35 @@ func (q *Queries) CreateLoanPayment(ctx context.Context, arg CreateLoanPaymentPa
 	return i, err
 }
 
+const getLoanDeleteStats = `-- name: GetLoanDeleteStats :one
+SELECT
+    COUNT(*)::INTEGER as total_count,
+    COUNT(*) FILTER (WHERE paid = true)::INTEGER as paid_count,
+    COUNT(*) FILTER (WHERE paid = false)::INTEGER as unpaid_count,
+    COALESCE(SUM(amount), 0)::NUMERIC(12,2) as total_amount
+FROM loan_payments
+WHERE loan_id = $1
+`
+
+type GetLoanDeleteStatsRow struct {
+	TotalCount  int32          `json:"total_count"`
+	PaidCount   int32          `json:"paid_count"`
+	UnpaidCount int32          `json:"unpaid_count"`
+	TotalAmount pgtype.Numeric `json:"total_amount"`
+}
+
+func (q *Queries) GetLoanDeleteStats(ctx context.Context, loanID int32) (GetLoanDeleteStatsRow, error) {
+	row := q.db.QueryRow(ctx, getLoanDeleteStats, loanID)
+	var i GetLoanDeleteStatsRow
+	err := row.Scan(
+		&i.TotalCount,
+		&i.PaidCount,
+		&i.UnpaidCount,
+		&i.TotalAmount,
+	)
+	return i, err
+}
+
 const getLoanPaymentByID = `-- name: GetLoanPaymentByID :one
 SELECT id, loan_id, payment_number, amount, due_year, due_month, paid, paid_date, created_at, updated_at FROM loan_payments
 WHERE id = $1

@@ -271,6 +271,23 @@ func (s *LoanService) DeleteLoan(workspaceID int32, id int32) error {
 	return s.loanRepo.SoftDelete(workspaceID, id)
 }
 
+// GetDeleteStats retrieves loan and payment statistics for delete confirmation dialog
+func (s *LoanService) GetDeleteStats(workspaceID int32, id int32) (*domain.Loan, *domain.LoanDeleteStats, error) {
+	// Verify loan exists and belongs to workspace
+	loan, err := s.loanRepo.GetByID(workspaceID, id)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Get payment statistics
+	stats, err := s.paymentRepo.GetDeleteStats(id)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return loan, stats, nil
+}
+
 // CalculateMonthlyPayment calculates the monthly payment for a loan
 // Formula: (totalAmount * (1 + interestRate/100)) / numMonths
 func CalculateMonthlyPayment(totalAmount, interestRate decimal.Decimal, numMonths int) decimal.Decimal {

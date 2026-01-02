@@ -1985,3 +1985,24 @@ func (m *MockLoanPaymentRepository) SetPaymentsByMonth(workspaceID int32, year, 
 	key := paymentMonthKey(workspaceID, year, month)
 	m.ByMonth[key] = payments
 }
+
+// GetDeleteStats retrieves payment statistics for a loan
+func (m *MockLoanPaymentRepository) GetDeleteStats(loanID int32) (*domain.LoanDeleteStats, error) {
+	payments := m.ByLoanID[loanID]
+	stats := &domain.LoanDeleteStats{
+		TotalCount:  0,
+		PaidCount:   0,
+		UnpaidCount: 0,
+		TotalAmount: decimal.Zero,
+	}
+	for _, p := range payments {
+		stats.TotalCount++
+		if p.Paid {
+			stats.PaidCount++
+		} else {
+			stats.UnpaidCount++
+		}
+		stats.TotalAmount = stats.TotalAmount.Add(p.Amount)
+	}
+	return stats, nil
+}

@@ -806,3 +806,148 @@ func TestGetLoan_WorkspaceIsolation(t *testing.T) {
 		t.Errorf("Workspace 2 should see its own loan, expected 200 but got %d", rec2.Code)
 	}
 }
+
+// GetDeleteCheck tests
+
+func TestGetDeleteCheck_Success(t *testing.T) {
+	e := echo.New()
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	paymentRepo := testutil.NewMockLoanPaymentRepository()
+	loanService := service.NewLoanService(nil, loanRepo, providerRepo, paymentRepo)
+	handler := NewLoanHandler(loanService)
+
+	loanRepo.AddLoan(&domain.Loan{
+		ID:          1,
+		WorkspaceID: 1,
+		ProviderID:  1,
+		ItemName:    "Test Loan",
+		TotalAmount: decimal.NewFromInt(300),
+	})
+
+	// Add payments
+	paymentRepo.AddPayment(&domain.LoanPayment{
+		ID:            1,
+		LoanID:        1,
+		PaymentNumber: 1,
+		Amount:        decimal.NewFromInt(100),
+		Paid:          true,
+	})
+	paymentRepo.AddPayment(&domain.LoanPayment{
+		ID:            2,
+		LoanID:        1,
+		PaymentNumber: 2,
+		Amount:        decimal.NewFromInt(100),
+		Paid:          true,
+	})
+	paymentRepo.AddPayment(&domain.LoanPayment{
+		ID:            3,
+		LoanID:        1,
+		PaymentNumber: 3,
+		Amount:        decimal.NewFromInt(100),
+		Paid:          false,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/loans/1/delete-check", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("1")
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", 1)
+
+	err := handler.GetDeleteCheck(c)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", rec.Code)
+	}
+
+	var response DeleteCheckResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if response.LoanID != 1 {
+		t.Errorf("Expected loan ID 1, got %d", response.LoanID)
+	}
+
+	if response.ItemName != "Test Loan" {
+		t.Errorf("Expected 'Test Loan', got %s", response.ItemName)
+	}
+
+	if response.PaidCount != 2 {
+		t.Errorf("Expected paid count 2, got %d", response.PaidCount)
+	}
+
+	if response.UnpaidCount != 1 {
+		t.Errorf("Expected unpaid count 1, got %d", response.UnpaidCount)
+	}
+
+	if response.TotalAmount != "300.00" {
+		t.Errorf("Expected total amount '300.00', got %s", response.TotalAmount)
+	}
+}
+
+func TestGetDeleteCheck_NotFound(t *testing.T) {
+	e := echo.New()
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	paymentRepo := testutil.NewMockLoanPaymentRepository()
+	loanService := service.NewLoanService(nil, loanRepo, providerRepo, paymentRepo)
+	handler := NewLoanHandler(loanService)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/loans/999/delete-check", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("999")
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", 1)
+
+	err := handler.GetDeleteCheck(c)
+	if err != nil {
+		t.Fatalf("Expected no error (error should be in response), got %v", err)
+	}
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d", rec.Code)
+	}
+}
+
+func TestGetDeleteCheck_WorkspaceIsolation(t *testing.T) {
+	e := echo.New()
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	paymentRepo := testutil.NewMockLoanPaymentRepository()
+	loanService := service.NewLoanService(nil, loanRepo, providerRepo, paymentRepo)
+	handler := NewLoanHandler(loanService)
+
+	// Create a loan in workspace 2
+	loanRepo.AddLoan(&domain.Loan{
+		ID:          1,
+		WorkspaceID: 2,
+		ProviderID:  1,
+		ItemName:    "Workspace 2 Loan",
+	})
+
+	// Try to access from workspace 1
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/loans/1/delete-check", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("1")
+
+	setupAuthContextWithWorkspace(c, "auth0|user1", "user1@example.com", "User 1", "", 1)
+
+	err := handler.GetDeleteCheck(c)
+	if err != nil {
+		t.Fatalf("Expected no error (error should be in response), got %v", err)
+	}
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("Workspace 1 should not see workspace 2's loan, expected 404 but got %d", rec.Code)
+	}
+}

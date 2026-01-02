@@ -50,6 +50,14 @@ func (lp *LoanPayment) FormatPaymentLabel(totalPayments int32) string {
 	return fmt.Sprintf("%d/%d", lp.PaymentNumber, totalPayments)
 }
 
+// LoanDeleteStats contains payment statistics for delete confirmation
+type LoanDeleteStats struct {
+	TotalCount  int32           `json:"totalCount"`
+	PaidCount   int32           `json:"paidCount"`
+	UnpaidCount int32           `json:"unpaidCount"`
+	TotalAmount decimal.Decimal `json:"totalAmount"`
+}
+
 type LoanPaymentRepository interface {
 	Create(payment *LoanPayment) (*LoanPayment, error)
 	CreateBatch(payments []*LoanPayment) error
@@ -61,4 +69,5 @@ type LoanPaymentRepository interface {
 	TogglePaid(id int32, paid bool, paidDate *time.Time) (*LoanPayment, error)
 	GetByMonth(workspaceID int32, year, month int) ([]*LoanPayment, error)
 	GetUnpaidByMonth(workspaceID int32, year, month int) ([]*LoanPayment, error)
+	GetDeleteStats(loanID int32) (*LoanDeleteStats, error)
 }
