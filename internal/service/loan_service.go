@@ -234,6 +234,33 @@ func (s *LoanService) GetLoanByID(workspaceID int32, id int32) (*domain.Loan, er
 	return s.loanRepo.GetByID(workspaceID, id)
 }
 
+// UpdateLoanInput contains input for updating editable loan fields
+type UpdateLoanInput struct {
+	ItemName string
+	Notes    *string
+}
+
+// UpdateLoan updates the editable fields (itemName, notes) of a loan
+// Note: Amount, months, and dates are locked after creation
+func (s *LoanService) UpdateLoan(workspaceID int32, id int32, input UpdateLoanInput) (*domain.Loan, error) {
+	// Validate item name
+	itemName := strings.TrimSpace(input.ItemName)
+	if itemName == "" {
+		return nil, domain.ErrLoanItemNameEmpty
+	}
+	if len(itemName) > 200 {
+		return nil, domain.ErrLoanItemNameTooLong
+	}
+
+	// Verify loan exists
+	_, err := s.loanRepo.GetByID(workspaceID, id)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.loanRepo.UpdatePartial(workspaceID, id, itemName, input.Notes)
+}
+
 // DeleteLoan soft-deletes a loan
 func (s *LoanService) DeleteLoan(workspaceID int32, id int32) error {
 	// Verify loan exists before deleting

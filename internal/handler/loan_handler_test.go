@@ -613,6 +613,149 @@ func TestGetLoans_WorkspaceIsolation(t *testing.T) {
 	}
 }
 
+// UpdateLoan tests
+
+func TestUpdateLoan_Success(t *testing.T) {
+	e := echo.New()
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	loanService := service.NewLoanService(nil, loanRepo, providerRepo, nil)
+	handler := NewLoanHandler(loanService)
+
+	loanRepo.AddLoan(&domain.Loan{
+		ID:          1,
+		WorkspaceID: 1,
+		ProviderID:  1,
+		ItemName:    "Original Name",
+		TotalAmount: decimal.NewFromInt(100),
+	})
+
+	reqBody := `{"itemName": "Updated Name", "notes": "New notes"}`
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/loans/1", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("1")
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", 1)
+
+	err := handler.UpdateLoan(c)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", rec.Code)
+	}
+
+	var response LoanResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if response.ItemName != "Updated Name" {
+		t.Errorf("Expected 'Updated Name', got %s", response.ItemName)
+	}
+}
+
+func TestUpdateLoan_EmptyItemName(t *testing.T) {
+	e := echo.New()
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	loanService := service.NewLoanService(nil, loanRepo, providerRepo, nil)
+	handler := NewLoanHandler(loanService)
+
+	loanRepo.AddLoan(&domain.Loan{
+		ID:          1,
+		WorkspaceID: 1,
+		ProviderID:  1,
+		ItemName:    "Original Name",
+	})
+
+	reqBody := `{"itemName": ""}`
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/loans/1", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("1")
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", 1)
+
+	err := handler.UpdateLoan(c)
+	if err != nil {
+		t.Fatalf("Expected no error (error should be in response), got %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestUpdateLoan_NotFound(t *testing.T) {
+	e := echo.New()
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	loanService := service.NewLoanService(nil, loanRepo, providerRepo, nil)
+	handler := NewLoanHandler(loanService)
+
+	reqBody := `{"itemName": "New Name"}`
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/loans/999", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("999")
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", 1)
+
+	err := handler.UpdateLoan(c)
+	if err != nil {
+		t.Fatalf("Expected no error (error should be in response), got %v", err)
+	}
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d", rec.Code)
+	}
+}
+
+func TestUpdateLoan_WorkspaceIsolation(t *testing.T) {
+	e := echo.New()
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	loanService := service.NewLoanService(nil, loanRepo, providerRepo, nil)
+	handler := NewLoanHandler(loanService)
+
+	// Create a loan in workspace 2
+	loanRepo.AddLoan(&domain.Loan{
+		ID:          1,
+		WorkspaceID: 2,
+		ProviderID:  1,
+		ItemName:    "Workspace 2 Loan",
+	})
+
+	// Try to update from workspace 1
+	reqBody := `{"itemName": "Hacked Name"}`
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/loans/1", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("1")
+
+	setupAuthContextWithWorkspace(c, "auth0|user1", "user1@example.com", "User 1", "", 1)
+
+	err := handler.UpdateLoan(c)
+	if err != nil {
+		t.Fatalf("Expected no error (error should be in response), got %v", err)
+	}
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("Workspace 1 should not update workspace 2's loan, expected 404 but got %d", rec.Code)
+	}
+}
+
 func TestGetLoan_WorkspaceIsolation(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()

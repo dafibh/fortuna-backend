@@ -190,10 +190,40 @@ func TestTogglePaymentPaid_MarkAsPaid(t *testing.T) {
 		Paid:   false,
 	}
 
-	result, err := svc.TogglePaymentPaid(workspaceID, loanID, paymentID, true)
+	result, err := svc.TogglePaymentPaid(workspaceID, loanID, paymentID, true, nil)
 	assert.NoError(t, err)
 	assert.True(t, result.Paid)
 	assert.NotNil(t, result.PaidDate)
+}
+
+func TestTogglePaymentPaid_WithCustomDate(t *testing.T) {
+	paymentRepo := testutil.NewMockLoanPaymentRepository()
+	loanRepo := testutil.NewMockLoanRepository()
+	svc := NewLoanPaymentService(paymentRepo, loanRepo)
+
+	workspaceID := int32(1)
+	loanID := int32(10)
+	paymentID := int32(100)
+
+	// Setup loan
+	loanRepo.Loans[loanID] = &domain.Loan{
+		ID:          loanID,
+		WorkspaceID: workspaceID,
+	}
+
+	// Setup payment
+	paymentRepo.Payments[paymentID] = &domain.LoanPayment{
+		ID:     paymentID,
+		LoanID: loanID,
+		Paid:   false,
+	}
+
+	customDate := time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC)
+	result, err := svc.TogglePaymentPaid(workspaceID, loanID, paymentID, true, &customDate)
+	assert.NoError(t, err)
+	assert.True(t, result.Paid)
+	assert.NotNil(t, result.PaidDate)
+	assert.Equal(t, customDate, *result.PaidDate)
 }
 
 func TestTogglePaymentPaid_MarkAsUnpaid(t *testing.T) {
@@ -220,7 +250,7 @@ func TestTogglePaymentPaid_MarkAsUnpaid(t *testing.T) {
 		PaidDate: &now,
 	}
 
-	result, err := svc.TogglePaymentPaid(workspaceID, loanID, paymentID, false)
+	result, err := svc.TogglePaymentPaid(workspaceID, loanID, paymentID, false, nil)
 	assert.NoError(t, err)
 	assert.False(t, result.Paid)
 	assert.Nil(t, result.PaidDate)
@@ -231,7 +261,7 @@ func TestTogglePaymentPaid_LoanNotFound(t *testing.T) {
 	loanRepo := testutil.NewMockLoanRepository()
 	svc := NewLoanPaymentService(paymentRepo, loanRepo)
 
-	result, err := svc.TogglePaymentPaid(1, 999, 100, true)
+	result, err := svc.TogglePaymentPaid(1, 999, 100, true, nil)
 	assert.Error(t, err)
 	assert.Equal(t, domain.ErrLoanNotFound, err)
 	assert.Nil(t, result)
@@ -250,7 +280,7 @@ func TestTogglePaymentPaid_PaymentNotFound(t *testing.T) {
 		WorkspaceID: workspaceID,
 	}
 
-	result, err := svc.TogglePaymentPaid(workspaceID, loanID, 999, true)
+	result, err := svc.TogglePaymentPaid(workspaceID, loanID, 999, true, nil)
 	assert.Error(t, err)
 	assert.Equal(t, domain.ErrLoanPaymentNotFound, err)
 	assert.Nil(t, result)
@@ -321,7 +351,7 @@ func TestTogglePaymentPaid_PaymentWrongLoan(t *testing.T) {
 		Paid:   false,
 	}
 
-	result, err := svc.TogglePaymentPaid(workspaceID, loanID, paymentID, true)
+	result, err := svc.TogglePaymentPaid(workspaceID, loanID, paymentID, true, nil)
 	assert.Error(t, err)
 	assert.Equal(t, domain.ErrLoanPaymentNotFound, err)
 	assert.Nil(t, result)

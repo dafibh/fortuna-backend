@@ -106,6 +106,7 @@ func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, aut
 	loans.GET("", loanHandler.GetLoans)
 	loans.POST("/preview", loanHandler.PreviewLoan)
 	loans.GET("/:id", loanHandler.GetLoan)
+	loans.PUT("/:id", loanHandler.UpdateLoan)
 	loans.DELETE("/:id", loanHandler.DeleteLoan)
 
 	// Loan Payment routes (nested under loans)

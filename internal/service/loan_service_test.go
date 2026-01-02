@@ -869,6 +869,135 @@ func TestLoan_IsActive(t *testing.T) {
 	}
 }
 
+// UpdateLoan tests
+
+func TestUpdateLoan_Success(t *testing.T) {
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
+
+	workspaceID := int32(1)
+	loanRepo.AddLoan(&domain.Loan{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		ItemName:    "Original Name",
+	})
+
+	notes := "Updated notes"
+	input := UpdateLoanInput{
+		ItemName: "Updated Name",
+		Notes:    &notes,
+	}
+
+	loan, err := service.UpdateLoan(workspaceID, 1, input)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if loan.ItemName != "Updated Name" {
+		t.Errorf("Expected 'Updated Name', got '%s'", loan.ItemName)
+	}
+
+	if loan.Notes == nil || *loan.Notes != "Updated notes" {
+		t.Errorf("Expected notes 'Updated notes', got %v", loan.Notes)
+	}
+}
+
+func TestUpdateLoan_EmptyItemName(t *testing.T) {
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
+
+	workspaceID := int32(1)
+	loanRepo.AddLoan(&domain.Loan{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		ItemName:    "Original Name",
+	})
+
+	input := UpdateLoanInput{
+		ItemName: "",
+	}
+
+	_, err := service.UpdateLoan(workspaceID, 1, input)
+	if err != domain.ErrLoanItemNameEmpty {
+		t.Errorf("Expected ErrLoanItemNameEmpty, got %v", err)
+	}
+}
+
+func TestUpdateLoan_ItemNameTooLong(t *testing.T) {
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
+
+	workspaceID := int32(1)
+	loanRepo.AddLoan(&domain.Loan{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		ItemName:    "Original Name",
+	})
+
+	// Create a name that's 201 characters long
+	longName := ""
+	for i := 0; i < 201; i++ {
+		longName += "A"
+	}
+
+	input := UpdateLoanInput{
+		ItemName: longName,
+	}
+
+	_, err := service.UpdateLoan(workspaceID, 1, input)
+	if err != domain.ErrLoanItemNameTooLong {
+		t.Errorf("Expected ErrLoanItemNameTooLong, got %v", err)
+	}
+}
+
+func TestUpdateLoan_LoanNotFound(t *testing.T) {
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
+
+	input := UpdateLoanInput{
+		ItemName: "New Name",
+	}
+
+	_, err := service.UpdateLoan(1, 999, input)
+	if err != domain.ErrLoanNotFound {
+		t.Errorf("Expected ErrLoanNotFound, got %v", err)
+	}
+}
+
+func TestUpdateLoan_ClearsNotes(t *testing.T) {
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	service := NewLoanService(nil, loanRepo, providerRepo, nil)
+
+	workspaceID := int32(1)
+	originalNotes := "Original notes"
+	loanRepo.AddLoan(&domain.Loan{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		ItemName:    "Original Name",
+		Notes:       &originalNotes,
+	})
+
+	// Update with nil notes (clear notes)
+	input := UpdateLoanInput{
+		ItemName: "Updated Name",
+		Notes:    nil,
+	}
+
+	loan, err := service.UpdateLoan(workspaceID, 1, input)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if loan.Notes != nil {
+		t.Errorf("Expected notes to be nil, got %v", loan.Notes)
+	}
+}
+
 func TestLoan_GetLastPaymentYearMonth(t *testing.T) {
 	tests := []struct {
 		name              string

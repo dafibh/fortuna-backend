@@ -58,7 +58,8 @@ func (s *LoanPaymentService) UpdatePaymentAmount(workspaceID int32, loanID int32
 }
 
 // TogglePaymentPaid toggles the paid status of a payment
-func (s *LoanPaymentService) TogglePaymentPaid(workspaceID int32, loanID int32, paymentID int32, paid bool) (*domain.LoanPayment, error) {
+// If customPaidDate is provided and paid is true, uses that date; otherwise defaults to current date
+func (s *LoanPaymentService) TogglePaymentPaid(workspaceID int32, loanID int32, paymentID int32, paid bool, customPaidDate *time.Time) (*domain.LoanPayment, error) {
 	// Verify loan belongs to workspace
 	_, err := s.loanRepo.GetByID(workspaceID, loanID)
 	if err != nil {
@@ -76,8 +77,12 @@ func (s *LoanPaymentService) TogglePaymentPaid(workspaceID int32, loanID int32, 
 
 	var paidDate *time.Time
 	if paid {
-		now := time.Now()
-		paidDate = &now
+		if customPaidDate != nil {
+			paidDate = customPaidDate
+		} else {
+			now := time.Now()
+			paidDate = &now
+		}
 	}
 
 	return s.paymentRepo.TogglePaid(paymentID, paid, paidDate)

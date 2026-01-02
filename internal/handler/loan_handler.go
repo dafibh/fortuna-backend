@@ -24,6 +24,13 @@ func NewLoanHandler(loanService *service.LoanService) *LoanHandler {
 	return &LoanHandler{loanService: loanService}
 }
 
+// UpdateLoanRequest represents the update loan request body
+// Only itemName and notes are editable; other fields are locked after creation
+type UpdateLoanRequest struct {
+	ItemName string  `json:"itemName"`
+	Notes    *string `json:"notes,omitempty"`
+}
+
 // CreateLoanRequest represents the create loan request body
 type CreateLoanRequest struct {
 	ProviderID   int32   `json:"providerId"`
@@ -243,6 +250,53 @@ func (h *LoanHandler) GetLoan(c echo.Context) error {
 		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("loan_id", id).Msg("Failed to get loan")
 		return NewInternalError(c, "Failed to get loan")
 	}
+
+	return c.JSON(http.StatusOK, toLoanResponse(loan))
+}
+
+// UpdateLoan handles PUT /api/v1/loans/:id
+// Only updates editable fields (itemName, notes); amount/months/dates are locked
+func (h *LoanHandler) UpdateLoan(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return NewValidationError(c, "Invalid loan ID", nil)
+	}
+
+	var req UpdateLoanRequest
+	if err := c.Bind(&req); err != nil {
+		return NewValidationError(c, "Invalid request body", nil)
+	}
+
+	input := service.UpdateLoanInput{
+		ItemName: req.ItemName,
+		Notes:    req.Notes,
+	}
+
+	loan, err := h.loanService.UpdateLoan(workspaceID, int32(id), input)
+	if err != nil {
+		if errors.Is(err, domain.ErrLoanNotFound) {
+			return NewNotFoundError(c, "Loan not found")
+		}
+		if errors.Is(err, domain.ErrLoanItemNameEmpty) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "itemName", Message: "Item name is required"},
+			})
+		}
+		if errors.Is(err, domain.ErrLoanItemNameTooLong) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "itemName", Message: "Item name must be 200 characters or less"},
+			})
+		}
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("loan_id", id).Msg("Failed to update loan")
+		return NewInternalError(c, "Failed to update loan")
+	}
+
+	log.Info().Int32("workspace_id", workspaceID).Int32("loan_id", loan.ID).Str("item", loan.ItemName).Msg("Loan updated")
 
 	return c.JSON(http.StatusOK, toLoanResponse(loan))
 }

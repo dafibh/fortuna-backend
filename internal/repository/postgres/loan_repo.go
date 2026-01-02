@@ -208,6 +208,31 @@ func (r *LoanRepository) Update(loan *domain.Loan) (*domain.Loan, error) {
 	return sqlcLoanToDomain(updated), nil
 }
 
+// UpdatePartial updates only the editable fields (item_name, notes) of a loan
+func (r *LoanRepository) UpdatePartial(workspaceID int32, id int32, itemName string, notes *string) (*domain.Loan, error) {
+	ctx := context.Background()
+
+	pgNotes := pgtype.Text{}
+	if notes != nil {
+		pgNotes.String = *notes
+		pgNotes.Valid = true
+	}
+
+	updated, err := r.queries.UpdateLoanPartial(ctx, sqlc.UpdateLoanPartialParams{
+		ID:          id,
+		WorkspaceID: workspaceID,
+		ItemName:    itemName,
+		Notes:       pgNotes,
+	})
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, domain.ErrLoanNotFound
+		}
+		return nil, err
+	}
+	return sqlcLoanToDomain(updated), nil
+}
+
 // SoftDelete marks a loan as deleted
 func (r *LoanRepository) SoftDelete(workspaceID int32, id int32) error {
 	ctx := context.Background()

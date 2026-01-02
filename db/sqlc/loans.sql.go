@@ -665,3 +665,48 @@ func (q *Queries) UpdateLoan(ctx context.Context, arg UpdateLoanParams) (Loan, e
 	)
 	return i, err
 }
+
+const updateLoanPartial = `-- name: UpdateLoanPartial :one
+UPDATE loans
+SET item_name = $3,
+    notes = $4,
+    updated_at = NOW()
+WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL
+RETURNING id, workspace_id, provider_id, item_name, total_amount, num_months, purchase_date, interest_rate, monthly_payment, first_payment_year, first_payment_month, notes, created_at, updated_at, deleted_at
+`
+
+type UpdateLoanPartialParams struct {
+	ID          int32       `json:"id"`
+	WorkspaceID int32       `json:"workspace_id"`
+	ItemName    string      `json:"item_name"`
+	Notes       pgtype.Text `json:"notes"`
+}
+
+// Only updates editable fields (item_name, notes) - amount/months/dates are locked after creation
+func (q *Queries) UpdateLoanPartial(ctx context.Context, arg UpdateLoanPartialParams) (Loan, error) {
+	row := q.db.QueryRow(ctx, updateLoanPartial,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.ItemName,
+		arg.Notes,
+	)
+	var i Loan
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.ProviderID,
+		&i.ItemName,
+		&i.TotalAmount,
+		&i.NumMonths,
+		&i.PurchaseDate,
+		&i.InterestRate,
+		&i.MonthlyPayment,
+		&i.FirstPaymentYear,
+		&i.FirstPaymentMonth,
+		&i.Notes,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}

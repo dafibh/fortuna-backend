@@ -491,6 +491,114 @@ func TestTogglePaymentPaid_PaymentNotFound(t *testing.T) {
 	}
 }
 
+func TestTogglePaymentPaid_WithCustomDate(t *testing.T) {
+	e := echo.New()
+	loanRepo := testutil.NewMockLoanRepository()
+	paymentRepo := testutil.NewMockLoanPaymentRepository()
+	paymentService := service.NewLoanPaymentService(paymentRepo, loanRepo)
+	handler := NewLoanPaymentHandler(paymentService)
+
+	// Add loan and payment
+	loanRepo.AddLoan(&domain.Loan{
+		ID:          1,
+		WorkspaceID: 1,
+		ProviderID:  1,
+		ItemName:    "Test Loan",
+	})
+	paymentRepo.AddPayment(&domain.LoanPayment{
+		ID:            1,
+		LoanID:        1,
+		PaymentNumber: 1,
+		Amount:        decimal.NewFromInt(100),
+		DueYear:       2024,
+		DueMonth:      1,
+		Paid:          false,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	})
+
+	reqBody := `{"paid": true, "paidDate": "2024-06-15"}`
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/loans/1/payments/1/toggle-paid", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("loanId", "paymentId")
+	c.SetParamValues("1", "1")
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", 1)
+
+	err := handler.TogglePaymentPaid(c)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", rec.Code)
+	}
+
+	var response LoanPaymentResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if !response.Paid {
+		t.Error("Expected paid to be true")
+	}
+
+	// Verify the paid date was set to the custom date
+	if response.PaidDate == nil {
+		t.Error("Expected paidDate to be set")
+	} else if !strings.HasPrefix(*response.PaidDate, "2024-06-15") {
+		t.Errorf("Expected paidDate to start with '2024-06-15', got %s", *response.PaidDate)
+	}
+}
+
+func TestTogglePaymentPaid_InvalidDateFormat(t *testing.T) {
+	e := echo.New()
+	loanRepo := testutil.NewMockLoanRepository()
+	paymentRepo := testutil.NewMockLoanPaymentRepository()
+	paymentService := service.NewLoanPaymentService(paymentRepo, loanRepo)
+	handler := NewLoanPaymentHandler(paymentService)
+
+	// Add loan and payment
+	loanRepo.AddLoan(&domain.Loan{
+		ID:          1,
+		WorkspaceID: 1,
+		ProviderID:  1,
+		ItemName:    "Test Loan",
+	})
+	paymentRepo.AddPayment(&domain.LoanPayment{
+		ID:            1,
+		LoanID:        1,
+		PaymentNumber: 1,
+		Amount:        decimal.NewFromInt(100),
+		DueYear:       2024,
+		DueMonth:      1,
+		Paid:          false,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	})
+
+	reqBody := `{"paid": true, "paidDate": "invalid-date"}`
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/loans/1/payments/1/toggle-paid", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("loanId", "paymentId")
+	c.SetParamValues("1", "1")
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", 1)
+
+	err := handler.TogglePaymentPaid(c)
+	if err != nil {
+		t.Fatalf("Expected no error (error should be in response), got %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rec.Code)
+	}
+}
+
 func TestTogglePaymentPaid_WorkspaceIsolation(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()

@@ -45,7 +45,8 @@ type UpdatePaymentAmountRequest struct {
 
 // TogglePaymentPaidRequest represents the toggle payment paid request body
 type TogglePaymentPaidRequest struct {
-	Paid bool `json:"paid"`
+	Paid     bool    `json:"paid"`
+	PaidDate *string `json:"paidDate,omitempty"` // Optional: YYYY-MM-DD format, defaults to today when marking paid
 }
 
 // GetPaymentsByLoanID handles GET /api/v1/loans/:loanId/payments
@@ -150,7 +151,19 @@ func (h *LoanPaymentHandler) TogglePaymentPaid(c echo.Context) error {
 		return NewValidationError(c, "Invalid request body", nil)
 	}
 
-	payment, err := h.paymentService.TogglePaymentPaid(workspaceID, int32(loanID), int32(paymentID), req.Paid)
+	// Parse optional paid date
+	var paidDate *time.Time
+	if req.Paid && req.PaidDate != nil && *req.PaidDate != "" {
+		parsed, err := time.Parse("2006-01-02", *req.PaidDate)
+		if err != nil {
+			return NewValidationError(c, "Invalid paid date", []ValidationError{
+				{Field: "paidDate", Message: "Must be in YYYY-MM-DD format"},
+			})
+		}
+		paidDate = &parsed
+	}
+
+	payment, err := h.paymentService.TogglePaymentPaid(workspaceID, int32(loanID), int32(paymentID), req.Paid, paidDate)
 	if err != nil {
 		if errors.Is(err, domain.ErrLoanNotFound) {
 			return NewNotFoundError(c, "Loan not found")

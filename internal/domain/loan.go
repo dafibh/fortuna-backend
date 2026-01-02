@@ -103,6 +103,7 @@ type LoanRepository interface {
 	GetActiveByWorkspace(workspaceID int32, currentYear, currentMonth int) ([]*Loan, error)
 	GetCompletedByWorkspace(workspaceID int32, currentYear, currentMonth int) ([]*Loan, error)
 	Update(loan *Loan) (*Loan, error)
+	UpdatePartial(workspaceID int32, id int32, itemName string, notes *string) (*Loan, error)
 	SoftDelete(workspaceID int32, id int32) error
 	CountActiveLoansByProvider(workspaceID int32, providerID int32, currentYear, currentMonth int) (int64, error)
 	// Stats methods - joins with loan_payments for aggregated data

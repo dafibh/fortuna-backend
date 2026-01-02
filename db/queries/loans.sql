@@ -71,6 +71,15 @@ SET item_name = $3,
 WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL
 RETURNING *;
 
+-- name: UpdateLoanPartial :one
+-- Only updates editable fields (item_name, notes) - amount/months/dates are locked after creation
+UPDATE loans
+SET item_name = $3,
+    notes = $4,
+    updated_at = NOW()
+WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL
+RETURNING *;
+
 -- name: DeleteLoan :exec
 UPDATE loans
 SET deleted_at = NOW(), updated_at = NOW()

@@ -108,6 +108,8 @@ type Querier interface {
 	UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error)
 	UpdateBudgetCategory(ctx context.Context, arg UpdateBudgetCategoryParams) (BudgetCategory, error)
 	UpdateLoan(ctx context.Context, arg UpdateLoanParams) (Loan, error)
+	// Only updates editable fields (item_name, notes) - amount/months/dates are locked after creation
+	UpdateLoanPartial(ctx context.Context, arg UpdateLoanPartialParams) (Loan, error)
 	UpdateLoanPaymentAmount(ctx context.Context, arg UpdateLoanPaymentAmountParams) (LoanPayment, error)
 	UpdateLoanProvider(ctx context.Context, arg UpdateLoanProviderParams) (LoanProvider, error)
 	UpdateMonthStartingBalance(ctx context.Context, arg UpdateMonthStartingBalanceParams) error

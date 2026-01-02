@@ -1727,6 +1727,21 @@ func (m *MockLoanRepository) Update(loan *domain.Loan) (*domain.Loan, error) {
 	return loan, nil
 }
 
+// UpdatePartial updates only itemName and notes of a loan
+func (m *MockLoanRepository) UpdatePartial(workspaceID int32, id int32, itemName string, notes *string) (*domain.Loan, error) {
+	loan, ok := m.Loans[id]
+	if !ok || loan.WorkspaceID != workspaceID {
+		return nil, domain.ErrLoanNotFound
+	}
+	if loan.DeletedAt != nil {
+		return nil, domain.ErrLoanNotFound
+	}
+	loan.ItemName = itemName
+	loan.Notes = notes
+	loan.UpdatedAt = time.Now()
+	return loan, nil
+}
+
 // SoftDelete soft-deletes a loan
 func (m *MockLoanRepository) SoftDelete(workspaceID int32, id int32) error {
 	if m.DeleteFn != nil {
