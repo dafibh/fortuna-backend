@@ -22,6 +22,7 @@ type Querier interface {
 	CreateBudgetCategory(ctx context.Context, arg CreateBudgetCategoryParams) (BudgetCategory, error)
 	CreateMonth(ctx context.Context, arg CreateMonthParams) (Month, error)
 	CreateOrGetUserByAuth0ID(ctx context.Context, arg CreateOrGetUserByAuth0IDParams) (User, error)
+	CreateRecurringTransaction(ctx context.Context, arg CreateRecurringTransactionParams) (RecurringTransaction, error)
 	CreateTransaction(ctx context.Context, arg CreateTransactionParams) (Transaction, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams) (Workspace, error)
@@ -56,6 +57,7 @@ type Querier interface {
 	GetPerAccountOutstanding(ctx context.Context, workspaceID int32) ([]GetPerAccountOutstandingRow, error)
 	// Returns recently used categories for suggestions dropdown
 	GetRecentlyUsedCategories(ctx context.Context, workspaceID int32) ([]GetRecentlyUsedCategoriesRow, error)
+	GetRecurringTransaction(ctx context.Context, arg GetRecurringTransactionParams) (RecurringTransaction, error)
 	// Returns total spending per category for a specific month
 	GetSpendingByCategory(ctx context.Context, arg GetSpendingByCategoryParams) ([]GetSpendingByCategoryRow, error)
 	GetTransactionByID(ctx context.Context, arg GetTransactionByIDParams) (Transaction, error)
@@ -68,8 +70,10 @@ type Querier interface {
 	GetWorkspaceByUserAuth0ID(ctx context.Context, auth0ID string) (Workspace, error)
 	GetWorkspaceByUserID(ctx context.Context, userID pgtype.UUID) (Workspace, error)
 	HardDeleteAccount(ctx context.Context, arg HardDeleteAccountParams) error
+	ListRecurringTransactions(ctx context.Context, arg ListRecurringTransactionsParams) ([]RecurringTransaction, error)
 	SoftDeleteAccount(ctx context.Context, arg SoftDeleteAccountParams) (int64, error)
 	SoftDeleteBudgetCategory(ctx context.Context, arg SoftDeleteBudgetCategoryParams) error
+	SoftDeleteRecurringTransaction(ctx context.Context, arg SoftDeleteRecurringTransactionParams) (int64, error)
 	SoftDeleteTransaction(ctx context.Context, arg SoftDeleteTransactionParams) (int64, error)
 	SoftDeleteTransferPair(ctx context.Context, arg SoftDeleteTransferPairParams) (int64, error)
 	// Sum paid expenses within a date range for in-hand balance calculation
@@ -81,6 +85,7 @@ type Querier interface {
 	UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error)
 	UpdateBudgetCategory(ctx context.Context, arg UpdateBudgetCategoryParams) (BudgetCategory, error)
 	UpdateMonthStartingBalance(ctx context.Context, arg UpdateMonthStartingBalanceParams) error
+	UpdateRecurringTransaction(ctx context.Context, arg UpdateRecurringTransactionParams) (RecurringTransaction, error)
 	UpdateTransaction(ctx context.Context, arg UpdateTransactionParams) (Transaction, error)
 	UpdateTransactionSettlementIntent(ctx context.Context, arg UpdateTransactionSettlementIntentParams) (Transaction, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)

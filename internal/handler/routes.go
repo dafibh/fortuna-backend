@@ -6,7 +6,7 @@ import (
 )
 
 // RegisterRoutes sets up all API routes
-func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler) {
+func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler, recurringHandler *RecurringHandler) {
 	// API version 1
 	api := e.Group("/api/v1")
 
@@ -78,4 +78,13 @@ func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, aut
 	cc.Use(authMiddleware.Authenticate())
 	cc.GET("/payable/breakdown", ccHandler.GetPayableBreakdown)
 	cc.POST("/payments", ccHandler.CreateCCPayment)
+
+	// Recurring Transactions routes (protected)
+	recurring := api.Group("/recurring-transactions")
+	recurring.Use(authMiddleware.Authenticate())
+	recurring.POST("", recurringHandler.CreateRecurring)
+	recurring.GET("", recurringHandler.GetRecurringTransactions)
+	recurring.GET("/:id", recurringHandler.GetRecurringTransaction)
+	recurring.PUT("/:id", recurringHandler.UpdateRecurring)
+	recurring.DELETE("/:id", recurringHandler.DeleteRecurring)
 }

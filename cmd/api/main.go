@@ -54,6 +54,7 @@ func main() {
 	monthRepo := postgres.NewMonthRepository(pool)
 	budgetCategoryRepo := postgres.NewBudgetCategoryRepository(pool)
 	budgetAllocationRepo := postgres.NewBudgetAllocationRepository(pool)
+	recurringRepo := postgres.NewRecurringRepository(pool)
 
 	// Initialize services
 	authService := service.NewAuthService(userRepo, workspaceRepo)
@@ -66,6 +67,7 @@ func main() {
 	budgetCategoryService := service.NewBudgetCategoryService(budgetCategoryRepo)
 	budgetAllocationService := service.NewBudgetAllocationService(budgetAllocationRepo, budgetCategoryRepo)
 	ccService := service.NewCCService(transactionRepo, accountRepo)
+	recurringService := service.NewRecurringService(recurringRepo, accountRepo, budgetCategoryRepo)
 
 	// Create workspace provider adapter for auth middleware
 	workspaceProvider := &workspaceProviderAdapter{authService: authService}
@@ -86,6 +88,7 @@ func main() {
 	budgetCategoryHandler := handler.NewBudgetCategoryHandler(budgetCategoryService)
 	budgetHandler := handler.NewBudgetHandler(budgetAllocationService)
 	ccHandler := handler.NewCCHandler(ccService)
+	recurringHandler := handler.NewRecurringHandler(recurringService)
 
 	// Create Echo instance
 	e := echo.New()
@@ -126,7 +129,7 @@ func main() {
 	})
 
 	// Register API routes
-	handler.RegisterRoutes(e, authMiddleware, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler, dashboardHandler, budgetCategoryHandler, budgetHandler, ccHandler)
+	handler.RegisterRoutes(e, authMiddleware, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler, dashboardHandler, budgetCategoryHandler, budgetHandler, ccHandler, recurringHandler)
 
 	// Start server in goroutine
 	go func() {

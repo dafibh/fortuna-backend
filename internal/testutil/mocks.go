@@ -1294,3 +1294,125 @@ func (m *MockBudgetAllocationRepository) CopyAllocationsToMonth(workspaceID int3
 	}
 	return nil
 }
+
+// MockRecurringRepository is a mock implementation of domain.RecurringRepository
+type MockRecurringRepository struct {
+	Recurring     map[int32]*domain.RecurringTransaction
+	ByWorkspace   map[int32][]*domain.RecurringTransaction
+	NextID        int32
+	CreateFn      func(rt *domain.RecurringTransaction) (*domain.RecurringTransaction, error)
+	GetByIDFn     func(workspaceID int32, id int32) (*domain.RecurringTransaction, error)
+	ListFn        func(workspaceID int32, activeOnly *bool) ([]*domain.RecurringTransaction, error)
+	UpdateFn      func(rt *domain.RecurringTransaction) (*domain.RecurringTransaction, error)
+	DeleteFn      func(workspaceID int32, id int32) error
+}
+
+// NewMockRecurringRepository creates a new MockRecurringRepository
+func NewMockRecurringRepository() *MockRecurringRepository {
+	return &MockRecurringRepository{
+		Recurring:   make(map[int32]*domain.RecurringTransaction),
+		ByWorkspace: make(map[int32][]*domain.RecurringTransaction),
+		NextID:      1,
+	}
+}
+
+// Create creates a new recurring transaction
+func (m *MockRecurringRepository) Create(rt *domain.RecurringTransaction) (*domain.RecurringTransaction, error) {
+	if m.CreateFn != nil {
+		return m.CreateFn(rt)
+	}
+	rt.ID = m.NextID
+	m.NextID++
+	rt.CreatedAt = time.Now()
+	rt.UpdatedAt = time.Now()
+	m.Recurring[rt.ID] = rt
+	m.ByWorkspace[rt.WorkspaceID] = append(m.ByWorkspace[rt.WorkspaceID], rt)
+	return rt, nil
+}
+
+// GetByID retrieves a recurring transaction by ID
+func (m *MockRecurringRepository) GetByID(workspaceID int32, id int32) (*domain.RecurringTransaction, error) {
+	if m.GetByIDFn != nil {
+		return m.GetByIDFn(workspaceID, id)
+	}
+	rt, ok := m.Recurring[id]
+	if !ok || rt.WorkspaceID != workspaceID {
+		return nil, domain.ErrRecurringNotFound
+	}
+	if rt.DeletedAt != nil {
+		return nil, domain.ErrRecurringNotFound
+	}
+	return rt, nil
+}
+
+// ListByWorkspace retrieves all recurring transactions for a workspace
+func (m *MockRecurringRepository) ListByWorkspace(workspaceID int32, activeOnly *bool) ([]*domain.RecurringTransaction, error) {
+	if m.ListFn != nil {
+		return m.ListFn(workspaceID, activeOnly)
+	}
+	rts := m.ByWorkspace[workspaceID]
+	if rts == nil {
+		return []*domain.RecurringTransaction{}, nil
+	}
+	var result []*domain.RecurringTransaction
+	for _, rt := range rts {
+		if rt.DeletedAt != nil {
+			continue
+		}
+		if activeOnly != nil && rt.IsActive != *activeOnly {
+			continue
+		}
+		result = append(result, rt)
+	}
+	if result == nil {
+		return []*domain.RecurringTransaction{}, nil
+	}
+	return result, nil
+}
+
+// Update updates a recurring transaction
+func (m *MockRecurringRepository) Update(rt *domain.RecurringTransaction) (*domain.RecurringTransaction, error) {
+	if m.UpdateFn != nil {
+		return m.UpdateFn(rt)
+	}
+	existing, ok := m.Recurring[rt.ID]
+	if !ok || existing.WorkspaceID != rt.WorkspaceID {
+		return nil, domain.ErrRecurringNotFound
+	}
+	if existing.DeletedAt != nil {
+		return nil, domain.ErrRecurringNotFound
+	}
+	rt.UpdatedAt = time.Now()
+	m.Recurring[rt.ID] = rt
+	// Update in workspace list
+	for i, r := range m.ByWorkspace[rt.WorkspaceID] {
+		if r.ID == rt.ID {
+			m.ByWorkspace[rt.WorkspaceID][i] = rt
+			break
+		}
+	}
+	return rt, nil
+}
+
+// Delete soft-deletes a recurring transaction
+func (m *MockRecurringRepository) Delete(workspaceID int32, id int32) error {
+	if m.DeleteFn != nil {
+		return m.DeleteFn(workspaceID, id)
+	}
+	rt, ok := m.Recurring[id]
+	if !ok || rt.WorkspaceID != workspaceID {
+		return domain.ErrRecurringNotFound
+	}
+	if rt.DeletedAt != nil {
+		return domain.ErrRecurringNotFound
+	}
+	now := time.Now()
+	rt.DeletedAt = &now
+	return nil
+}
+
+// AddRecurring adds a recurring transaction to the mock repository (helper for tests)
+func (m *MockRecurringRepository) AddRecurring(rt *domain.RecurringTransaction) {
+	m.Recurring[rt.ID] = rt
+	m.ByWorkspace[rt.WorkspaceID] = append(m.ByWorkspace[rt.WorkspaceID], rt)
+}

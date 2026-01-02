@@ -52,6 +52,22 @@ type Month struct {
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
+type RecurringTransaction struct {
+	ID          int32              `json:"id"`
+	WorkspaceID int32              `json:"workspace_id"`
+	Name        string             `json:"name"`
+	Amount      pgtype.Numeric     `json:"amount"`
+	AccountID   int32              `json:"account_id"`
+	Type        string             `json:"type"`
+	CategoryID  pgtype.Int4        `json:"category_id"`
+	Frequency   string             `json:"frequency"`
+	DueDay      int32              `json:"due_day"`
+	IsActive    bool               `json:"is_active"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt   pgtype.Timestamptz `json:"deleted_at"`
+}
+
 type Transaction struct {
 	ID                 int32              `json:"id"`
 	WorkspaceID        int32              `json:"workspace_id"`

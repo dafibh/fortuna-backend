@@ -31,6 +31,9 @@ var (
 	ErrBudgetAllocationNotFound     = errors.New("budget allocation not found")
 	ErrInvalidAccountType           = errors.New("invalid account type for this operation")
 	ErrInvalidSourceAccount         = errors.New("cannot use a credit card as source account for CC payment")
+	ErrRecurringNotFound            = errors.New("recurring transaction not found")
+	ErrInvalidFrequency             = errors.New("invalid frequency")
+	ErrInvalidDueDay                = errors.New("due day must be between 1 and 31")
 )
 
 // Validation constants
