@@ -277,6 +277,32 @@ func (r *LoanPaymentRepository) GetDeleteStats(loanID int32) (*domain.LoanDelete
 	}, nil
 }
 
+// GetPaymentsWithDetailsByMonth retrieves loan payments with loan details for a specific month
+func (r *LoanPaymentRepository) GetPaymentsWithDetailsByMonth(workspaceID int32, year, month int) ([]*domain.MonthlyPaymentDetail, error) {
+	ctx := context.Background()
+	payments, err := r.queries.GetLoanPaymentsWithDetailsByMonth(ctx, sqlc.GetLoanPaymentsWithDetailsByMonthParams{
+		WorkspaceID: workspaceID,
+		DueYear:     int32(year),
+		DueMonth:    int32(month),
+	})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*domain.MonthlyPaymentDetail, len(payments))
+	for i, p := range payments {
+		result[i] = &domain.MonthlyPaymentDetail{
+			ID:            p.ID,
+			LoanID:        p.LoanID,
+			ItemName:      p.ItemName,
+			PaymentNumber: p.PaymentNumber,
+			TotalPayments: p.TotalPayments,
+			Amount:        pgNumericToDecimal(p.Amount),
+			Paid:          p.Paid,
+		}
+	}
+	return result, nil
+}
+
 // Helper function to convert sqlc type to domain type
 func sqlcLoanPaymentToDomain(lp sqlc.LoanPayment) *domain.LoanPayment {
 	payment := &domain.LoanPayment{

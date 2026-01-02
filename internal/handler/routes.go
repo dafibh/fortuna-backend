@@ -105,6 +105,7 @@ func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, aut
 	loans.POST("", loanHandler.CreateLoan)
 	loans.GET("", loanHandler.GetLoans)
 	loans.POST("/preview", loanHandler.PreviewLoan)
+	loans.GET("/commitments/:year/:month", loanHandler.GetMonthlyCommitments)
 	loans.GET("/:id", loanHandler.GetLoan)
 	loans.GET("/:id/delete-check", loanHandler.GetDeleteCheck)
 	loans.PUT("/:id", loanHandler.UpdateLoan)

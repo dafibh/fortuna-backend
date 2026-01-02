@@ -2006,3 +2006,26 @@ func (m *MockLoanPaymentRepository) GetDeleteStats(loanID int32) (*domain.LoanDe
 	}
 	return stats, nil
 }
+
+// GetPaymentsWithDetailsByMonth retrieves loan payments with details for a specific month
+func (m *MockLoanPaymentRepository) GetPaymentsWithDetailsByMonth(workspaceID int32, year, month int) ([]*domain.MonthlyPaymentDetail, error) {
+	key := paymentMonthKey(workspaceID, year, month)
+	payments := m.ByMonth[key]
+	if payments == nil {
+		return []*domain.MonthlyPaymentDetail{}, nil
+	}
+	// Convert to MonthlyPaymentDetail (in real impl, this joins with loans table)
+	result := make([]*domain.MonthlyPaymentDetail, len(payments))
+	for i, p := range payments {
+		result[i] = &domain.MonthlyPaymentDetail{
+			ID:            p.ID,
+			LoanID:        p.LoanID,
+			ItemName:      fmt.Sprintf("Loan %d", p.LoanID), // Mock item name
+			PaymentNumber: p.PaymentNumber,
+			TotalPayments: 12, // Mock total
+			Amount:        p.Amount,
+			Paid:          p.Paid,
+		}
+	}
+	return result, nil
+}

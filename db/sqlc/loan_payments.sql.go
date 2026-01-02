@@ -226,6 +226,68 @@ func (q *Queries) GetLoanPaymentsByMonth(ctx context.Context, arg GetLoanPayment
 	return items, nil
 }
 
+const getLoanPaymentsWithDetailsByMonth = `-- name: GetLoanPaymentsWithDetailsByMonth :many
+SELECT
+    lp.id,
+    lp.loan_id,
+    l.item_name,
+    lp.payment_number,
+    l.num_months as total_payments,
+    lp.amount,
+    lp.paid
+FROM loan_payments lp
+JOIN loans l ON l.id = lp.loan_id
+WHERE l.workspace_id = $1
+  AND lp.due_year = $2
+  AND lp.due_month = $3
+  AND l.deleted_at IS NULL
+ORDER BY l.item_name, lp.payment_number
+`
+
+type GetLoanPaymentsWithDetailsByMonthParams struct {
+	WorkspaceID int32 `json:"workspace_id"`
+	DueYear     int32 `json:"due_year"`
+	DueMonth    int32 `json:"due_month"`
+}
+
+type GetLoanPaymentsWithDetailsByMonthRow struct {
+	ID            int32          `json:"id"`
+	LoanID        int32          `json:"loan_id"`
+	ItemName      string         `json:"item_name"`
+	PaymentNumber int32          `json:"payment_number"`
+	TotalPayments int32          `json:"total_payments"`
+	Amount        pgtype.Numeric `json:"amount"`
+	Paid          bool           `json:"paid"`
+}
+
+func (q *Queries) GetLoanPaymentsWithDetailsByMonth(ctx context.Context, arg GetLoanPaymentsWithDetailsByMonthParams) ([]GetLoanPaymentsWithDetailsByMonthRow, error) {
+	rows, err := q.db.Query(ctx, getLoanPaymentsWithDetailsByMonth, arg.WorkspaceID, arg.DueYear, arg.DueMonth)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetLoanPaymentsWithDetailsByMonthRow{}
+	for rows.Next() {
+		var i GetLoanPaymentsWithDetailsByMonthRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.LoanID,
+			&i.ItemName,
+			&i.PaymentNumber,
+			&i.TotalPayments,
+			&i.Amount,
+			&i.Paid,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getUnpaidLoanPaymentsByMonth = `-- name: GetUnpaidLoanPaymentsByMonth :many
 SELECT lp.id, lp.loan_id, lp.payment_number, lp.amount, lp.due_year, lp.due_month, lp.paid, lp.paid_date, lp.created_at, lp.updated_at FROM loan_payments lp
 JOIN loans l ON lp.loan_id = l.id

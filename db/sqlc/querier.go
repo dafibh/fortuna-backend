@@ -66,6 +66,7 @@ type Querier interface {
 	GetLoanPaymentByLoanAndNumber(ctx context.Context, arg GetLoanPaymentByLoanAndNumberParams) (LoanPayment, error)
 	GetLoanPaymentsByLoanID(ctx context.Context, loanID int32) ([]LoanPayment, error)
 	GetLoanPaymentsByMonth(ctx context.Context, arg GetLoanPaymentsByMonthParams) ([]LoanPayment, error)
+	GetLoanPaymentsWithDetailsByMonth(ctx context.Context, arg GetLoanPaymentsWithDetailsByMonthParams) ([]GetLoanPaymentsWithDetailsByMonthRow, error)
 	GetLoanProviderByID(ctx context.Context, arg GetLoanProviderByIDParams) (LoanProvider, error)
 	GetLoansWithStats(ctx context.Context, workspaceID int32) ([]GetLoansWithStatsRow, error)
 	GetMonthByYearMonth(ctx context.Context, arg GetMonthByYearMonthParams) (Month, error)

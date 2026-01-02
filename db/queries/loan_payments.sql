@@ -64,3 +64,20 @@ SELECT
     COALESCE(SUM(amount), 0)::NUMERIC(12,2) as total_amount
 FROM loan_payments
 WHERE loan_id = $1;
+
+-- name: GetLoanPaymentsWithDetailsByMonth :many
+SELECT
+    lp.id,
+    lp.loan_id,
+    l.item_name,
+    lp.payment_number,
+    l.num_months as total_payments,
+    lp.amount,
+    lp.paid
+FROM loan_payments lp
+JOIN loans l ON l.id = lp.loan_id
+WHERE l.workspace_id = $1
+  AND lp.due_year = $2
+  AND lp.due_month = $3
+  AND l.deleted_at IS NULL
+ORDER BY l.item_name, lp.payment_number;

@@ -288,6 +288,43 @@ func (s *LoanService) GetDeleteStats(workspaceID int32, id int32) (*domain.Loan,
 	return loan, stats, nil
 }
 
+// MonthlyCommitmentsResult contains aggregated loan commitments for a month
+type MonthlyCommitmentsResult struct {
+	Year        int
+	Month       int
+	TotalUnpaid decimal.Decimal
+	TotalPaid   decimal.Decimal
+	Payments    []*domain.MonthlyPaymentDetail
+}
+
+// GetMonthlyCommitments retrieves loan commitments for a specific month
+func (s *LoanService) GetMonthlyCommitments(workspaceID int32, year, month int) (*MonthlyCommitmentsResult, error) {
+	// Get all payments with loan details for the month
+	payments, err := s.paymentRepo.GetPaymentsWithDetailsByMonth(workspaceID, year, month)
+	if err != nil {
+		return nil, err
+	}
+
+	// Calculate totals
+	totalUnpaid := decimal.Zero
+	totalPaid := decimal.Zero
+	for _, p := range payments {
+		if p.Paid {
+			totalPaid = totalPaid.Add(p.Amount)
+		} else {
+			totalUnpaid = totalUnpaid.Add(p.Amount)
+		}
+	}
+
+	return &MonthlyCommitmentsResult{
+		Year:        year,
+		Month:       month,
+		TotalUnpaid: totalUnpaid,
+		TotalPaid:   totalPaid,
+		Payments:    payments,
+	}, nil
+}
+
 // CalculateMonthlyPayment calculates the monthly payment for a loan
 // Formula: (totalAmount * (1 + interestRate/100)) / numMonths
 func CalculateMonthlyPayment(totalAmount, interestRate decimal.Decimal, numMonths int) decimal.Decimal {

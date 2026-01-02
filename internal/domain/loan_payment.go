@@ -58,6 +58,17 @@ type LoanDeleteStats struct {
 	TotalAmount decimal.Decimal `json:"totalAmount"`
 }
 
+// MonthlyPaymentDetail contains payment details with loan info for monthly aggregation
+type MonthlyPaymentDetail struct {
+	ID            int32           `json:"id"`
+	LoanID        int32           `json:"loanId"`
+	ItemName      string          `json:"itemName"`
+	PaymentNumber int32           `json:"paymentNumber"`
+	TotalPayments int32           `json:"totalPayments"`
+	Amount        decimal.Decimal `json:"amount"`
+	Paid          bool            `json:"paid"`
+}
+
 type LoanPaymentRepository interface {
 	Create(payment *LoanPayment) (*LoanPayment, error)
 	CreateBatch(payments []*LoanPayment) error
@@ -70,4 +81,5 @@ type LoanPaymentRepository interface {
 	GetByMonth(workspaceID int32, year, month int) ([]*LoanPayment, error)
 	GetUnpaidByMonth(workspaceID int32, year, month int) ([]*LoanPayment, error)
 	GetDeleteStats(loanID int32) (*LoanDeleteStats, error)
+	GetPaymentsWithDetailsByMonth(workspaceID int32, year, month int) ([]*MonthlyPaymentDetail, error)
 }

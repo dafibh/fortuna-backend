@@ -365,6 +365,69 @@ func (h *LoanHandler) DeleteLoan(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
+// CommitmentsResponse represents the monthly loan commitments aggregation
+type CommitmentsResponse struct {
+	Year        int                 `json:"year"`
+	Month       int                 `json:"month"`
+	TotalUnpaid string              `json:"totalUnpaid"`
+	TotalPaid   string              `json:"totalPaid"`
+	Payments    []CommitmentPayment `json:"payments"`
+}
+
+// CommitmentPayment represents a single payment in the monthly commitments
+type CommitmentPayment struct {
+	LoanID        int32  `json:"loanId"`
+	ItemName      string `json:"itemName"`
+	PaymentNumber int32  `json:"paymentNumber"`
+	TotalPayments int32  `json:"totalPayments"`
+	Amount        string `json:"amount"`
+	Paid          bool   `json:"paid"`
+}
+
+// GetMonthlyCommitments handles GET /api/v1/loans/commitments/:year/:month
+func (h *LoanHandler) GetMonthlyCommitments(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	year, err := strconv.Atoi(c.Param("year"))
+	if err != nil || year < 2000 || year > 2100 {
+		return NewValidationError(c, "Invalid year", nil)
+	}
+
+	month, err := strconv.Atoi(c.Param("month"))
+	if err != nil || month < 1 || month > 12 {
+		return NewValidationError(c, "Invalid month", nil)
+	}
+
+	result, err := h.loanService.GetMonthlyCommitments(workspaceID, year, month)
+	if err != nil {
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("year", year).Int("month", month).Msg("Failed to get monthly commitments")
+		return NewInternalError(c, "Failed to get monthly commitments")
+	}
+
+	payments := make([]CommitmentPayment, len(result.Payments))
+	for i, p := range result.Payments {
+		payments[i] = CommitmentPayment{
+			LoanID:        p.LoanID,
+			ItemName:      p.ItemName,
+			PaymentNumber: p.PaymentNumber,
+			TotalPayments: p.TotalPayments,
+			Amount:        p.Amount.StringFixed(2),
+			Paid:          p.Paid,
+		}
+	}
+
+	return c.JSON(http.StatusOK, CommitmentsResponse{
+		Year:        result.Year,
+		Month:       result.Month,
+		TotalUnpaid: result.TotalUnpaid.StringFixed(2),
+		TotalPaid:   result.TotalPaid.StringFixed(2),
+		Payments:    payments,
+	})
+}
+
 // PreviewLoan handles POST /api/v1/loans/preview
 func (h *LoanHandler) PreviewLoan(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
