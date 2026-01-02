@@ -233,6 +233,36 @@ func (h *RecurringHandler) DeleteRecurring(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
+// ToggleActive handles PATCH /api/v1/recurring-transactions/:id/toggle-active
+func (h *RecurringHandler) ToggleActive(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return NewValidationError(c, "Invalid recurring transaction ID", nil)
+	}
+
+	rt, err := h.recurringService.ToggleActive(workspaceID, int32(id))
+	if err != nil {
+		if errors.Is(err, domain.ErrRecurringNotFound) {
+			return NewNotFoundError(c, "Recurring transaction not found")
+		}
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("recurring_id", id).Msg("Failed to toggle recurring transaction active status")
+		return NewInternalError(c, "Failed to toggle active status")
+	}
+
+	statusText := "deactivated"
+	if rt.IsActive {
+		statusText = "activated"
+	}
+	log.Info().Int32("workspace_id", workspaceID).Int32("recurring_id", rt.ID).Str("status", statusText).Msg("Recurring transaction active status toggled")
+
+	return c.JSON(http.StatusOK, toRecurringResponse(rt))
+}
+
 // handleServiceError handles common service errors
 func (h *RecurringHandler) handleServiceError(c echo.Context, err error, workspaceID int32, operation string) error {
 	if errors.Is(err, domain.ErrRecurringNotFound) {

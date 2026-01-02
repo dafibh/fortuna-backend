@@ -424,3 +424,117 @@ func TestCreateRecurring_NoWorkspace(t *testing.T) {
 		t.Errorf("Expected status 401, got %d", rec.Code)
 	}
 }
+
+func TestToggleActive_Success(t *testing.T) {
+	e := echo.New()
+	handler, recurringRepo, accountRepo, _ := setupRecurringHandler()
+
+	workspaceID := int32(1)
+	accountID := int32(1)
+
+	accountRepo.Accounts[accountID] = &domain.Account{
+		ID:          accountID,
+		WorkspaceID: workspaceID,
+		Name:        "Test Account",
+	}
+
+	// Create with IsActive = true
+	recurringRepo.AddRecurring(&domain.RecurringTransaction{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Test Recurring",
+		Amount:      decimal.NewFromFloat(100.00),
+		AccountID:   accountID,
+		Type:        domain.TransactionTypeExpense,
+		Frequency:   domain.FrequencyMonthly,
+		DueDay:      1,
+		IsActive:    true,
+	})
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/recurring-transactions/1/toggle-active", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("1")
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	err := handler.ToggleActive(c)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", rec.Code)
+	}
+
+	var response RecurringResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	// Should now be inactive
+	if response.IsActive {
+		t.Error("Expected IsActive to be false after toggle")
+	}
+}
+
+func TestToggleActive_NotFound(t *testing.T) {
+	e := echo.New()
+	handler, _, _, _ := setupRecurringHandler()
+
+	workspaceID := int32(1)
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/recurring-transactions/999/toggle-active", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("999")
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	_ = handler.ToggleActive(c)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d", rec.Code)
+	}
+}
+
+func TestToggleActive_InvalidID(t *testing.T) {
+	e := echo.New()
+	handler, _, _, _ := setupRecurringHandler()
+
+	workspaceID := int32(1)
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/recurring-transactions/abc/toggle-active", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("abc")
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	_ = handler.ToggleActive(c)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400 for invalid ID, got %d", rec.Code)
+	}
+}
+
+func TestToggleActive_NoWorkspace(t *testing.T) {
+	e := echo.New()
+	handler, _, _, _ := setupRecurringHandler()
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/recurring-transactions/1/toggle-active", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("1")
+
+	// Don't set workspace - should return 401
+	_ = handler.ToggleActive(c)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401 for no workspace, got %d", rec.Code)
+	}
+}

@@ -1232,3 +1232,77 @@ func TestGenerateRecurringTransactions_TransactionIsPaidFalse(t *testing.T) {
 		t.Error("Expected IsPaid to be false for generated transaction")
 	}
 }
+
+// ToggleActive tests
+
+func TestToggleActive_ActiveToInactive(t *testing.T) {
+	service, recurringRepo, _, _, _ := setupRecurringServiceTest()
+
+	workspaceID := int32(1)
+
+	recurringRepo.AddRecurring(&domain.RecurringTransaction{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Test",
+		IsActive:    true, // Start as active
+	})
+
+	rt, err := service.ToggleActive(workspaceID, 1)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if rt.IsActive {
+		t.Error("Expected IsActive to be false after toggle")
+	}
+}
+
+func TestToggleActive_InactiveToActive(t *testing.T) {
+	service, recurringRepo, _, _, _ := setupRecurringServiceTest()
+
+	workspaceID := int32(1)
+
+	recurringRepo.AddRecurring(&domain.RecurringTransaction{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Test",
+		IsActive:    false, // Start as inactive
+	})
+
+	rt, err := service.ToggleActive(workspaceID, 1)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if !rt.IsActive {
+		t.Error("Expected IsActive to be true after toggle")
+	}
+}
+
+func TestToggleActive_NotFound(t *testing.T) {
+	service, _, _, _, _ := setupRecurringServiceTest()
+
+	workspaceID := int32(1)
+
+	_, err := service.ToggleActive(workspaceID, 999)
+	if err != domain.ErrRecurringNotFound {
+		t.Errorf("Expected ErrRecurringNotFound, got %v", err)
+	}
+}
+
+func TestToggleActive_WrongWorkspace(t *testing.T) {
+	service, recurringRepo, _, _, _ := setupRecurringServiceTest()
+
+	recurringRepo.AddRecurring(&domain.RecurringTransaction{
+		ID:          1,
+		WorkspaceID: 1,
+		Name:        "Test",
+		IsActive:    true,
+	})
+
+	// Try to toggle from different workspace
+	_, err := service.ToggleActive(2, 1)
+	if err != domain.ErrRecurringNotFound {
+		t.Errorf("Expected ErrRecurringNotFound for wrong workspace, got %v", err)
+	}
+}

@@ -197,6 +197,24 @@ func (s *RecurringService) DeleteRecurring(workspaceID int32, id int32) error {
 	return s.recurringRepo.Delete(workspaceID, id)
 }
 
+// ToggleActive toggles the is_active status of a recurring transaction
+func (s *RecurringService) ToggleActive(workspaceID int32, id int32) (*domain.RecurringTransaction, error) {
+	existing, err := s.recurringRepo.GetByID(workspaceID, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Toggle is_active
+	existing.IsActive = !existing.IsActive
+
+	updated, err := s.recurringRepo.Update(existing)
+	if err != nil {
+		return nil, err
+	}
+
+	return updated, nil
+}
+
 // CalculateActualDueDate returns the actual due date for a recurring transaction
 // given the due day and target month/year. For months with fewer days than the
 // due day (e.g., due day 31 in February), returns the last day of that month.
