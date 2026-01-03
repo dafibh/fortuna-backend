@@ -12,6 +12,7 @@ import (
 	"github.com/dafibh/fortuna/fortuna-backend/internal/handler"
 	"github.com/dafibh/fortuna/fortuna-backend/internal/middleware"
 	"github.com/dafibh/fortuna/fortuna-backend/internal/repository/postgres"
+	"github.com/dafibh/fortuna/fortuna-backend/internal/repository/storage"
 	"github.com/dafibh/fortuna/fortuna-backend/internal/service"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
@@ -63,6 +64,20 @@ func main() {
 	wishlistPriceRepo := postgres.NewWishlistPriceRepository(pool)
 	wishlistNoteRepo := postgres.NewWishlistNoteRepository(pool)
 
+	// Initialize image storage repository (optional - won't fail if MinIO not configured)
+	var imageRepo storage.ImageRepository
+	if cfg.MinIO.AccessKeyID != "" && cfg.MinIO.SecretAccessKey != "" {
+		var err error
+		imageRepo, err = storage.NewMinIOImageRepository(cfg.MinIO)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to initialize MinIO image repository - image uploads disabled")
+		} else {
+			log.Info().Str("endpoint", cfg.MinIO.Endpoint).Msg("Connected to MinIO")
+		}
+	} else {
+		log.Warn().Msg("MinIO not configured - image uploads disabled")
+	}
+
 	// Initialize services
 	authService := service.NewAuthService(userRepo, workspaceRepo)
 	profileService := service.NewProfileService(userRepo)
@@ -82,6 +97,10 @@ func main() {
 	wishlistItemService := service.NewWishlistItemService(wishlistItemRepo, wishlistRepo)
 	wishlistPriceService := service.NewWishlistPriceService(wishlistPriceRepo, wishlistItemRepo)
 	wishlistNoteService := service.NewWishlistNoteService(wishlistNoteRepo, wishlistItemRepo)
+	imageService := service.NewImageService(imageRepo)
+
+	// Link image service for cleanup on delete
+	wishlistNoteService.SetImageService(imageService)
 
 	// Create workspace provider adapter for auth middleware
 	workspaceProvider := &workspaceProviderAdapter{authService: authService}
@@ -110,6 +129,7 @@ func main() {
 	wishlistItemHandler := handler.NewWishlistItemHandler(wishlistItemService)
 	wishlistPriceHandler := handler.NewWishlistPriceHandler(wishlistPriceService)
 	wishlistNoteHandler := handler.NewWishlistNoteHandler(wishlistNoteService)
+	imageHandler := handler.NewImageHandler(imageService)
 
 	// Create Echo instance
 	e := echo.New()
@@ -150,7 +170,7 @@ func main() {
 	})
 
 	// Register API routes
-	handler.RegisterRoutes(e, authMiddleware, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler, dashboardHandler, budgetCategoryHandler, budgetHandler, ccHandler, recurringHandler, loanProviderHandler, loanHandler, loanPaymentHandler, wishlistHandler, wishlistItemHandler, wishlistPriceHandler, wishlistNoteHandler)
+	handler.RegisterRoutes(e, authMiddleware, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler, dashboardHandler, budgetCategoryHandler, budgetHandler, ccHandler, recurringHandler, loanProviderHandler, loanHandler, loanPaymentHandler, wishlistHandler, wishlistItemHandler, wishlistPriceHandler, wishlistNoteHandler, imageHandler)
 
 	// Start server in goroutine
 	go func() {

@@ -184,7 +184,7 @@ func TestUpdateNote_Success(t *testing.T) {
 
 	svc := NewWishlistNoteService(noteRepo, itemRepo)
 
-	note, err := svc.UpdateNote(1, 1, "Updated content")
+	note, err := svc.UpdateNote(1, 1, "Updated content", nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -200,7 +200,7 @@ func TestUpdateNote_EmptyContent(t *testing.T) {
 
 	svc := NewWishlistNoteService(noteRepo, itemRepo)
 
-	_, err := svc.UpdateNote(1, 1, "")
+	_, err := svc.UpdateNote(1, 1, "", nil)
 	if err != domain.ErrNoteContentEmpty {
 		t.Errorf("expected ErrNoteContentEmpty, got %v", err)
 	}
@@ -212,7 +212,7 @@ func TestUpdateNote_NotFound(t *testing.T) {
 
 	svc := NewWishlistNoteService(noteRepo, itemRepo)
 
-	_, err := svc.UpdateNote(1, 999, "New content")
+	_, err := svc.UpdateNote(1, 999, "New content", nil)
 	if err != domain.ErrNoteNotFound {
 		t.Errorf("expected ErrNoteNotFound, got %v", err)
 	}

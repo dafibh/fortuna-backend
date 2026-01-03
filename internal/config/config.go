@@ -22,6 +22,18 @@ type Config struct {
 	Port        string
 	CORSOrigins []string
 	Env         string
+
+	// MinIO
+	MinIO MinIOConfig
+}
+
+// MinIOConfig holds MinIO/S3 configuration
+type MinIOConfig struct {
+	Endpoint        string
+	AccessKeyID     string
+	SecretAccessKey string
+	BucketName      string
+	UseSSL          bool
 }
 
 // Load reads configuration from environment variables
@@ -37,6 +49,13 @@ func Load() (*Config, error) {
 		Port:          getEnv("PORT", "8080"),
 		CORSOrigins:   strings.Split(getEnv("CORS_ORIGINS", "http://localhost:3000"), ","),
 		Env:           getEnv("ENV", "development"),
+		MinIO: MinIOConfig{
+			Endpoint:        getEnv("MINIO_ENDPOINT", "localhost:9000"),
+			AccessKeyID:     getEnv("MINIO_ACCESS_KEY", ""),
+			SecretAccessKey: getEnv("MINIO_SECRET_KEY", ""),
+			BucketName:      getEnv("MINIO_BUCKET", "fortuna-images"),
+			UseSSL:          getEnv("MINIO_USE_SSL", "false") == "true",
+		},
 	}
 
 	if err := cfg.validate(); err != nil {

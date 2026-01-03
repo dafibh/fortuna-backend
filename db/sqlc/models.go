@@ -169,6 +169,7 @@ type WishlistItemNote struct {
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 	DeletedAt pgtype.Timestamptz `json:"deleted_at"`
+	ImageUrl  pgtype.Text        `json:"image_url"`
 }
 
 type WishlistItemPrice struct {

@@ -25,21 +25,24 @@ func NewWishlistNoteHandler(noteService *service.WishlistNoteService) *WishlistN
 
 // CreateNoteRequest represents the create note request body
 type CreateNoteRequest struct {
-	Content string `json:"content"`
+	Content  string  `json:"content"`
+	ImageURL *string `json:"imageUrl,omitempty"`
 }
 
 // UpdateNoteRequest represents the update note request body
 type UpdateNoteRequest struct {
-	Content string `json:"content"`
+	Content  string  `json:"content"`
+	ImageURL *string `json:"imageUrl,omitempty"`
 }
 
 // NoteResponse represents a note in API responses
 type NoteResponse struct {
-	ID        int32  `json:"id"`
-	ItemID    int32  `json:"itemId"`
-	Content   string `json:"content"`
-	CreatedAt string `json:"createdAt"`
-	UpdatedAt string `json:"updatedAt"`
+	ID        int32   `json:"id"`
+	ItemID    int32   `json:"itemId"`
+	Content   string  `json:"content"`
+	ImageURL  *string `json:"imageUrl,omitempty"`
+	CreatedAt string  `json:"createdAt"`
+	UpdatedAt string  `json:"updatedAt"`
 }
 
 // CreateNote handles POST /api/v1/wishlist-items/:id/notes
@@ -60,7 +63,8 @@ func (h *WishlistNoteHandler) CreateNote(c echo.Context) error {
 	}
 
 	input := service.CreateNoteInput{
-		Content: req.Content,
+		Content:  req.Content,
+		ImageURL: req.ImageURL,
 	}
 
 	note, err := h.noteService.CreateNote(workspaceID, int32(itemID), input)
@@ -155,7 +159,7 @@ func (h *WishlistNoteHandler) UpdateNote(c echo.Context) error {
 		return NewValidationError(c, "Invalid request body", nil)
 	}
 
-	note, err := h.noteService.UpdateNote(workspaceID, int32(id), req.Content)
+	note, err := h.noteService.UpdateNote(workspaceID, int32(id), req.Content, req.ImageURL)
 	if err != nil {
 		if errors.Is(err, domain.ErrNoteNotFound) {
 			return NewNotFoundError(c, "Note not found")
@@ -205,6 +209,7 @@ func toNoteResponse(note *domain.WishlistItemNote) NoteResponse {
 		ID:        note.ID,
 		ItemID:    note.ItemID,
 		Content:   note.Content,
+		ImageURL:  note.ImageURL,
 		CreatedAt: note.CreatedAt.Format(time.RFC3339),
 		UpdatedAt: note.UpdatedAt.Format(time.RFC3339),
 	}

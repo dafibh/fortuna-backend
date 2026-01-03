@@ -29,6 +29,7 @@ const (
 	ErrorTypeUnauthorized = "https://fortuna.app/errors/unauthorized"
 	ErrorTypeForbidden    = "https://fortuna.app/errors/forbidden"
 	ErrorTypeConflict     = "https://fortuna.app/errors/conflict"
+	ErrorTypeUnavailable  = "https://fortuna.app/errors/unavailable"
 	ErrorTypeInternal     = "https://fortuna.app/errors/internal"
 )
 
@@ -94,6 +95,17 @@ func NewInternalError(c echo.Context, detail string) error {
 		Type:     ErrorTypeInternal,
 		Title:    "Internal Server Error",
 		Status:   http.StatusInternalServerError,
+		Detail:   detail,
+		Instance: c.Request().URL.Path,
+	})
+}
+
+// NewServiceUnavailableError creates a service unavailable error response
+func NewServiceUnavailableError(c echo.Context, detail string) error {
+	return c.JSON(http.StatusServiceUnavailable, ProblemDetails{
+		Type:     ErrorTypeUnavailable,
+		Title:    "Service Unavailable",
+		Status:   http.StatusServiceUnavailable,
 		Detail:   detail,
 		Instance: c.Request().URL.Path,
 	})

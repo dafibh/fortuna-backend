@@ -2578,13 +2578,14 @@ func (m *MockWishlistNoteRepository) CountByItem(workspaceID int32, itemID int32
 	return int64(len(notes)), nil
 }
 
-// Update updates a note's content
-func (m *MockWishlistNoteRepository) Update(workspaceID int32, id int32, content string) (*domain.WishlistItemNote, error) {
+// Update updates a note's content and image
+func (m *MockWishlistNoteRepository) Update(workspaceID int32, id int32, content string, imageURL *string) (*domain.WishlistItemNote, error) {
 	note, ok := m.Notes[id]
 	if !ok {
 		return nil, domain.ErrNoteNotFound
 	}
 	note.Content = content
+	note.ImageURL = imageURL
 	note.UpdatedAt = time.Now()
 	return note, nil
 }
