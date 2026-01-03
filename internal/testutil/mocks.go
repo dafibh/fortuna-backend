@@ -1842,6 +1842,162 @@ func (m *MockLoanRepository) SetCompletedWithStats(loans []*domain.LoanWithStats
 	m.CompletedWithStats = loans
 }
 
+// MockWishlistRepository is a mock implementation of domain.WishlistRepository
+type MockWishlistRepository struct {
+	Wishlists   map[int32]*domain.Wishlist
+	ByWorkspace map[int32][]*domain.Wishlist
+	ByName      map[string]*domain.Wishlist
+	NextID      int32
+	CreateFn    func(wishlist *domain.Wishlist) (*domain.Wishlist, error)
+	GetByIDFn   func(workspaceID int32, id int32) (*domain.Wishlist, error)
+	GetByNameFn func(workspaceID int32, name string) (*domain.Wishlist, error)
+	GetAllFn    func(workspaceID int32) ([]*domain.Wishlist, error)
+	UpdateFn    func(wishlist *domain.Wishlist) (*domain.Wishlist, error)
+	DeleteFn    func(workspaceID int32, id int32) error
+}
+
+// NewMockWishlistRepository creates a new MockWishlistRepository
+func NewMockWishlistRepository() *MockWishlistRepository {
+	return &MockWishlistRepository{
+		Wishlists:   make(map[int32]*domain.Wishlist),
+		ByWorkspace: make(map[int32][]*domain.Wishlist),
+		ByName:      make(map[string]*domain.Wishlist),
+		NextID:      1,
+	}
+}
+
+func wishlistNameKey(workspaceID int32, name string) string {
+	return fmt.Sprintf("%d-%s", workspaceID, name)
+}
+
+// Create creates a new wishlist
+func (m *MockWishlistRepository) Create(wishlist *domain.Wishlist) (*domain.Wishlist, error) {
+	if m.CreateFn != nil {
+		return m.CreateFn(wishlist)
+	}
+	// Check for duplicate name
+	key := wishlistNameKey(wishlist.WorkspaceID, wishlist.Name)
+	if existing, ok := m.ByName[key]; ok && existing.DeletedAt == nil {
+		return nil, domain.ErrWishlistNameExists
+	}
+	wishlist.ID = m.NextID
+	m.NextID++
+	wishlist.CreatedAt = time.Now()
+	wishlist.UpdatedAt = time.Now()
+	m.Wishlists[wishlist.ID] = wishlist
+	m.ByWorkspace[wishlist.WorkspaceID] = append(m.ByWorkspace[wishlist.WorkspaceID], wishlist)
+	m.ByName[key] = wishlist
+	return wishlist, nil
+}
+
+// GetByID retrieves a wishlist by its ID within a workspace
+func (m *MockWishlistRepository) GetByID(workspaceID int32, id int32) (*domain.Wishlist, error) {
+	if m.GetByIDFn != nil {
+		return m.GetByIDFn(workspaceID, id)
+	}
+	wishlist, ok := m.Wishlists[id]
+	if !ok || wishlist.WorkspaceID != workspaceID {
+		return nil, domain.ErrWishlistNotFound
+	}
+	if wishlist.DeletedAt != nil {
+		return nil, domain.ErrWishlistNotFound
+	}
+	return wishlist, nil
+}
+
+// GetByName retrieves a wishlist by its name within a workspace
+func (m *MockWishlistRepository) GetByName(workspaceID int32, name string) (*domain.Wishlist, error) {
+	if m.GetByNameFn != nil {
+		return m.GetByNameFn(workspaceID, name)
+	}
+	key := wishlistNameKey(workspaceID, name)
+	wishlist, ok := m.ByName[key]
+	if !ok || wishlist.DeletedAt != nil {
+		return nil, domain.ErrWishlistNotFound
+	}
+	return wishlist, nil
+}
+
+// GetAllByWorkspace retrieves all wishlists for a workspace
+func (m *MockWishlistRepository) GetAllByWorkspace(workspaceID int32) ([]*domain.Wishlist, error) {
+	if m.GetAllFn != nil {
+		return m.GetAllFn(workspaceID)
+	}
+	wishlists := m.ByWorkspace[workspaceID]
+	if wishlists == nil {
+		return []*domain.Wishlist{}, nil
+	}
+	var result []*domain.Wishlist
+	for _, w := range wishlists {
+		if w.DeletedAt == nil {
+			result = append(result, w)
+		}
+	}
+	if result == nil {
+		return []*domain.Wishlist{}, nil
+	}
+	return result, nil
+}
+
+// Update updates a wishlist
+func (m *MockWishlistRepository) Update(wishlist *domain.Wishlist) (*domain.Wishlist, error) {
+	if m.UpdateFn != nil {
+		return m.UpdateFn(wishlist)
+	}
+	existing, ok := m.Wishlists[wishlist.ID]
+	if !ok || existing.WorkspaceID != wishlist.WorkspaceID {
+		return nil, domain.ErrWishlistNotFound
+	}
+	if existing.DeletedAt != nil {
+		return nil, domain.ErrWishlistNotFound
+	}
+	// Check for duplicate name (excluding self)
+	key := wishlistNameKey(wishlist.WorkspaceID, wishlist.Name)
+	if existingByName, ok := m.ByName[key]; ok && existingByName.ID != wishlist.ID && existingByName.DeletedAt == nil {
+		return nil, domain.ErrWishlistNameExists
+	}
+	// Remove old name key
+	oldKey := wishlistNameKey(existing.WorkspaceID, existing.Name)
+	delete(m.ByName, oldKey)
+	// Update
+	wishlist.UpdatedAt = time.Now()
+	m.Wishlists[wishlist.ID] = wishlist
+	m.ByName[key] = wishlist
+	// Update in workspace list
+	for i, w := range m.ByWorkspace[wishlist.WorkspaceID] {
+		if w.ID == wishlist.ID {
+			m.ByWorkspace[wishlist.WorkspaceID][i] = wishlist
+			break
+		}
+	}
+	return wishlist, nil
+}
+
+// SoftDelete marks a wishlist as deleted
+func (m *MockWishlistRepository) SoftDelete(workspaceID int32, id int32) error {
+	if m.DeleteFn != nil {
+		return m.DeleteFn(workspaceID, id)
+	}
+	wishlist, ok := m.Wishlists[id]
+	if !ok || wishlist.WorkspaceID != workspaceID {
+		return domain.ErrWishlistNotFound
+	}
+	if wishlist.DeletedAt != nil {
+		return domain.ErrWishlistNotFound
+	}
+	now := time.Now()
+	wishlist.DeletedAt = &now
+	return nil
+}
+
+// AddWishlist adds a wishlist to the mock repository (helper for tests)
+func (m *MockWishlistRepository) AddWishlist(wishlist *domain.Wishlist) {
+	m.Wishlists[wishlist.ID] = wishlist
+	m.ByWorkspace[wishlist.WorkspaceID] = append(m.ByWorkspace[wishlist.WorkspaceID], wishlist)
+	key := wishlistNameKey(wishlist.WorkspaceID, wishlist.Name)
+	m.ByName[key] = wishlist
+}
+
 // MockLoanPaymentRepository is a mock implementation of domain.LoanPaymentRepository
 type MockLoanPaymentRepository struct {
 	Payments           map[int32]*domain.LoanPayment

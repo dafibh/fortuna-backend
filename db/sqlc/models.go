@@ -141,6 +141,15 @@ type User struct {
 	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
 }
 
+type Wishlist struct {
+	ID          int32              `json:"id"`
+	WorkspaceID int32              `json:"workspace_id"`
+	Name        string             `json:"name"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt   pgtype.Timestamptz `json:"deleted_at"`
+}
+
 type Workspace struct {
 	ID        int32              `json:"id"`
 	UserID    pgtype.UUID        `json:"user_id"`

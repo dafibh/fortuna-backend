@@ -58,6 +58,7 @@ func main() {
 	loanProviderRepo := postgres.NewLoanProviderRepository(pool)
 	loanRepo := postgres.NewLoanRepository(pool)
 	loanPaymentRepo := postgres.NewLoanPaymentRepository(pool)
+	wishlistRepo := postgres.NewWishlistRepository(pool)
 
 	// Initialize services
 	authService := service.NewAuthService(userRepo, workspaceRepo)
@@ -74,6 +75,7 @@ func main() {
 	loanProviderService := service.NewLoanProviderService(loanProviderRepo)
 	loanService := service.NewLoanService(pool, loanRepo, loanProviderRepo, loanPaymentRepo)
 	loanPaymentService := service.NewLoanPaymentService(loanPaymentRepo, loanRepo)
+	wishlistService := service.NewWishlistService(wishlistRepo)
 
 	// Create workspace provider adapter for auth middleware
 	workspaceProvider := &workspaceProviderAdapter{authService: authService}
@@ -98,6 +100,7 @@ func main() {
 	loanProviderHandler := handler.NewLoanProviderHandler(loanProviderService)
 	loanHandler := handler.NewLoanHandler(loanService)
 	loanPaymentHandler := handler.NewLoanPaymentHandler(loanPaymentService)
+	wishlistHandler := handler.NewWishlistHandler(wishlistService)
 
 	// Create Echo instance
 	e := echo.New()
@@ -138,7 +141,7 @@ func main() {
 	})
 
 	// Register API routes
-	handler.RegisterRoutes(e, authMiddleware, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler, dashboardHandler, budgetCategoryHandler, budgetHandler, ccHandler, recurringHandler, loanProviderHandler, loanHandler, loanPaymentHandler)
+	handler.RegisterRoutes(e, authMiddleware, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler, dashboardHandler, budgetCategoryHandler, budgetHandler, ccHandler, recurringHandler, loanProviderHandler, loanHandler, loanPaymentHandler, wishlistHandler)
 
 	// Start server in goroutine
 	go func() {

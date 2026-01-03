@@ -31,10 +31,12 @@ type Querier interface {
 	CreateRecurringTransaction(ctx context.Context, arg CreateRecurringTransactionParams) (RecurringTransaction, error)
 	CreateTransaction(ctx context.Context, arg CreateTransactionParams) (Transaction, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	CreateWishlist(ctx context.Context, arg CreateWishlistParams) (Wishlist, error)
 	CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams) (Workspace, error)
 	DeleteBudgetAllocation(ctx context.Context, arg DeleteBudgetAllocationParams) error
 	DeleteLoan(ctx context.Context, arg DeleteLoanParams) error
 	DeleteLoanProvider(ctx context.Context, arg DeleteLoanProviderParams) error
+	DeleteWishlist(ctx context.Context, arg DeleteWishlistParams) error
 	DeleteWorkspace(ctx context.Context, id int32) error
 	GetAccountByID(ctx context.Context, arg GetAccountByIDParams) (Account, error)
 	GetAccountByIDIncludeDeleted(ctx context.Context, arg GetAccountByIDIncludeDeletedParams) (Account, error)
@@ -86,6 +88,8 @@ type Querier interface {
 	GetUnpaidLoanPaymentsByMonth(ctx context.Context, arg GetUnpaidLoanPaymentsByMonthParams) ([]LoanPayment, error)
 	GetUserByAuth0ID(ctx context.Context, auth0ID string) (User, error)
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
+	GetWishlistByID(ctx context.Context, arg GetWishlistByIDParams) (Wishlist, error)
+	GetWishlistByName(ctx context.Context, arg GetWishlistByNameParams) (Wishlist, error)
 	GetWorkspaceByID(ctx context.Context, id int32) (Workspace, error)
 	GetWorkspaceByUserAuth0ID(ctx context.Context, auth0ID string) (Workspace, error)
 	GetWorkspaceByUserID(ctx context.Context, userID pgtype.UUID) (Workspace, error)
@@ -95,6 +99,7 @@ type Querier interface {
 	ListLoanProviders(ctx context.Context, workspaceID int32) ([]LoanProvider, error)
 	ListLoans(ctx context.Context, workspaceID int32) ([]Loan, error)
 	ListRecurringTransactions(ctx context.Context, arg ListRecurringTransactionsParams) ([]RecurringTransaction, error)
+	ListWishlists(ctx context.Context, workspaceID int32) ([]Wishlist, error)
 	SoftDeleteAccount(ctx context.Context, arg SoftDeleteAccountParams) (int64, error)
 	SoftDeleteBudgetCategory(ctx context.Context, arg SoftDeleteBudgetCategoryParams) error
 	SoftDeleteRecurringTransaction(ctx context.Context, arg SoftDeleteRecurringTransactionParams) (int64, error)
@@ -121,6 +126,7 @@ type Querier interface {
 	UpdateTransactionSettlementIntent(ctx context.Context, arg UpdateTransactionSettlementIntentParams) (Transaction, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
 	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) (User, error)
+	UpdateWishlist(ctx context.Context, arg UpdateWishlistParams) (Wishlist, error)
 	UpdateWorkspace(ctx context.Context, arg UpdateWorkspaceParams) (Workspace, error)
 	UpsertBudgetAllocation(ctx context.Context, arg UpsertBudgetAllocationParams) (BudgetAllocation, error)
 }

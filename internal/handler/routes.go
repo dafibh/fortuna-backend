@@ -6,7 +6,7 @@ import (
 )
 
 // RegisterRoutes sets up all API routes
-func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler, recurringHandler *RecurringHandler, loanProviderHandler *LoanProviderHandler, loanHandler *LoanHandler, loanPaymentHandler *LoanPaymentHandler) {
+func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler, recurringHandler *RecurringHandler, loanProviderHandler *LoanProviderHandler, loanHandler *LoanHandler, loanPaymentHandler *LoanPaymentHandler, wishlistHandler *WishlistHandler) {
 	// API version 1
 	api := e.Group("/api/v1")
 
@@ -115,4 +115,13 @@ func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, aut
 	loans.GET("/:loanId/payments", loanPaymentHandler.GetPaymentsByLoanID)
 	loans.PATCH("/:loanId/payments/:paymentId", loanPaymentHandler.UpdatePaymentAmount)
 	loans.PUT("/:loanId/payments/:paymentId/toggle-paid", loanPaymentHandler.TogglePaymentPaid)
+
+	// Wishlist routes (protected)
+	wishlists := api.Group("/wishlists")
+	wishlists.Use(authMiddleware.Authenticate())
+	wishlists.POST("", wishlistHandler.CreateWishlist)
+	wishlists.GET("", wishlistHandler.GetWishlists)
+	wishlists.GET("/:id", wishlistHandler.GetWishlist)
+	wishlists.PUT("/:id", wishlistHandler.UpdateWishlist)
+	wishlists.DELETE("/:id", wishlistHandler.DeleteWishlist)
 }
