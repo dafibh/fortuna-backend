@@ -34,12 +34,14 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateWishlist(ctx context.Context, arg CreateWishlistParams) (Wishlist, error)
 	CreateWishlistItem(ctx context.Context, arg CreateWishlistItemParams) (WishlistItem, error)
+	CreateWishlistItemPrice(ctx context.Context, arg CreateWishlistItemPriceParams) (WishlistItemPrice, error)
 	CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams) (Workspace, error)
 	DeleteBudgetAllocation(ctx context.Context, arg DeleteBudgetAllocationParams) error
 	DeleteLoan(ctx context.Context, arg DeleteLoanParams) error
 	DeleteLoanProvider(ctx context.Context, arg DeleteLoanProviderParams) error
 	DeleteWishlist(ctx context.Context, arg DeleteWishlistParams) error
 	DeleteWishlistItem(ctx context.Context, arg DeleteWishlistItemParams) error
+	DeleteWishlistItemPrice(ctx context.Context, arg DeleteWishlistItemPriceParams) error
 	DeleteWorkspace(ctx context.Context, id int32) error
 	GetAccountByID(ctx context.Context, arg GetAccountByIDParams) (Account, error)
 	GetAccountByIDIncludeDeleted(ctx context.Context, arg GetAccountByIDIncludeDeletedParams) (Account, error)
@@ -49,6 +51,7 @@ type Querier interface {
 	GetActiveLoansWithStats(ctx context.Context, workspaceID int32) ([]GetActiveLoansWithStatsRow, error)
 	GetAllBudgetCategories(ctx context.Context, workspaceID int32) ([]BudgetCategory, error)
 	GetAllMonths(ctx context.Context, workspaceID int32) ([]Month, error)
+	GetBestPriceForItem(ctx context.Context, arg GetBestPriceForItemParams) (string, error)
 	GetBudgetAllocationByCategory(ctx context.Context, arg GetBudgetAllocationByCategoryParams) (BudgetAllocation, error)
 	GetBudgetAllocationsByMonth(ctx context.Context, arg GetBudgetAllocationsByMonthParams) ([]GetBudgetAllocationsByMonthRow, error)
 	GetBudgetCategoryByID(ctx context.Context, arg GetBudgetCategoryByIDParams) (BudgetCategory, error)
@@ -64,6 +67,7 @@ type Querier interface {
 	// Returns all transactions for a specific category in a month
 	GetCategoryTransactions(ctx context.Context, arg GetCategoryTransactionsParams) ([]GetCategoryTransactionsRow, error)
 	GetCompletedLoansWithStats(ctx context.Context, workspaceID int32) ([]GetCompletedLoansWithStatsRow, error)
+	GetCurrentPricesByItem(ctx context.Context, arg GetCurrentPricesByItemParams) ([]WishlistItemPrice, error)
 	GetFirstItemImage(ctx context.Context, arg GetFirstItemImageParams) (pgtype.Text, error)
 	GetLatestMonth(ctx context.Context, workspaceID int32) (Month, error)
 	GetLoanByID(ctx context.Context, arg GetLoanByIDParams) (Loan, error)
@@ -95,6 +99,7 @@ type Querier interface {
 	GetWishlistByID(ctx context.Context, arg GetWishlistByIDParams) (Wishlist, error)
 	GetWishlistByName(ctx context.Context, arg GetWishlistByNameParams) (Wishlist, error)
 	GetWishlistItemByID(ctx context.Context, arg GetWishlistItemByIDParams) (WishlistItem, error)
+	GetWishlistItemPriceByID(ctx context.Context, arg GetWishlistItemPriceByIDParams) (WishlistItemPrice, error)
 	GetWorkspaceByID(ctx context.Context, id int32) (Workspace, error)
 	GetWorkspaceByUserAuth0ID(ctx context.Context, auth0ID string) (Workspace, error)
 	GetWorkspaceByUserID(ctx context.Context, userID pgtype.UUID) (Workspace, error)
@@ -103,8 +108,10 @@ type Querier interface {
 	ListCompletedLoans(ctx context.Context, arg ListCompletedLoansParams) ([]Loan, error)
 	ListLoanProviders(ctx context.Context, workspaceID int32) ([]LoanProvider, error)
 	ListLoans(ctx context.Context, workspaceID int32) ([]Loan, error)
+	ListPricesByItem(ctx context.Context, arg ListPricesByItemParams) ([]WishlistItemPrice, error)
 	ListRecurringTransactions(ctx context.Context, arg ListRecurringTransactionsParams) ([]RecurringTransaction, error)
 	ListWishlistItems(ctx context.Context, arg ListWishlistItemsParams) ([]WishlistItem, error)
+	ListWishlistItemsWithStats(ctx context.Context, arg ListWishlistItemsWithStatsParams) ([]ListWishlistItemsWithStatsRow, error)
 	ListWishlists(ctx context.Context, workspaceID int32) ([]Wishlist, error)
 	MoveWishlistItem(ctx context.Context, arg MoveWishlistItemParams) (WishlistItem, error)
 	SoftDeleteAccount(ctx context.Context, arg SoftDeleteAccountParams) (int64, error)

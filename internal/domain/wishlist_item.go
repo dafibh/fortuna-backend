@@ -57,6 +57,7 @@ type WishlistItemRepository interface {
 	Create(item *WishlistItem) (*WishlistItem, error)
 	GetByID(workspaceID int32, id int32) (*WishlistItem, error)
 	GetAllByWishlist(workspaceID int32, wishlistID int32) ([]*WishlistItem, error)
+	GetAllByWishlistWithStats(workspaceID int32, wishlistID int32) ([]*WishlistItemWithStats, error)
 	Update(workspaceID int32, item *WishlistItem) (*WishlistItem, error)
 	Move(workspaceID int32, itemID int32, targetWishlistID int32) (*WishlistItem, error)
 	SoftDelete(workspaceID int32, id int32) error

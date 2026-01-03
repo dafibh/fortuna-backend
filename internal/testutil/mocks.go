@@ -2283,6 +2283,24 @@ func (m *MockWishlistItemRepository) GetAllByWishlist(workspaceID int32, wishlis
 	return result, nil
 }
 
+func (m *MockWishlistItemRepository) GetAllByWishlistWithStats(workspaceID int32, wishlistID int32) ([]*domain.WishlistItemWithStats, error) {
+	items := m.ByWishlist[wishlistID]
+	var result []*domain.WishlistItemWithStats
+	for _, item := range items {
+		if item.DeletedAt == nil {
+			result = append(result, &domain.WishlistItemWithStats{
+				WishlistItem: *item,
+				BestPrice:    nil, // Mock doesn't track prices
+				NoteCount:    0,
+			})
+		}
+	}
+	if result == nil {
+		return []*domain.WishlistItemWithStats{}, nil
+	}
+	return result, nil
+}
+
 // Update updates a wishlist item
 func (m *MockWishlistItemRepository) Update(workspaceID int32, item *domain.WishlistItem) (*domain.WishlistItem, error) {
 	if m.UpdateFn != nil {
@@ -2368,5 +2386,128 @@ func (m *MockWishlistItemRepository) AddItem(item *domain.WishlistItem) {
 	m.ByWishlist[item.WishlistID] = append(m.ByWishlist[item.WishlistID], item)
 	if item.ID >= m.nextID {
 		m.nextID = item.ID + 1
+	}
+}
+
+// MockWishlistPriceRepository is a mock implementation of domain.WishlistPriceRepository
+type MockWishlistPriceRepository struct {
+	Prices   map[int32]*domain.WishlistItemPrice
+	ByItem   map[int32][]*domain.WishlistItemPrice
+	nextID   int32
+	CreateFn func(price *domain.WishlistItemPrice) (*domain.WishlistItemPrice, error)
+	GetByIDFn func(workspaceID int32, id int32) (*domain.WishlistItemPrice, error)
+	DeleteFn func(workspaceID int32, id int32) error
+}
+
+// NewMockWishlistPriceRepository creates a new MockWishlistPriceRepository
+func NewMockWishlistPriceRepository() *MockWishlistPriceRepository {
+	return &MockWishlistPriceRepository{
+		Prices: make(map[int32]*domain.WishlistItemPrice),
+		ByItem: make(map[int32][]*domain.WishlistItemPrice),
+		nextID: 1,
+	}
+}
+
+// Create creates a new price entry
+func (m *MockWishlistPriceRepository) Create(price *domain.WishlistItemPrice) (*domain.WishlistItemPrice, error) {
+	if m.CreateFn != nil {
+		return m.CreateFn(price)
+	}
+	price.ID = m.nextID
+	m.nextID++
+	price.CreatedAt = time.Now()
+	m.Prices[price.ID] = price
+	m.ByItem[price.ItemID] = append(m.ByItem[price.ItemID], price)
+	return price, nil
+}
+
+// GetByID retrieves a price entry by ID
+func (m *MockWishlistPriceRepository) GetByID(workspaceID int32, id int32) (*domain.WishlistItemPrice, error) {
+	if m.GetByIDFn != nil {
+		return m.GetByIDFn(workspaceID, id)
+	}
+	price, ok := m.Prices[id]
+	if !ok {
+		return nil, domain.ErrPriceEntryNotFound
+	}
+	return price, nil
+}
+
+// ListByItem retrieves all prices for an item
+func (m *MockWishlistPriceRepository) ListByItem(workspaceID int32, itemID int32) ([]*domain.WishlistItemPrice, error) {
+	prices := m.ByItem[itemID]
+	if prices == nil {
+		return []*domain.WishlistItemPrice{}, nil
+	}
+	return prices, nil
+}
+
+// GetCurrentPricesByItem retrieves the most recent price per platform for an item
+func (m *MockWishlistPriceRepository) GetCurrentPricesByItem(workspaceID int32, itemID int32) ([]*domain.WishlistItemPrice, error) {
+	prices := m.ByItem[itemID]
+	if prices == nil {
+		return []*domain.WishlistItemPrice{}, nil
+	}
+	// Return only the most recent price per platform
+	platformPrices := make(map[string]*domain.WishlistItemPrice)
+	for _, price := range prices {
+		existing, ok := platformPrices[price.PlatformName]
+		if !ok || price.PriceDate.After(existing.PriceDate) {
+			platformPrices[price.PlatformName] = price
+		}
+	}
+	result := make([]*domain.WishlistItemPrice, 0, len(platformPrices))
+	for _, price := range platformPrices {
+		result = append(result, price)
+	}
+	return result, nil
+}
+
+// GetBestPriceForItem retrieves the lowest current price for an item
+func (m *MockWishlistPriceRepository) GetBestPriceForItem(workspaceID int32, itemID int32) (*string, error) {
+	currentPrices, _ := m.GetCurrentPricesByItem(workspaceID, itemID)
+	if len(currentPrices) == 0 {
+		return nil, nil
+	}
+	var best *domain.WishlistItemPrice
+	for _, price := range currentPrices {
+		if best == nil || price.Price.LessThan(best.Price) {
+			best = price
+		}
+	}
+	if best != nil {
+		priceStr := best.Price.String()
+		return &priceStr, nil
+	}
+	return nil, nil
+}
+
+// Delete hard-deletes a price entry
+func (m *MockWishlistPriceRepository) Delete(workspaceID int32, id int32) error {
+	if m.DeleteFn != nil {
+		return m.DeleteFn(workspaceID, id)
+	}
+	price, ok := m.Prices[id]
+	if !ok {
+		return domain.ErrPriceEntryNotFound
+	}
+	delete(m.Prices, id)
+	// Remove from ByItem list
+	itemPrices := m.ByItem[price.ItemID]
+	for i, p := range itemPrices {
+		if p.ID == id {
+			m.ByItem[price.ItemID] = append(itemPrices[:i], itemPrices[i+1:]...)
+			break
+		}
+	}
+	return nil
+}
+
+// AddPrice adds a price to the mock repository (helper for tests)
+func (m *MockWishlistPriceRepository) AddPrice(price *domain.WishlistItemPrice) {
+	m.Prices[price.ID] = price
+	m.ByItem[price.ItemID] = append(m.ByItem[price.ItemID], price)
+	if price.ID >= m.nextID {
+		m.nextID = price.ID + 1
 	}
 }

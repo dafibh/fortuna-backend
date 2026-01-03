@@ -173,6 +173,76 @@ func (q *Queries) ListWishlistItems(ctx context.Context, arg ListWishlistItemsPa
 	return items, nil
 }
 
+const listWishlistItemsWithStats = `-- name: ListWishlistItemsWithStats :many
+SELECT
+    wi.id, wi.wishlist_id, wi.title, wi.description, wi.external_link, wi.image_url, wi.created_at, wi.updated_at, wi.deleted_at,
+    (
+        SELECT MIN(current_prices.price)::TEXT
+        FROM (
+            SELECT DISTINCT ON (wip.platform_name) wip.price
+            FROM wishlist_item_prices wip
+            WHERE wip.item_id = wi.id
+            ORDER BY wip.platform_name, wip.price_date DESC, wip.created_at DESC
+        ) AS current_prices
+    ) AS best_price,
+    0::int AS note_count  -- Placeholder for Story 8-5
+FROM wishlist_items wi
+JOIN wishlists w ON w.id = wi.wishlist_id
+WHERE wi.wishlist_id = $1 AND w.workspace_id = $2 AND wi.deleted_at IS NULL AND w.deleted_at IS NULL
+ORDER BY wi.created_at DESC
+`
+
+type ListWishlistItemsWithStatsParams struct {
+	WishlistID  int32 `json:"wishlist_id"`
+	WorkspaceID int32 `json:"workspace_id"`
+}
+
+type ListWishlistItemsWithStatsRow struct {
+	ID           int32              `json:"id"`
+	WishlistID   int32              `json:"wishlist_id"`
+	Title        string             `json:"title"`
+	Description  pgtype.Text        `json:"description"`
+	ExternalLink pgtype.Text        `json:"external_link"`
+	ImageUrl     pgtype.Text        `json:"image_url"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt    pgtype.Timestamptz `json:"deleted_at"`
+	BestPrice    string             `json:"best_price"`
+	NoteCount    int32              `json:"note_count"`
+}
+
+func (q *Queries) ListWishlistItemsWithStats(ctx context.Context, arg ListWishlistItemsWithStatsParams) ([]ListWishlistItemsWithStatsRow, error) {
+	rows, err := q.db.Query(ctx, listWishlistItemsWithStats, arg.WishlistID, arg.WorkspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListWishlistItemsWithStatsRow{}
+	for rows.Next() {
+		var i ListWishlistItemsWithStatsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.WishlistID,
+			&i.Title,
+			&i.Description,
+			&i.ExternalLink,
+			&i.ImageUrl,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.BestPrice,
+			&i.NoteCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const moveWishlistItem = `-- name: MoveWishlistItem :one
 UPDATE wishlist_items wi
 SET wishlist_id = $3, updated_at = NOW()

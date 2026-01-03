@@ -6,7 +6,7 @@ import (
 )
 
 // RegisterRoutes sets up all API routes
-func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler, recurringHandler *RecurringHandler, loanProviderHandler *LoanProviderHandler, loanHandler *LoanHandler, loanPaymentHandler *LoanPaymentHandler, wishlistHandler *WishlistHandler, wishlistItemHandler *WishlistItemHandler) {
+func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler, recurringHandler *RecurringHandler, loanProviderHandler *LoanProviderHandler, loanHandler *LoanHandler, loanPaymentHandler *LoanPaymentHandler, wishlistHandler *WishlistHandler, wishlistItemHandler *WishlistItemHandler, wishlistPriceHandler *WishlistPriceHandler) {
 	// API version 1
 	api := e.Group("/api/v1")
 
@@ -136,4 +136,13 @@ func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, aut
 	wishlistItems.PUT("/:id", wishlistItemHandler.UpdateItem)
 	wishlistItems.PATCH("/:id/move", wishlistItemHandler.MoveItem)
 	wishlistItems.DELETE("/:id", wishlistItemHandler.DeleteItem)
+
+	// Wishlist Item Price routes (nested under wishlist-items)
+	wishlistItems.POST("/:id/prices", wishlistPriceHandler.CreatePrice)
+	wishlistItems.GET("/:id/prices", wishlistPriceHandler.ListPrices)
+
+	// Wishlist Item Price routes (direct access by price ID)
+	wishlistItemPrices := api.Group("/wishlist-item-prices")
+	wishlistItemPrices.Use(authMiddleware.Authenticate())
+	wishlistItemPrices.DELETE("/:id", wishlistPriceHandler.DeletePrice)
 }

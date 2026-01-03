@@ -128,7 +128,7 @@ func (h *WishlistItemHandler) ListItems(c echo.Context) error {
 		return NewValidationError(c, "Invalid wishlist ID", nil)
 	}
 
-	items, err := h.itemService.GetItemsByWishlist(workspaceID, int32(wishlistID))
+	items, err := h.itemService.GetItemsByWishlistWithStats(workspaceID, int32(wishlistID))
 	if err != nil {
 		if errors.Is(err, domain.ErrWishlistNotFound) {
 			return NewNotFoundError(c, "Wishlist not found")
@@ -139,7 +139,7 @@ func (h *WishlistItemHandler) ListItems(c echo.Context) error {
 
 	response := make([]WishlistItemResponse, len(items))
 	for i, item := range items {
-		response[i] = toWishlistItemResponse(item)
+		response[i] = toWishlistItemWithStatsResponse(item)
 	}
 
 	return c.JSON(http.StatusOK, response)
@@ -301,8 +301,24 @@ func toWishlistItemResponse(item *domain.WishlistItem) WishlistItemResponse {
 		Description:  item.Description,
 		ExternalLink: item.ExternalLink,
 		ImageURL:     item.ImageURL,
-		BestPrice:    nil, // Will be populated in Story 8-3 when prices table exists
-		NoteCount:    0,   // Will be populated in Story 8-5 when notes table exists
+		BestPrice:    nil,
+		NoteCount:    0,
+		CreatedAt:    item.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:    item.UpdatedAt.Format(time.RFC3339),
+	}
+}
+
+// Helper function to convert domain.WishlistItemWithStats to WishlistItemResponse
+func toWishlistItemWithStatsResponse(item *domain.WishlistItemWithStats) WishlistItemResponse {
+	return WishlistItemResponse{
+		ID:           item.ID,
+		WishlistID:   item.WishlistID,
+		Title:        item.Title,
+		Description:  item.Description,
+		ExternalLink: item.ExternalLink,
+		ImageURL:     item.ImageURL,
+		BestPrice:    item.BestPrice,
+		NoteCount:    item.NoteCount,
 		CreatedAt:    item.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:    item.UpdatedAt.Format(time.RFC3339),
 	}

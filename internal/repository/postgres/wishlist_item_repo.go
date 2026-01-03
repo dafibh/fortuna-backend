@@ -72,6 +72,23 @@ func (r *WishlistItemRepository) GetAllByWishlist(workspaceID int32, wishlistID 
 	return result, nil
 }
 
+// GetAllByWishlistWithStats retrieves all items with best price and note count
+func (r *WishlistItemRepository) GetAllByWishlistWithStats(workspaceID int32, wishlistID int32) ([]*domain.WishlistItemWithStats, error) {
+	ctx := context.Background()
+	items, err := r.queries.ListWishlistItemsWithStats(ctx, sqlc.ListWishlistItemsWithStatsParams{
+		WishlistID:  wishlistID,
+		WorkspaceID: workspaceID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*domain.WishlistItemWithStats, len(items))
+	for i, item := range items {
+		result[i] = sqlcWishlistItemWithStatsToDomain(item)
+	}
+	return result, nil
+}
+
 // Update updates a wishlist item
 func (r *WishlistItemRepository) Update(workspaceID int32, item *domain.WishlistItem) (*domain.WishlistItem, error) {
 	ctx := context.Background()
@@ -166,6 +183,36 @@ func sqlcWishlistItemToDomain(item sqlc.WishlistItem) *domain.WishlistItem {
 	}
 	if item.DeletedAt.Valid {
 		result.DeletedAt = &item.DeletedAt.Time
+	}
+	return result
+}
+
+// Helper function to convert sqlc type with stats to domain type
+func sqlcWishlistItemWithStatsToDomain(row sqlc.ListWishlistItemsWithStatsRow) *domain.WishlistItemWithStats {
+	result := &domain.WishlistItemWithStats{
+		WishlistItem: domain.WishlistItem{
+			ID:         row.ID,
+			WishlistID: row.WishlistID,
+			Title:      row.Title,
+			CreatedAt:  row.CreatedAt.Time,
+			UpdatedAt:  row.UpdatedAt.Time,
+		},
+		NoteCount: int(row.NoteCount),
+	}
+	if row.Description.Valid {
+		result.Description = &row.Description.String
+	}
+	if row.ExternalLink.Valid {
+		result.ExternalLink = &row.ExternalLink.String
+	}
+	if row.ImageUrl.Valid {
+		result.ImageURL = &row.ImageUrl.String
+	}
+	if row.DeletedAt.Valid {
+		result.DeletedAt = &row.DeletedAt.Time
+	}
+	if row.BestPrice != "" {
+		result.BestPrice = &row.BestPrice
 	}
 	return result
 }

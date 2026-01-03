@@ -162,6 +162,16 @@ type WishlistItem struct {
 	DeletedAt    pgtype.Timestamptz `json:"deleted_at"`
 }
 
+type WishlistItemPrice struct {
+	ID           int32              `json:"id"`
+	ItemID       int32              `json:"item_id"`
+	PlatformName string             `json:"platform_name"`
+	Price        pgtype.Numeric     `json:"price"`
+	PriceDate    pgtype.Date        `json:"price_date"`
+	ImageUrl     pgtype.Text        `json:"image_url"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
 type Workspace struct {
 	ID        int32              `json:"id"`
 	UserID    pgtype.UUID        `json:"user_id"`

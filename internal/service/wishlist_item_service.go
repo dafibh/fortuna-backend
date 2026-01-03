@@ -89,6 +89,17 @@ func (s *WishlistItemService) GetItemsByWishlist(workspaceID int32, wishlistID i
 	return s.itemRepo.GetAllByWishlist(workspaceID, wishlistID)
 }
 
+// GetItemsByWishlistWithStats retrieves all items with best price and note count
+func (s *WishlistItemService) GetItemsByWishlistWithStats(workspaceID int32, wishlistID int32) ([]*domain.WishlistItemWithStats, error) {
+	// Verify wishlist exists and belongs to workspace
+	_, err := s.wishlistRepo.GetByID(workspaceID, wishlistID)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.itemRepo.GetAllByWishlistWithStats(workspaceID, wishlistID)
+}
+
 // UpdateWishlistItemInput contains input for updating a wishlist item
 type UpdateWishlistItemInput struct {
 	Title        string
