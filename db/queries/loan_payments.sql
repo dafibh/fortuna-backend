@@ -81,3 +81,13 @@ WHERE l.workspace_id = $1
   AND lp.due_month = $3
   AND l.deleted_at IS NULL
 ORDER BY l.item_name, lp.payment_number;
+
+-- name: SumUnpaidLoanPaymentsByMonth :one
+SELECT COALESCE(SUM(lp.amount), 0)::NUMERIC(12,2) as total
+FROM loan_payments lp
+JOIN loans l ON l.id = lp.loan_id
+WHERE l.workspace_id = $1
+  AND lp.due_year = $2
+  AND lp.due_month = $3
+  AND lp.paid = FALSE
+  AND l.deleted_at IS NULL;

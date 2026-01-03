@@ -336,6 +336,30 @@ func (q *Queries) GetUnpaidLoanPaymentsByMonth(ctx context.Context, arg GetUnpai
 	return items, nil
 }
 
+const sumUnpaidLoanPaymentsByMonth = `-- name: SumUnpaidLoanPaymentsByMonth :one
+SELECT COALESCE(SUM(lp.amount), 0)::NUMERIC(12,2) as total
+FROM loan_payments lp
+JOIN loans l ON l.id = lp.loan_id
+WHERE l.workspace_id = $1
+  AND lp.due_year = $2
+  AND lp.due_month = $3
+  AND lp.paid = FALSE
+  AND l.deleted_at IS NULL
+`
+
+type SumUnpaidLoanPaymentsByMonthParams struct {
+	WorkspaceID int32 `json:"workspace_id"`
+	DueYear     int32 `json:"due_year"`
+	DueMonth    int32 `json:"due_month"`
+}
+
+func (q *Queries) SumUnpaidLoanPaymentsByMonth(ctx context.Context, arg SumUnpaidLoanPaymentsByMonthParams) (pgtype.Numeric, error) {
+	row := q.db.QueryRow(ctx, sumUnpaidLoanPaymentsByMonth, arg.WorkspaceID, arg.DueYear, arg.DueMonth)
+	var total pgtype.Numeric
+	err := row.Scan(&total)
+	return total, err
+}
+
 const toggleLoanPaymentPaid = `-- name: ToggleLoanPaymentPaid :one
 UPDATE loan_payments
 SET paid = $2, paid_date = $3, updated_at = NOW()

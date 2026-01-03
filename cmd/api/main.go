@@ -66,7 +66,7 @@ func main() {
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, budgetCategoryRepo)
 	calculationService := service.NewCalculationService(accountRepo, transactionRepo)
 	monthService := service.NewMonthService(monthRepo, transactionRepo, calculationService)
-	dashboardService := service.NewDashboardService(accountRepo, transactionRepo, monthService, calculationService)
+	dashboardService := service.NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calculationService)
 	budgetCategoryService := service.NewBudgetCategoryService(budgetCategoryRepo)
 	budgetAllocationService := service.NewBudgetAllocationService(budgetAllocationRepo, budgetCategoryRepo)
 	ccService := service.NewCCService(transactionRepo, accountRepo)

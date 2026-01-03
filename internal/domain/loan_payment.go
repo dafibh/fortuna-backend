@@ -82,4 +82,5 @@ type LoanPaymentRepository interface {
 	GetUnpaidByMonth(workspaceID int32, year, month int) ([]*LoanPayment, error)
 	GetDeleteStats(loanID int32) (*LoanDeleteStats, error)
 	GetPaymentsWithDetailsByMonth(workspaceID int32, year, month int) ([]*MonthlyPaymentDetail, error)
+	SumUnpaidByMonth(workspaceID int32, year, month int) (decimal.Decimal, error)
 }

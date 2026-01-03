@@ -27,6 +27,8 @@ type DashboardSummary struct {
 	TotalBalance          decimal.Decimal    `json:"totalBalance"`
 	InHandBalance         decimal.Decimal    `json:"inHandBalance"`
 	DisposableIncome      decimal.Decimal    `json:"disposableIncome"`
+	UnpaidExpenses        decimal.Decimal    `json:"unpaidExpenses"`
+	UnpaidLoanPayments    decimal.Decimal    `json:"unpaidLoanPayments"`
 	DaysRemaining         int                `json:"daysRemaining"`
 	DailyBudget           decimal.Decimal    `json:"dailyBudget"`
 	CCPayable             *CCPayableSummary  `json:"ccPayable"`

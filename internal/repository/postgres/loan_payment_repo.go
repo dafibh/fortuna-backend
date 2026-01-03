@@ -303,6 +303,20 @@ func (r *LoanPaymentRepository) GetPaymentsWithDetailsByMonth(workspaceID int32,
 	return result, nil
 }
 
+// SumUnpaidByMonth returns the total amount of unpaid loan payments for a specific month
+func (r *LoanPaymentRepository) SumUnpaidByMonth(workspaceID int32, year, month int) (decimal.Decimal, error) {
+	ctx := context.Background()
+	total, err := r.queries.SumUnpaidLoanPaymentsByMonth(ctx, sqlc.SumUnpaidLoanPaymentsByMonthParams{
+		WorkspaceID: workspaceID,
+		DueYear:     int32(year),
+		DueMonth:    int32(month),
+	})
+	if err != nil {
+		return decimal.Zero, err
+	}
+	return pgNumericToDecimal(total), nil
+}
+
 // Helper function to convert sqlc type to domain type
 func sqlcLoanPaymentToDomain(lp sqlc.LoanPayment) *domain.LoanPayment {
 	payment := &domain.LoanPayment{

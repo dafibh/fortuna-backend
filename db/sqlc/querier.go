@@ -105,6 +105,7 @@ type Querier interface {
 	SumTransactionsByTypeAndDateRange(ctx context.Context, arg SumTransactionsByTypeAndDateRangeParams) (pgtype.Numeric, error)
 	// Sum unpaid expenses within a date range for disposable income calculation
 	SumUnpaidExpensesByDateRange(ctx context.Context, arg SumUnpaidExpensesByDateRangeParams) (pgtype.Numeric, error)
+	SumUnpaidLoanPaymentsByMonth(ctx context.Context, arg SumUnpaidLoanPaymentsByMonthParams) (pgtype.Numeric, error)
 	ToggleLoanPaymentPaid(ctx context.Context, arg ToggleLoanPaymentPaidParams) (LoanPayment, error)
 	ToggleTransactionPaidStatus(ctx context.Context, arg ToggleTransactionPaidStatusParams) (Transaction, error)
 	UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error)

@@ -293,6 +293,7 @@ func TestDashboardService_GetSummary(t *testing.T) {
 			accountRepo := testutil.NewMockAccountRepository()
 			transactionRepo := testutil.NewMockTransactionRepository()
 			monthRepo := testutil.NewMockMonthRepository()
+			loanPaymentRepo := testutil.NewMockLoanPaymentRepository()
 
 			if tt.setupAccounts != nil {
 				tt.setupAccounts(accountRepo)
@@ -307,7 +308,7 @@ func TestDashboardService_GetSummary(t *testing.T) {
 			// Create services
 			calcService := NewCalculationService(accountRepo, transactionRepo)
 			monthService := NewMonthService(monthRepo, transactionRepo, calcService)
-			dashboardService := NewDashboardService(accountRepo, transactionRepo, monthService, calcService)
+			dashboardService := NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calcService)
 
 			// Execute
 			summary, err := dashboardService.GetSummaryForMonth(tt.workspaceID, testYear, testMonth)
@@ -402,9 +403,10 @@ func TestDashboardService_WorkspaceIsolation(t *testing.T) {
 	})
 
 	// Create services
+	loanPaymentRepo := testutil.NewMockLoanPaymentRepository()
 	calcService := NewCalculationService(accountRepo, transactionRepo)
 	monthService := NewMonthService(monthRepo, transactionRepo, calcService)
-	dashboardService := NewDashboardService(accountRepo, transactionRepo, monthService, calcService)
+	dashboardService := NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calcService)
 
 	// Get summaries for both workspaces using fixed dates
 	summary1, err := dashboardService.GetSummaryForMonth(1, testYear, testMonth)
@@ -489,9 +491,10 @@ func TestDashboardService_DaysRemainingAndDailyBudget(t *testing.T) {
 	})
 
 	// Create services
+	loanPaymentRepo := testutil.NewMockLoanPaymentRepository()
 	calcService := NewCalculationService(accountRepo, transactionRepo)
 	monthService := NewMonthService(monthRepo, transactionRepo, calcService)
-	dashboardService := NewDashboardService(accountRepo, transactionRepo, monthService, calcService)
+	dashboardService := NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calcService)
 
 	summary, err := dashboardService.GetSummaryForMonth(1, testYear, testMonth)
 	if err != nil {
@@ -572,9 +575,10 @@ func TestDashboardService_NegativeDisposableIncome(t *testing.T) {
 		StartingBalance: decimal.NewFromInt(1000),
 	})
 
+	loanPaymentRepo := testutil.NewMockLoanPaymentRepository()
 	calcService := NewCalculationService(accountRepo, transactionRepo)
 	monthService := NewMonthService(monthRepo, transactionRepo, calcService)
-	dashboardService := NewDashboardService(accountRepo, transactionRepo, monthService, calcService)
+	dashboardService := NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calcService)
 
 	summary, err := dashboardService.GetSummaryForMonth(1, testYear, testMonth)
 	if err != nil {
@@ -754,9 +758,10 @@ func TestDashboardService_GetCCPayable(t *testing.T) {
 				tt.setupTransactions(transactionRepo)
 			}
 
+			loanPaymentRepo := testutil.NewMockLoanPaymentRepository()
 			calcService := NewCalculationService(accountRepo, transactionRepo)
 			monthService := NewMonthService(monthRepo, transactionRepo, calcService)
-			dashboardService := NewDashboardService(accountRepo, transactionRepo, monthService, calcService)
+			dashboardService := NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calcService)
 
 			summary, err := dashboardService.GetCCPayable(workspaceID)
 
@@ -834,9 +839,10 @@ func TestDashboardService_Projection_FutureMonth(t *testing.T) {
 		IsPaid:          true,
 	})
 
+	loanPaymentRepo := testutil.NewMockLoanPaymentRepository()
 	calcService := NewCalculationService(accountRepo, transactionRepo)
 	monthService := NewMonthService(monthRepo, transactionRepo, calcService)
-	dashboardService := NewDashboardService(accountRepo, transactionRepo, monthService, calcService)
+	dashboardService := NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calcService)
 
 	// Get projection for future month
 	summary, err := dashboardService.GetSummaryForMonth(1, futureYear, futureMonth)
@@ -918,9 +924,10 @@ func TestDashboardService_Projection_CurrentMonthNotProjection(t *testing.T) {
 		StartingBalance: decimal.NewFromInt(5000),
 	})
 
+	loanPaymentRepo := testutil.NewMockLoanPaymentRepository()
 	calcService := NewCalculationService(accountRepo, transactionRepo)
 	monthService := NewMonthService(monthRepo, transactionRepo, calcService)
-	dashboardService := NewDashboardService(accountRepo, transactionRepo, monthService, calcService)
+	dashboardService := NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calcService)
 
 	summary, err := dashboardService.GetSummaryForMonth(1, currentYear, currentMonth)
 	if err != nil {
@@ -961,9 +968,10 @@ func TestDashboardService_Projection_PastMonthNotProjection(t *testing.T) {
 		StartingBalance: decimal.NewFromInt(5000),
 	})
 
+	loanPaymentRepo := testutil.NewMockLoanPaymentRepository()
 	calcService := NewCalculationService(accountRepo, transactionRepo)
 	monthService := NewMonthService(monthRepo, transactionRepo, calcService)
-	dashboardService := NewDashboardService(accountRepo, transactionRepo, monthService, calcService)
+	dashboardService := NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calcService)
 
 	summary, err := dashboardService.GetSummaryForMonth(1, pastYear, pastMonth)
 	if err != nil {
@@ -993,10 +1001,11 @@ func TestDashboardService_Projection_LimitExceeded(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	transactionRepo := testutil.NewMockTransactionRepository()
 	monthRepo := testutil.NewMockMonthRepository()
+	loanPaymentRepo := testutil.NewMockLoanPaymentRepository()
 
 	calcService := NewCalculationService(accountRepo, transactionRepo)
 	monthService := NewMonthService(monthRepo, transactionRepo, calcService)
-	dashboardService := NewDashboardService(accountRepo, transactionRepo, monthService, calcService)
+	dashboardService := NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calcService)
 
 	_, err := dashboardService.GetSummaryForMonth(1, futureYear, futureMonth)
 	if err == nil {
@@ -1037,9 +1046,10 @@ func TestDashboardService_Projection_ExactlyAtLimit(t *testing.T) {
 		StartingBalance: decimal.NewFromInt(5000),
 	})
 
+	loanPaymentRepo := testutil.NewMockLoanPaymentRepository()
 	calcService := NewCalculationService(accountRepo, transactionRepo)
 	monthService := NewMonthService(monthRepo, transactionRepo, calcService)
-	dashboardService := NewDashboardService(accountRepo, transactionRepo, monthService, calcService)
+	dashboardService := NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calcService)
 
 	// Should succeed - exactly at limit
 	summary, err := dashboardService.GetSummaryForMonth(1, futureYear, futureMonth)
@@ -1116,9 +1126,10 @@ func TestDashboardService_Projection_BalanceChaining(t *testing.T) {
 		IsPaid:          true,
 	})
 
+	loanPaymentRepo := testutil.NewMockLoanPaymentRepository()
 	calcService := NewCalculationService(accountRepo, transactionRepo)
 	monthService := NewMonthService(monthRepo, transactionRepo, calcService)
-	dashboardService := NewDashboardService(accountRepo, transactionRepo, monthService, calcService)
+	dashboardService := NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calcService)
 
 	// Get projection for next month
 	summary, err := dashboardService.GetSummaryForMonth(1, futureYear, futureMonth)
@@ -1197,9 +1208,10 @@ func TestDashboardService_GetSummary_IncludesCCPayable(t *testing.T) {
 		StartingBalance: decimal.Zero,
 	})
 
+	loanPaymentRepo := testutil.NewMockLoanPaymentRepository()
 	calcService := NewCalculationService(accountRepo, transactionRepo)
 	monthService := NewMonthService(monthRepo, transactionRepo, calcService)
-	dashboardService := NewDashboardService(accountRepo, transactionRepo, monthService, calcService)
+	dashboardService := NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calcService)
 
 	summary, err := dashboardService.GetSummaryForMonth(1, testYear, testMonth)
 	if err != nil {

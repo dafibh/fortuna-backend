@@ -1844,21 +1844,24 @@ func (m *MockLoanRepository) SetCompletedWithStats(loans []*domain.LoanWithStats
 
 // MockLoanPaymentRepository is a mock implementation of domain.LoanPaymentRepository
 type MockLoanPaymentRepository struct {
-	Payments    map[int32]*domain.LoanPayment
-	ByLoanID    map[int32][]*domain.LoanPayment
-	ByMonth     map[string][]*domain.LoanPayment
-	NextID      int32
-	CreateFn    func(payment *domain.LoanPayment) (*domain.LoanPayment, error)
-	GetByIDFn   func(id int32) (*domain.LoanPayment, error)
+	Payments           map[int32]*domain.LoanPayment
+	ByLoanID           map[int32][]*domain.LoanPayment
+	ByMonth            map[string][]*domain.LoanPayment
+	UnpaidSumsByMonth  map[string]decimal.Decimal
+	NextID             int32
+	CreateFn           func(payment *domain.LoanPayment) (*domain.LoanPayment, error)
+	GetByIDFn          func(id int32) (*domain.LoanPayment, error)
+	SumUnpaidByMonthFn func(workspaceID int32, year, month int) (decimal.Decimal, error)
 }
 
 // NewMockLoanPaymentRepository creates a new MockLoanPaymentRepository
 func NewMockLoanPaymentRepository() *MockLoanPaymentRepository {
 	return &MockLoanPaymentRepository{
-		Payments: make(map[int32]*domain.LoanPayment),
-		ByLoanID: make(map[int32][]*domain.LoanPayment),
-		ByMonth:  make(map[string][]*domain.LoanPayment),
-		NextID:   1,
+		Payments:          make(map[int32]*domain.LoanPayment),
+		ByLoanID:          make(map[int32][]*domain.LoanPayment),
+		ByMonth:           make(map[string][]*domain.LoanPayment),
+		UnpaidSumsByMonth: make(map[string]decimal.Decimal),
+		NextID:            1,
 	}
 }
 
@@ -2028,4 +2031,31 @@ func (m *MockLoanPaymentRepository) GetPaymentsWithDetailsByMonth(workspaceID in
 		}
 	}
 	return result, nil
+}
+
+// SumUnpaidByMonth returns the total amount of unpaid loan payments for a specific month
+func (m *MockLoanPaymentRepository) SumUnpaidByMonth(workspaceID int32, year, month int) (decimal.Decimal, error) {
+	if m.SumUnpaidByMonthFn != nil {
+		return m.SumUnpaidByMonthFn(workspaceID, year, month)
+	}
+	key := paymentMonthKey(workspaceID, year, month)
+	// Check if a sum was explicitly set for this month
+	if sum, ok := m.UnpaidSumsByMonth[key]; ok {
+		return sum, nil
+	}
+	// Calculate from payments in ByMonth
+	payments := m.ByMonth[key]
+	total := decimal.Zero
+	for _, p := range payments {
+		if !p.Paid {
+			total = total.Add(p.Amount)
+		}
+	}
+	return total, nil
+}
+
+// SetUnpaidSumByMonth sets the unpaid sum for a specific month (helper for tests)
+func (m *MockLoanPaymentRepository) SetUnpaidSumByMonth(workspaceID int32, year, month int, sum decimal.Decimal) {
+	key := paymentMonthKey(workspaceID, year, month)
+	m.UnpaidSumsByMonth[key] = sum
 }

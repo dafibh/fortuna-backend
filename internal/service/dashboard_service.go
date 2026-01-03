@@ -15,6 +15,7 @@ var ErrProjectionLimitExceeded = errors.New("projection limit exceeded (max 12 m
 type DashboardService struct {
 	accountRepo     domain.AccountRepository
 	transactionRepo domain.TransactionRepository
+	loanPaymentRepo domain.LoanPaymentRepository
 	monthService    *MonthService
 	calcService     *CalculationService
 }
@@ -23,12 +24,14 @@ type DashboardService struct {
 func NewDashboardService(
 	accountRepo domain.AccountRepository,
 	transactionRepo domain.TransactionRepository,
+	loanPaymentRepo domain.LoanPaymentRepository,
 	monthService *MonthService,
 	calcService *CalculationService,
 ) *DashboardService {
 	return &DashboardService{
 		accountRepo:     accountRepo,
 		transactionRepo: transactionRepo,
+		loanPaymentRepo: loanPaymentRepo,
 		monthService:    monthService,
 		calcService:     calcService,
 	}
@@ -93,33 +96,41 @@ func (s *DashboardService) getActualSummary(workspaceID int32, year, month int) 
 		return nil, err
 	}
 
-	// Disposable = In-Hand - Unpaid Expenses
-	disposableIncome := inHandBalance.Sub(unpaidExpenses)
+	// 5. Calculate unpaid loan payments for the month
+	unpaidLoanPayments, err := s.loanPaymentRepo.SumUnpaidByMonth(workspaceID, year, month)
+	if err != nil {
+		return nil, err
+	}
 
-	// 5. Calculate days remaining in the month
+	// Disposable = In-Hand - Unpaid Expenses - Unpaid Loan Payments
+	disposableIncome := inHandBalance.Sub(unpaidExpenses).Sub(unpaidLoanPayments)
+
+	// 6. Calculate days remaining in the month
 	daysRemaining := s.calculateDaysRemaining(year, month)
 
-	// 6. Calculate daily budget
+	// 7. Calculate daily budget
 	dailyBudget := decimal.Zero
 	if daysRemaining > 0 {
 		dailyBudget = disposableIncome.Div(decimal.NewFromInt(int64(daysRemaining)))
 	}
 
-	// 7. Get CC payable summary
+	// 8. Get CC payable summary
 	ccPayable, err := s.GetCCPayable(workspaceID)
 	if err != nil {
 		return nil, err
 	}
 
 	return &domain.DashboardSummary{
-		IsProjection:     false,
-		TotalBalance:     totalBalance,
-		InHandBalance:    inHandBalance,
-		DisposableIncome: disposableIncome,
-		DaysRemaining:    daysRemaining,
-		DailyBudget:      dailyBudget,
-		CCPayable:        ccPayable,
-		Month:            monthData,
+		IsProjection:       false,
+		TotalBalance:       totalBalance,
+		InHandBalance:      inHandBalance,
+		DisposableIncome:   disposableIncome,
+		UnpaidExpenses:     unpaidExpenses,
+		UnpaidLoanPayments: unpaidLoanPayments,
+		DaysRemaining:      daysRemaining,
+		DailyBudget:        dailyBudget,
+		CCPayable:          ccPayable,
+		Month:              monthData,
 	}, nil
 }
 
@@ -131,16 +142,22 @@ func (s *DashboardService) getProjection(workspaceID int32, year, month int) (*d
 		return nil, err
 	}
 
-	// MVP: No recurring or loans yet
+	// Get loan payments due for this future month
+	unpaidLoanPayments, err := s.loanPaymentRepo.SumUnpaidByMonth(workspaceID, year, month)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build projection details with loan payments
 	projection := &domain.ProjectionDetails{
 		RecurringIncome:   decimal.Zero,
 		RecurringExpenses: decimal.Zero,
-		LoanPayments:      decimal.Zero,
-		Note:              "Recurring transactions and loans not yet configured",
+		LoanPayments:      unpaidLoanPayments,
+		Note:              "Recurring transactions not yet configured",
 	}
 
-	// Projected closing = starting (MVP - no changes)
-	closingBalance := startingBalance
+	// Projected closing = starting - loan payments (MVP - no recurring yet)
+	closingBalance := startingBalance.Sub(unpaidLoanPayments)
 
 	// Build month boundaries
 	startDate := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.Local)
@@ -149,10 +166,13 @@ func (s *DashboardService) getProjection(workspaceID int32, year, month int) (*d
 	// For future months, days remaining = total days in month
 	daysRemaining := endDate.Day()
 
-	// Calculate daily budget based on projected balance
+	// Disposable = starting - loan payments (no unpaid expenses in future)
+	disposableIncome := startingBalance.Sub(unpaidLoanPayments)
+
+	// Calculate daily budget based on disposable income
 	dailyBudget := decimal.Zero
 	if daysRemaining > 0 {
-		dailyBudget = closingBalance.Div(decimal.NewFromInt(int64(daysRemaining)))
+		dailyBudget = disposableIncome.Div(decimal.NewFromInt(int64(daysRemaining)))
 	}
 
 	return &domain.DashboardSummary{
@@ -160,7 +180,9 @@ func (s *DashboardService) getProjection(workspaceID int32, year, month int) (*d
 		ProjectionLimitMonths: domain.MaxProjectionMonths,
 		TotalBalance:          startingBalance,
 		InHandBalance:         startingBalance,
-		DisposableIncome:      startingBalance,
+		DisposableIncome:      disposableIncome,
+		UnpaidExpenses:        decimal.Zero,
+		UnpaidLoanPayments:    unpaidLoanPayments,
 		DaysRemaining:         daysRemaining,
 		DailyBudget:           dailyBudget,
 		CCPayable: &domain.CCPayableSummary{
