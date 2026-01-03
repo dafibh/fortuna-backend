@@ -2503,6 +2503,21 @@ func (m *MockWishlistPriceRepository) Delete(workspaceID int32, id int32) error 
 	return nil
 }
 
+// GetPriceHistoryByPlatform retrieves all prices for a specific item+platform
+func (m *MockWishlistPriceRepository) GetPriceHistoryByPlatform(workspaceID int32, itemID int32, platformName string) ([]*domain.WishlistItemPrice, error) {
+	prices := m.ByItem[itemID]
+	if prices == nil {
+		return []*domain.WishlistItemPrice{}, nil
+	}
+	result := make([]*domain.WishlistItemPrice, 0)
+	for _, price := range prices {
+		if price.PlatformName == platformName {
+			result = append(result, price)
+		}
+	}
+	return result, nil
+}
+
 // AddPrice adds a price to the mock repository (helper for tests)
 func (m *MockWishlistPriceRepository) AddPrice(price *domain.WishlistItemPrice) {
 	m.Prices[price.ID] = price

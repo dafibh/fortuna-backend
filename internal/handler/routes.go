@@ -140,6 +140,7 @@ func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, aut
 	// Wishlist Item Price routes (nested under wishlist-items)
 	wishlistItems.POST("/:id/prices", wishlistPriceHandler.CreatePrice)
 	wishlistItems.GET("/:id/prices", wishlistPriceHandler.ListPrices)
+	wishlistItems.GET("/:id/prices/:platform", wishlistPriceHandler.GetPlatformHistory)
 
 	// Wishlist Item Price routes (direct access by price ID)
 	wishlistItemPrices := api.Group("/wishlist-item-prices")

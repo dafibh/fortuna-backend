@@ -501,3 +501,165 @@ func TestGetCurrentPricesByItem_ItemNotFound(t *testing.T) {
 		t.Errorf("expected ErrWishlistItemNotFound, got %v", err)
 	}
 }
+
+func TestGetPlatformHistory_Success(t *testing.T) {
+	priceRepo := testutil.NewMockWishlistPriceRepository()
+	itemRepo := testutil.NewMockWishlistItemRepository()
+	itemRepo.AddItem(&domain.WishlistItem{ID: 1, WishlistID: 1, Title: "Test Item"})
+	priceRepo.AddPrice(&domain.WishlistItemPrice{
+		ID:           1,
+		ItemID:       1,
+		PlatformName: "Lazada",
+		Price:        decimal.NewFromFloat(100.00),
+		PriceDate:    time.Now().AddDate(0, 0, -7),
+	})
+	priceRepo.AddPrice(&domain.WishlistItemPrice{
+		ID:           2,
+		ItemID:       1,
+		PlatformName: "Lazada",
+		Price:        decimal.NewFromFloat(95.00),
+		PriceDate:    time.Now(),
+	})
+	priceRepo.AddPrice(&domain.WishlistItemPrice{
+		ID:           3,
+		ItemID:       1,
+		PlatformName: "Shopee",
+		Price:        decimal.NewFromFloat(90.00),
+		PriceDate:    time.Now(),
+	})
+
+	svc := NewWishlistPriceService(priceRepo, itemRepo)
+
+	history, err := svc.GetPlatformHistory(1, 1, "Lazada")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(history) != 2 {
+		t.Errorf("expected 2 prices for Lazada, got %d", len(history))
+	}
+	for _, p := range history {
+		if p.PlatformName != "Lazada" {
+			t.Errorf("expected platform 'Lazada', got '%s'", p.PlatformName)
+		}
+	}
+}
+
+func TestGetPlatformHistory_ItemNotFound(t *testing.T) {
+	priceRepo := testutil.NewMockWishlistPriceRepository()
+	itemRepo := testutil.NewMockWishlistItemRepository()
+
+	svc := NewWishlistPriceService(priceRepo, itemRepo)
+
+	_, err := svc.GetPlatformHistory(1, 999, "Lazada")
+	if err != domain.ErrWishlistItemNotFound {
+		t.Errorf("expected ErrWishlistItemNotFound, got %v", err)
+	}
+}
+
+func TestCalculatePriceChange_PriceDecreased(t *testing.T) {
+	current := decimal.NewFromFloat(90.00)
+	previous := decimal.NewFromFloat(100.00)
+
+	change := CalculatePriceChange(current, previous)
+	if change == nil {
+		t.Fatal("expected price change, got nil")
+	}
+	if change.Direction != "down" {
+		t.Errorf("expected direction 'down', got '%s'", change.Direction)
+	}
+	if change.Amount != "-10.00" {
+		t.Errorf("expected amount '-10.00', got '%s'", change.Amount)
+	}
+	if change.Percent != "-10.0" {
+		t.Errorf("expected percent '-10.0', got '%s'", change.Percent)
+	}
+}
+
+func TestCalculatePriceChange_PriceIncreased(t *testing.T) {
+	current := decimal.NewFromFloat(110.00)
+	previous := decimal.NewFromFloat(100.00)
+
+	change := CalculatePriceChange(current, previous)
+	if change == nil {
+		t.Fatal("expected price change, got nil")
+	}
+	if change.Direction != "up" {
+		t.Errorf("expected direction 'up', got '%s'", change.Direction)
+	}
+	if change.Amount != "10.00" {
+		t.Errorf("expected amount '10.00', got '%s'", change.Amount)
+	}
+	if change.Percent != "10.0" {
+		t.Errorf("expected percent '10.0', got '%s'", change.Percent)
+	}
+}
+
+func TestCalculatePriceChange_Unchanged(t *testing.T) {
+	current := decimal.NewFromFloat(100.00)
+	previous := decimal.NewFromFloat(100.00)
+
+	change := CalculatePriceChange(current, previous)
+	if change == nil {
+		t.Fatal("expected price change, got nil")
+	}
+	if change.Direction != "unchanged" {
+		t.Errorf("expected direction 'unchanged', got '%s'", change.Direction)
+	}
+	if change.Amount != "0.00" {
+		t.Errorf("expected amount '0.00', got '%s'", change.Amount)
+	}
+}
+
+func TestCalculatePriceChange_NoPrevious(t *testing.T) {
+	current := decimal.NewFromFloat(100.00)
+	previous := decimal.Zero
+
+	change := CalculatePriceChange(current, previous)
+	if change != nil {
+		t.Errorf("expected nil for zero previous, got %v", change)
+	}
+}
+
+func TestGetPricesGroupedByPlatform_IncludesPriceChange(t *testing.T) {
+	priceRepo := testutil.NewMockWishlistPriceRepository()
+	itemRepo := testutil.NewMockWishlistItemRepository()
+	itemRepo.AddItem(&domain.WishlistItem{ID: 1, WishlistID: 1, Title: "Test Item"})
+	// Mock returns prices in order added - add in DESC date order (current first, then older)
+	// Current price first (newest - will be group.PriceHistory[0])
+	priceRepo.AddPrice(&domain.WishlistItemPrice{
+		ID:           2,
+		ItemID:       1,
+		PlatformName: "Lazada",
+		Price:        decimal.NewFromFloat(90.00),
+		PriceDate:    time.Now(),
+	})
+	// Older price second (will be group.PriceHistory[1])
+	priceRepo.AddPrice(&domain.WishlistItemPrice{
+		ID:           1,
+		ItemID:       1,
+		PlatformName: "Lazada",
+		Price:        decimal.NewFromFloat(100.00),
+		PriceDate:    time.Now().AddDate(0, 0, -7),
+	})
+
+	svc := NewWishlistPriceService(priceRepo, itemRepo)
+
+	groups, err := svc.GetPricesGroupedByPlatform(1, 1)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(groups) != 1 {
+		t.Fatalf("expected 1 platform group, got %d", len(groups))
+	}
+
+	group := groups[0]
+	if group.PriceChange == nil {
+		t.Fatal("expected price change, got nil")
+	}
+	if group.PriceChange.Direction != "down" {
+		t.Errorf("expected direction 'down', got '%s'", group.PriceChange.Direction)
+	}
+	if group.PreviousPrice == nil {
+		t.Fatal("expected previous price, got nil")
+	}
+}

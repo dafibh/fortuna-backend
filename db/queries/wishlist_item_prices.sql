@@ -41,3 +41,11 @@ DELETE FROM wishlist_item_prices wip
 USING wishlist_items wi, wishlists w
 WHERE wip.id = $1 AND wip.item_id = wi.id AND wi.wishlist_id = w.id AND w.workspace_id = $2
 AND wi.deleted_at IS NULL AND w.deleted_at IS NULL;
+
+-- name: GetPriceHistoryByPlatform :many
+SELECT wip.* FROM wishlist_item_prices wip
+JOIN wishlist_items wi ON wi.id = wip.item_id
+JOIN wishlists w ON w.id = wi.wishlist_id
+WHERE wip.item_id = $1 AND wip.platform_name = $2 AND w.workspace_id = $3
+AND wi.deleted_at IS NULL AND w.deleted_at IS NULL
+ORDER BY wip.price_date DESC, wip.created_at DESC;

@@ -29,12 +29,22 @@ type WishlistItemPrice struct {
 	CreatedAt    time.Time       `json:"createdAt"`
 }
 
+// PriceChange represents the change between current and previous price
+type PriceChange struct {
+	Amount    string `json:"amount"`    // e.g., "-50.00" or "+25.00"
+	Percent   string `json:"percent"`   // e.g., "-10.5" or "+5.2"
+	Direction string `json:"direction"` // "up", "down", or "unchanged"
+}
+
 // PriceByPlatform groups price entries by platform for display
 type PriceByPlatform struct {
-	PlatformName  string               `json:"platformName"`
-	CurrentPrice  string               `json:"currentPrice"`
-	PriceHistory  []*WishlistItemPrice `json:"priceHistory"`
-	IsLowestPrice bool                 `json:"isLowestPrice"`
+	PlatformName    string               `json:"platformName"`
+	CurrentPrice    string               `json:"currentPrice"`
+	PreviousPrice   *string              `json:"previousPrice,omitempty"`
+	PriceChange     *PriceChange         `json:"priceChange,omitempty"`
+	CurrentImageURL *string              `json:"currentImageUrl,omitempty"`
+	PriceHistory    []*WishlistItemPrice `json:"priceHistory"`
+	IsLowestPrice   bool                 `json:"isLowestPrice"`
 }
 
 // Validate validates a price entry
@@ -66,5 +76,6 @@ type WishlistPriceRepository interface {
 	ListByItem(workspaceID int32, itemID int32) ([]*WishlistItemPrice, error)
 	GetCurrentPricesByItem(workspaceID int32, itemID int32) ([]*WishlistItemPrice, error)
 	GetBestPriceForItem(workspaceID int32, itemID int32) (*string, error)
+	GetPriceHistoryByPlatform(workspaceID int32, itemID int32, platformName string) ([]*WishlistItemPrice, error)
 	Delete(workspaceID int32, id int32) error
 }

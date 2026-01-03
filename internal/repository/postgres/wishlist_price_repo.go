@@ -123,6 +123,24 @@ func (r *WishlistPriceRepository) Delete(workspaceID int32, id int32) error {
 	})
 }
 
+// GetPriceHistoryByPlatform retrieves all prices for a specific item+platform, ordered by date DESC
+func (r *WishlistPriceRepository) GetPriceHistoryByPlatform(workspaceID int32, itemID int32, platformName string) ([]*domain.WishlistItemPrice, error) {
+	ctx := context.Background()
+	prices, err := r.queries.GetPriceHistoryByPlatform(ctx, sqlc.GetPriceHistoryByPlatformParams{
+		ItemID:       itemID,
+		PlatformName: platformName,
+		WorkspaceID:  workspaceID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*domain.WishlistItemPrice, len(prices))
+	for i, price := range prices {
+		result[i] = sqlcPriceToDomain(price)
+	}
+	return result, nil
+}
+
 // Helper function to convert sqlc type to domain type
 func sqlcPriceToDomain(price sqlc.WishlistItemPrice) *domain.WishlistItemPrice {
 	result := &domain.WishlistItemPrice{

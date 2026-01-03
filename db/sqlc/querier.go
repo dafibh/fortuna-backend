@@ -84,6 +84,7 @@ type Querier interface {
 	GetMonthlyTransactionSummaries(ctx context.Context, workspaceID int32) ([]GetMonthlyTransactionSummariesRow, error)
 	// Get outstanding balance for each CC account
 	GetPerAccountOutstanding(ctx context.Context, workspaceID int32) ([]GetPerAccountOutstandingRow, error)
+	GetPriceHistoryByPlatform(ctx context.Context, arg GetPriceHistoryByPlatformParams) ([]WishlistItemPrice, error)
 	// Returns recently used categories for suggestions dropdown
 	GetRecentlyUsedCategories(ctx context.Context, workspaceID int32) ([]GetRecentlyUsedCategoriesRow, error)
 	GetRecurringTransaction(ctx context.Context, arg GetRecurringTransactionParams) (RecurringTransaction, error)

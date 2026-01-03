@@ -43,12 +43,22 @@ type PriceEntryResponse struct {
 	CreatedAt    string  `json:"createdAt"`
 }
 
+// PriceChangeResponse represents price change between current and previous
+type PriceChangeResponse struct {
+	Amount    string `json:"amount"`
+	Percent   string `json:"percent"`
+	Direction string `json:"direction"` // "up", "down", or "unchanged"
+}
+
 // PlatformPriceGroupResponse represents prices grouped by platform
 type PlatformPriceGroupResponse struct {
-	PlatformName  string               `json:"platformName"`
-	CurrentPrice  string               `json:"currentPrice"`
-	PriceHistory  []PriceEntryResponse `json:"priceHistory"`
-	IsLowestPrice bool                 `json:"isLowestPrice"`
+	PlatformName    string               `json:"platformName"`
+	CurrentPrice    string               `json:"currentPrice"`
+	PreviousPrice   *string              `json:"previousPrice,omitempty"`
+	PriceChange     *PriceChangeResponse `json:"priceChange,omitempty"`
+	CurrentImageURL *string              `json:"currentImageUrl,omitempty"`
+	PriceHistory    []PriceEntryResponse `json:"priceHistory"`
+	IsLowestPrice   bool                 `json:"isLowestPrice"`
 }
 
 // CreatePrice handles POST /api/v1/wishlist-items/:id/prices
@@ -163,6 +173,40 @@ func (h *WishlistPriceHandler) ListPrices(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
+// GetPlatformHistory handles GET /api/v1/wishlist-items/:id/prices/:platform
+func (h *WishlistPriceHandler) GetPlatformHistory(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	itemID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return NewValidationError(c, "Invalid item ID", nil)
+	}
+
+	platformName := c.Param("platform")
+	if platformName == "" {
+		return NewValidationError(c, "Platform name is required", nil)
+	}
+
+	prices, err := h.priceService.GetPlatformHistory(workspaceID, int32(itemID), platformName)
+	if err != nil {
+		if errors.Is(err, domain.ErrWishlistItemNotFound) {
+			return NewNotFoundError(c, "Wishlist item not found")
+		}
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("item_id", itemID).Str("platform", platformName).Msg("Failed to get platform history")
+		return NewInternalError(c, "Failed to get platform history")
+	}
+
+	response := make([]PriceEntryResponse, len(prices))
+	for i, price := range prices {
+		response[i] = toPriceEntryResponse(price)
+	}
+
+	return c.JSON(http.StatusOK, response)
+}
+
 // DeletePrice handles DELETE /api/v1/wishlist-item-prices/:id
 func (h *WishlistPriceHandler) DeletePrice(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
@@ -207,10 +251,23 @@ func toPlatformPriceGroupResponse(group *domain.PriceByPlatform) PlatformPriceGr
 	for i, price := range group.PriceHistory {
 		history[i] = toPriceEntryResponse(price)
 	}
+
+	var priceChange *PriceChangeResponse
+	if group.PriceChange != nil {
+		priceChange = &PriceChangeResponse{
+			Amount:    group.PriceChange.Amount,
+			Percent:   group.PriceChange.Percent,
+			Direction: group.PriceChange.Direction,
+		}
+	}
+
 	return PlatformPriceGroupResponse{
-		PlatformName:  group.PlatformName,
-		CurrentPrice:  group.CurrentPrice,
-		PriceHistory:  history,
-		IsLowestPrice: group.IsLowestPrice,
+		PlatformName:    group.PlatformName,
+		CurrentPrice:    group.CurrentPrice,
+		PreviousPrice:   group.PreviousPrice,
+		PriceChange:     priceChange,
+		CurrentImageURL: group.CurrentImageURL,
+		PriceHistory:    history,
+		IsLowestPrice:   group.IsLowestPrice,
 	}
 }

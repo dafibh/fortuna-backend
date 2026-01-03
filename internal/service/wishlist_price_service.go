@@ -110,7 +110,7 @@ func (s *WishlistPriceService) GetCurrentPricesByItem(workspaceID int32, itemID 
 	return s.priceRepo.GetCurrentPricesByItem(workspaceID, itemID)
 }
 
-// GetPricesGroupedByPlatform retrieves prices grouped by platform with current price and history
+// GetPricesGroupedByPlatform retrieves prices grouped by platform with current price, history, and price change
 func (s *WishlistPriceService) GetPricesGroupedByPlatform(workspaceID int32, itemID int32) ([]*domain.PriceByPlatform, error) {
 	// Verify item exists and belongs to workspace
 	_, err := s.itemRepo.GetByID(workspaceID, itemID)
@@ -139,10 +139,11 @@ func (s *WishlistPriceService) GetPricesGroupedByPlatform(workspaceID int32, ite
 		group, exists := platformMap[price.PlatformName]
 		if !exists {
 			group = &domain.PriceByPlatform{
-				PlatformName:  price.PlatformName,
-				CurrentPrice:  price.Price.String(),
-				PriceHistory:  []*domain.WishlistItemPrice{},
-				IsLowestPrice: false,
+				PlatformName:    price.PlatformName,
+				CurrentPrice:    price.Price.String(),
+				CurrentImageURL: price.ImageURL, // First (current) entry's image
+				PriceHistory:    []*domain.WishlistItemPrice{},
+				IsLowestPrice:   false,
 			}
 			platformMap[price.PlatformName] = group
 			platformOrder = append(platformOrder, price.PlatformName)
@@ -155,6 +156,17 @@ func (s *WishlistPriceService) GetPricesGroupedByPlatform(workspaceID int32, ite
 			}
 		}
 		group.PriceHistory = append(group.PriceHistory, price)
+	}
+
+	// Calculate price change for each platform (current vs previous)
+	for _, group := range platformMap {
+		if len(group.PriceHistory) >= 2 {
+			currentPrice := group.PriceHistory[0].Price
+			previousPrice := group.PriceHistory[1].Price
+			prevPriceStr := previousPrice.String()
+			group.PreviousPrice = &prevPriceStr
+			group.PriceChange = CalculatePriceChange(currentPrice, previousPrice)
+		}
 	}
 
 	// Mark the lowest price platform
@@ -185,4 +197,38 @@ func (s *WishlistPriceService) DeletePrice(workspaceID int32, id int32) error {
 	}
 
 	return s.priceRepo.Delete(workspaceID, id)
+}
+
+// GetPlatformHistory retrieves all price history for a specific platform on an item
+func (s *WishlistPriceService) GetPlatformHistory(workspaceID int32, itemID int32, platformName string) ([]*domain.WishlistItemPrice, error) {
+	// Verify item exists and belongs to workspace
+	_, err := s.itemRepo.GetByID(workspaceID, itemID)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.priceRepo.GetPriceHistoryByPlatform(workspaceID, itemID, platformName)
+}
+
+// CalculatePriceChange calculates the change between current and previous price
+func CalculatePriceChange(current, previous decimal.Decimal) *domain.PriceChange {
+	if previous.IsZero() {
+		return nil // No previous price to compare
+	}
+
+	diff := current.Sub(previous)
+	percent := diff.Div(previous).Mul(decimal.NewFromInt(100))
+
+	direction := "unchanged"
+	if diff.IsPositive() {
+		direction = "up"
+	} else if diff.IsNegative() {
+		direction = "down"
+	}
+
+	return &domain.PriceChange{
+		Amount:    diff.StringFixed(2),
+		Percent:   percent.StringFixed(1),
+		Direction: direction,
+	}
 }

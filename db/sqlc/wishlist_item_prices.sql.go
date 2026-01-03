@@ -130,6 +130,49 @@ func (q *Queries) GetCurrentPricesByItem(ctx context.Context, arg GetCurrentPric
 	return items, nil
 }
 
+const getPriceHistoryByPlatform = `-- name: GetPriceHistoryByPlatform :many
+SELECT wip.id, wip.item_id, wip.platform_name, wip.price, wip.price_date, wip.image_url, wip.created_at FROM wishlist_item_prices wip
+JOIN wishlist_items wi ON wi.id = wip.item_id
+JOIN wishlists w ON w.id = wi.wishlist_id
+WHERE wip.item_id = $1 AND wip.platform_name = $2 AND w.workspace_id = $3
+AND wi.deleted_at IS NULL AND w.deleted_at IS NULL
+ORDER BY wip.price_date DESC, wip.created_at DESC
+`
+
+type GetPriceHistoryByPlatformParams struct {
+	ItemID       int32  `json:"item_id"`
+	PlatformName string `json:"platform_name"`
+	WorkspaceID  int32  `json:"workspace_id"`
+}
+
+func (q *Queries) GetPriceHistoryByPlatform(ctx context.Context, arg GetPriceHistoryByPlatformParams) ([]WishlistItemPrice, error) {
+	rows, err := q.db.Query(ctx, getPriceHistoryByPlatform, arg.ItemID, arg.PlatformName, arg.WorkspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WishlistItemPrice{}
+	for rows.Next() {
+		var i WishlistItemPrice
+		if err := rows.Scan(
+			&i.ID,
+			&i.ItemID,
+			&i.PlatformName,
+			&i.Price,
+			&i.PriceDate,
+			&i.ImageUrl,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getWishlistItemPriceByID = `-- name: GetWishlistItemPriceByID :one
 SELECT wip.id, wip.item_id, wip.platform_name, wip.price, wip.price_date, wip.image_url, wip.created_at FROM wishlist_item_prices wip
 JOIN wishlist_items wi ON wi.id = wip.item_id
