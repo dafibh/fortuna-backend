@@ -150,6 +150,18 @@ type Wishlist struct {
 	DeletedAt   pgtype.Timestamptz `json:"deleted_at"`
 }
 
+type WishlistItem struct {
+	ID           int32              `json:"id"`
+	WishlistID   int32              `json:"wishlist_id"`
+	Title        string             `json:"title"`
+	Description  pgtype.Text        `json:"description"`
+	ExternalLink pgtype.Text        `json:"external_link"`
+	ImageUrl     pgtype.Text        `json:"image_url"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt    pgtype.Timestamptz `json:"deleted_at"`
+}
+
 type Workspace struct {
 	ID        int32              `json:"id"`
 	UserID    pgtype.UUID        `json:"user_id"`

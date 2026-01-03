@@ -6,7 +6,7 @@ import (
 )
 
 // RegisterRoutes sets up all API routes
-func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler, recurringHandler *RecurringHandler, loanProviderHandler *LoanProviderHandler, loanHandler *LoanHandler, loanPaymentHandler *LoanPaymentHandler, wishlistHandler *WishlistHandler) {
+func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler, recurringHandler *RecurringHandler, loanProviderHandler *LoanProviderHandler, loanHandler *LoanHandler, loanPaymentHandler *LoanPaymentHandler, wishlistHandler *WishlistHandler, wishlistItemHandler *WishlistItemHandler) {
 	// API version 1
 	api := e.Group("/api/v1")
 
@@ -124,4 +124,16 @@ func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, aut
 	wishlists.GET("/:id", wishlistHandler.GetWishlist)
 	wishlists.PUT("/:id", wishlistHandler.UpdateWishlist)
 	wishlists.DELETE("/:id", wishlistHandler.DeleteWishlist)
+
+	// Wishlist Item routes (nested under wishlists)
+	wishlists.POST("/:id/items", wishlistItemHandler.CreateItem)
+	wishlists.GET("/:id/items", wishlistItemHandler.ListItems)
+
+	// Wishlist Item routes (direct access by item ID)
+	wishlistItems := api.Group("/wishlist-items")
+	wishlistItems.Use(authMiddleware.Authenticate())
+	wishlistItems.GET("/:id", wishlistItemHandler.GetItem)
+	wishlistItems.PUT("/:id", wishlistItemHandler.UpdateItem)
+	wishlistItems.PATCH("/:id/move", wishlistItemHandler.MoveItem)
+	wishlistItems.DELETE("/:id", wishlistItemHandler.DeleteItem)
 }

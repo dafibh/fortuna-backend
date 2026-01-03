@@ -21,6 +21,7 @@ type Querier interface {
 	// Count transactions assigned to a specific category
 	CountTransactionsByCategory(ctx context.Context, arg CountTransactionsByCategoryParams) (int64, error)
 	CountTransactionsByWorkspace(ctx context.Context, arg CountTransactionsByWorkspaceParams) (int64, error)
+	CountWishlistItems(ctx context.Context, arg CountWishlistItemsParams) (int64, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
 	CreateBudgetCategory(ctx context.Context, arg CreateBudgetCategoryParams) (BudgetCategory, error)
 	CreateLoan(ctx context.Context, arg CreateLoanParams) (Loan, error)
@@ -32,11 +33,13 @@ type Querier interface {
 	CreateTransaction(ctx context.Context, arg CreateTransactionParams) (Transaction, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateWishlist(ctx context.Context, arg CreateWishlistParams) (Wishlist, error)
+	CreateWishlistItem(ctx context.Context, arg CreateWishlistItemParams) (WishlistItem, error)
 	CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams) (Workspace, error)
 	DeleteBudgetAllocation(ctx context.Context, arg DeleteBudgetAllocationParams) error
 	DeleteLoan(ctx context.Context, arg DeleteLoanParams) error
 	DeleteLoanProvider(ctx context.Context, arg DeleteLoanProviderParams) error
 	DeleteWishlist(ctx context.Context, arg DeleteWishlistParams) error
+	DeleteWishlistItem(ctx context.Context, arg DeleteWishlistItemParams) error
 	DeleteWorkspace(ctx context.Context, id int32) error
 	GetAccountByID(ctx context.Context, arg GetAccountByIDParams) (Account, error)
 	GetAccountByIDIncludeDeleted(ctx context.Context, arg GetAccountByIDIncludeDeletedParams) (Account, error)
@@ -61,6 +64,7 @@ type Querier interface {
 	// Returns all transactions for a specific category in a month
 	GetCategoryTransactions(ctx context.Context, arg GetCategoryTransactionsParams) ([]GetCategoryTransactionsRow, error)
 	GetCompletedLoansWithStats(ctx context.Context, workspaceID int32) ([]GetCompletedLoansWithStatsRow, error)
+	GetFirstItemImage(ctx context.Context, arg GetFirstItemImageParams) (pgtype.Text, error)
 	GetLatestMonth(ctx context.Context, workspaceID int32) (Month, error)
 	GetLoanByID(ctx context.Context, arg GetLoanByIDParams) (Loan, error)
 	GetLoanDeleteStats(ctx context.Context, loanID int32) (GetLoanDeleteStatsRow, error)
@@ -90,6 +94,7 @@ type Querier interface {
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	GetWishlistByID(ctx context.Context, arg GetWishlistByIDParams) (Wishlist, error)
 	GetWishlistByName(ctx context.Context, arg GetWishlistByNameParams) (Wishlist, error)
+	GetWishlistItemByID(ctx context.Context, arg GetWishlistItemByIDParams) (WishlistItem, error)
 	GetWorkspaceByID(ctx context.Context, id int32) (Workspace, error)
 	GetWorkspaceByUserAuth0ID(ctx context.Context, auth0ID string) (Workspace, error)
 	GetWorkspaceByUserID(ctx context.Context, userID pgtype.UUID) (Workspace, error)
@@ -99,7 +104,9 @@ type Querier interface {
 	ListLoanProviders(ctx context.Context, workspaceID int32) ([]LoanProvider, error)
 	ListLoans(ctx context.Context, workspaceID int32) ([]Loan, error)
 	ListRecurringTransactions(ctx context.Context, arg ListRecurringTransactionsParams) ([]RecurringTransaction, error)
+	ListWishlistItems(ctx context.Context, arg ListWishlistItemsParams) ([]WishlistItem, error)
 	ListWishlists(ctx context.Context, workspaceID int32) ([]Wishlist, error)
+	MoveWishlistItem(ctx context.Context, arg MoveWishlistItemParams) (WishlistItem, error)
 	SoftDeleteAccount(ctx context.Context, arg SoftDeleteAccountParams) (int64, error)
 	SoftDeleteBudgetCategory(ctx context.Context, arg SoftDeleteBudgetCategoryParams) error
 	SoftDeleteRecurringTransaction(ctx context.Context, arg SoftDeleteRecurringTransactionParams) (int64, error)
@@ -127,6 +134,7 @@ type Querier interface {
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
 	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) (User, error)
 	UpdateWishlist(ctx context.Context, arg UpdateWishlistParams) (Wishlist, error)
+	UpdateWishlistItem(ctx context.Context, arg UpdateWishlistItemParams) (WishlistItem, error)
 	UpdateWorkspace(ctx context.Context, arg UpdateWorkspaceParams) (Workspace, error)
 	UpsertBudgetAllocation(ctx context.Context, arg UpsertBudgetAllocationParams) (BudgetAllocation, error)
 }

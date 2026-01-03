@@ -2215,3 +2215,158 @@ func (m *MockLoanPaymentRepository) SetUnpaidSumByMonth(workspaceID int32, year,
 	key := paymentMonthKey(workspaceID, year, month)
 	m.UnpaidSumsByMonth[key] = sum
 }
+
+// =============================================================================
+// MockWishlistItemRepository
+// =============================================================================
+
+// MockWishlistItemRepository is a mock implementation of domain.WishlistItemRepository
+type MockWishlistItemRepository struct {
+	Items       map[int32]*domain.WishlistItem
+	ByWishlist  map[int32][]*domain.WishlistItem
+	nextID      int32
+	CreateFn    func(item *domain.WishlistItem) (*domain.WishlistItem, error)
+	GetByIDFn   func(workspaceID int32, id int32) (*domain.WishlistItem, error)
+	UpdateFn    func(workspaceID int32, item *domain.WishlistItem) (*domain.WishlistItem, error)
+	MoveFn      func(workspaceID int32, itemID int32, targetWishlistID int32) (*domain.WishlistItem, error)
+	DeleteFn    func(workspaceID int32, id int32) error
+}
+
+// NewMockWishlistItemRepository creates a new MockWishlistItemRepository
+func NewMockWishlistItemRepository() *MockWishlistItemRepository {
+	return &MockWishlistItemRepository{
+		Items:      make(map[int32]*domain.WishlistItem),
+		ByWishlist: make(map[int32][]*domain.WishlistItem),
+		nextID:     1,
+	}
+}
+
+// Create creates a new wishlist item
+func (m *MockWishlistItemRepository) Create(item *domain.WishlistItem) (*domain.WishlistItem, error) {
+	if m.CreateFn != nil {
+		return m.CreateFn(item)
+	}
+	item.ID = m.nextID
+	m.nextID++
+	now := time.Now()
+	item.CreatedAt = now
+	item.UpdatedAt = now
+	m.Items[item.ID] = item
+	m.ByWishlist[item.WishlistID] = append(m.ByWishlist[item.WishlistID], item)
+	return item, nil
+}
+
+// GetByID retrieves a wishlist item by ID
+func (m *MockWishlistItemRepository) GetByID(workspaceID int32, id int32) (*domain.WishlistItem, error) {
+	if m.GetByIDFn != nil {
+		return m.GetByIDFn(workspaceID, id)
+	}
+	item, ok := m.Items[id]
+	if !ok || item.DeletedAt != nil {
+		return nil, domain.ErrWishlistItemNotFound
+	}
+	return item, nil
+}
+
+// GetAllByWishlist retrieves all items in a wishlist
+func (m *MockWishlistItemRepository) GetAllByWishlist(workspaceID int32, wishlistID int32) ([]*domain.WishlistItem, error) {
+	items := m.ByWishlist[wishlistID]
+	var result []*domain.WishlistItem
+	for _, item := range items {
+		if item.DeletedAt == nil {
+			result = append(result, item)
+		}
+	}
+	if result == nil {
+		return []*domain.WishlistItem{}, nil
+	}
+	return result, nil
+}
+
+// Update updates a wishlist item
+func (m *MockWishlistItemRepository) Update(workspaceID int32, item *domain.WishlistItem) (*domain.WishlistItem, error) {
+	if m.UpdateFn != nil {
+		return m.UpdateFn(workspaceID, item)
+	}
+	existing, ok := m.Items[item.ID]
+	if !ok || existing.DeletedAt != nil {
+		return nil, domain.ErrWishlistItemNotFound
+	}
+	item.UpdatedAt = time.Now()
+	m.Items[item.ID] = item
+	return item, nil
+}
+
+// Move moves an item to a different wishlist
+func (m *MockWishlistItemRepository) Move(workspaceID int32, itemID int32, targetWishlistID int32) (*domain.WishlistItem, error) {
+	if m.MoveFn != nil {
+		return m.MoveFn(workspaceID, itemID, targetWishlistID)
+	}
+	item, ok := m.Items[itemID]
+	if !ok || item.DeletedAt != nil {
+		return nil, domain.ErrWishlistItemNotFound
+	}
+	oldWishlistID := item.WishlistID
+	item.WishlistID = targetWishlistID
+	item.UpdatedAt = time.Now()
+
+	// Remove from old wishlist
+	var newList []*domain.WishlistItem
+	for _, i := range m.ByWishlist[oldWishlistID] {
+		if i.ID != itemID {
+			newList = append(newList, i)
+		}
+	}
+	m.ByWishlist[oldWishlistID] = newList
+
+	// Add to new wishlist
+	m.ByWishlist[targetWishlistID] = append(m.ByWishlist[targetWishlistID], item)
+
+	return item, nil
+}
+
+// SoftDelete marks an item as deleted
+func (m *MockWishlistItemRepository) SoftDelete(workspaceID int32, id int32) error {
+	if m.DeleteFn != nil {
+		return m.DeleteFn(workspaceID, id)
+	}
+	item, ok := m.Items[id]
+	if !ok || item.DeletedAt != nil {
+		return domain.ErrWishlistItemNotFound
+	}
+	now := time.Now()
+	item.DeletedAt = &now
+	return nil
+}
+
+// GetFirstItemImage gets the first item's image for thumbnail
+func (m *MockWishlistItemRepository) GetFirstItemImage(workspaceID int32, wishlistID int32) (*string, error) {
+	items := m.ByWishlist[wishlistID]
+	for _, item := range items {
+		if item.DeletedAt == nil && item.ImageURL != nil {
+			return item.ImageURL, nil
+		}
+	}
+	return nil, nil
+}
+
+// CountByWishlist counts items in a wishlist
+func (m *MockWishlistItemRepository) CountByWishlist(workspaceID int32, wishlistID int32) (int64, error) {
+	items := m.ByWishlist[wishlistID]
+	var count int64
+	for _, item := range items {
+		if item.DeletedAt == nil {
+			count++
+		}
+	}
+	return count, nil
+}
+
+// AddItem adds an item to the mock repository (helper for tests)
+func (m *MockWishlistItemRepository) AddItem(item *domain.WishlistItem) {
+	m.Items[item.ID] = item
+	m.ByWishlist[item.WishlistID] = append(m.ByWishlist[item.WishlistID], item)
+	if item.ID >= m.nextID {
+		m.nextID = item.ID + 1
+	}
+}
