@@ -2526,3 +2526,92 @@ func (m *MockWishlistPriceRepository) AddPrice(price *domain.WishlistItemPrice) 
 		m.nextID = price.ID + 1
 	}
 }
+
+// MockWishlistNoteRepository is a mock implementation of domain.WishlistNoteRepository
+type MockWishlistNoteRepository struct {
+	Notes  map[int32]*domain.WishlistItemNote
+	ByItem map[int32][]*domain.WishlistItemNote
+	nextID int32
+}
+
+// NewMockWishlistNoteRepository creates a new MockWishlistNoteRepository
+func NewMockWishlistNoteRepository() *MockWishlistNoteRepository {
+	return &MockWishlistNoteRepository{
+		Notes:  make(map[int32]*domain.WishlistItemNote),
+		ByItem: make(map[int32][]*domain.WishlistItemNote),
+		nextID: 1,
+	}
+}
+
+// Create creates a new note
+func (m *MockWishlistNoteRepository) Create(note *domain.WishlistItemNote) (*domain.WishlistItemNote, error) {
+	note.ID = m.nextID
+	m.nextID++
+	note.CreatedAt = time.Now()
+	note.UpdatedAt = note.CreatedAt
+	m.Notes[note.ID] = note
+	m.ByItem[note.ItemID] = append(m.ByItem[note.ItemID], note)
+	return note, nil
+}
+
+// GetByID retrieves a note by ID
+func (m *MockWishlistNoteRepository) GetByID(workspaceID int32, id int32) (*domain.WishlistItemNote, error) {
+	note, ok := m.Notes[id]
+	if !ok {
+		return nil, domain.ErrNoteNotFound
+	}
+	return note, nil
+}
+
+// ListByItem retrieves all notes for an item
+func (m *MockWishlistNoteRepository) ListByItem(workspaceID int32, itemID int32, sortAsc bool) ([]*domain.WishlistItemNote, error) {
+	notes := m.ByItem[itemID]
+	if notes == nil {
+		return []*domain.WishlistItemNote{}, nil
+	}
+	return notes, nil
+}
+
+// CountByItem counts notes for an item
+func (m *MockWishlistNoteRepository) CountByItem(workspaceID int32, itemID int32) (int64, error) {
+	notes := m.ByItem[itemID]
+	return int64(len(notes)), nil
+}
+
+// Update updates a note's content
+func (m *MockWishlistNoteRepository) Update(workspaceID int32, id int32, content string) (*domain.WishlistItemNote, error) {
+	note, ok := m.Notes[id]
+	if !ok {
+		return nil, domain.ErrNoteNotFound
+	}
+	note.Content = content
+	note.UpdatedAt = time.Now()
+	return note, nil
+}
+
+// Delete soft-deletes a note
+func (m *MockWishlistNoteRepository) Delete(workspaceID int32, id int32) error {
+	note, ok := m.Notes[id]
+	if !ok {
+		return domain.ErrNoteNotFound
+	}
+	delete(m.Notes, id)
+	// Remove from ByItem list
+	itemNotes := m.ByItem[note.ItemID]
+	for i, n := range itemNotes {
+		if n.ID == id {
+			m.ByItem[note.ItemID] = append(itemNotes[:i], itemNotes[i+1:]...)
+			break
+		}
+	}
+	return nil
+}
+
+// AddNote adds a note to the mock repository (helper for tests)
+func (m *MockWishlistNoteRepository) AddNote(note *domain.WishlistItemNote) {
+	m.Notes[note.ID] = note
+	m.ByItem[note.ItemID] = append(m.ByItem[note.ItemID], note)
+	if note.ID >= m.nextID {
+		m.nextID = note.ID + 1
+	}
+}

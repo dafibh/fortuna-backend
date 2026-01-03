@@ -61,6 +61,7 @@ func main() {
 	wishlistRepo := postgres.NewWishlistRepository(pool)
 	wishlistItemRepo := postgres.NewWishlistItemRepository(pool)
 	wishlistPriceRepo := postgres.NewWishlistPriceRepository(pool)
+	wishlistNoteRepo := postgres.NewWishlistNoteRepository(pool)
 
 	// Initialize services
 	authService := service.NewAuthService(userRepo, workspaceRepo)
@@ -80,6 +81,7 @@ func main() {
 	wishlistService := service.NewWishlistService(wishlistRepo)
 	wishlistItemService := service.NewWishlistItemService(wishlistItemRepo, wishlistRepo)
 	wishlistPriceService := service.NewWishlistPriceService(wishlistPriceRepo, wishlistItemRepo)
+	wishlistNoteService := service.NewWishlistNoteService(wishlistNoteRepo, wishlistItemRepo)
 
 	// Create workspace provider adapter for auth middleware
 	workspaceProvider := &workspaceProviderAdapter{authService: authService}
@@ -107,6 +109,7 @@ func main() {
 	wishlistHandler := handler.NewWishlistHandler(wishlistService)
 	wishlistItemHandler := handler.NewWishlistItemHandler(wishlistItemService)
 	wishlistPriceHandler := handler.NewWishlistPriceHandler(wishlistPriceService)
+	wishlistNoteHandler := handler.NewWishlistNoteHandler(wishlistNoteService)
 
 	// Create Echo instance
 	e := echo.New()
@@ -147,7 +150,7 @@ func main() {
 	})
 
 	// Register API routes
-	handler.RegisterRoutes(e, authMiddleware, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler, dashboardHandler, budgetCategoryHandler, budgetHandler, ccHandler, recurringHandler, loanProviderHandler, loanHandler, loanPaymentHandler, wishlistHandler, wishlistItemHandler, wishlistPriceHandler)
+	handler.RegisterRoutes(e, authMiddleware, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler, dashboardHandler, budgetCategoryHandler, budgetHandler, ccHandler, recurringHandler, loanProviderHandler, loanHandler, loanPaymentHandler, wishlistHandler, wishlistItemHandler, wishlistPriceHandler, wishlistNoteHandler)
 
 	// Start server in goroutine
 	go func() {

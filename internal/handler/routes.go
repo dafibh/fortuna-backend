@@ -6,7 +6,7 @@ import (
 )
 
 // RegisterRoutes sets up all API routes
-func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler, recurringHandler *RecurringHandler, loanProviderHandler *LoanProviderHandler, loanHandler *LoanHandler, loanPaymentHandler *LoanPaymentHandler, wishlistHandler *WishlistHandler, wishlistItemHandler *WishlistItemHandler, wishlistPriceHandler *WishlistPriceHandler) {
+func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler, recurringHandler *RecurringHandler, loanProviderHandler *LoanProviderHandler, loanHandler *LoanHandler, loanPaymentHandler *LoanPaymentHandler, wishlistHandler *WishlistHandler, wishlistItemHandler *WishlistItemHandler, wishlistPriceHandler *WishlistPriceHandler, wishlistNoteHandler *WishlistNoteHandler) {
 	// API version 1
 	api := e.Group("/api/v1")
 
@@ -146,4 +146,15 @@ func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, aut
 	wishlistItemPrices := api.Group("/wishlist-item-prices")
 	wishlistItemPrices.Use(authMiddleware.Authenticate())
 	wishlistItemPrices.DELETE("/:id", wishlistPriceHandler.DeletePrice)
+
+	// Wishlist Item Note routes (nested under wishlist-items)
+	wishlistItems.POST("/:id/notes", wishlistNoteHandler.CreateNote)
+	wishlistItems.GET("/:id/notes", wishlistNoteHandler.ListNotes)
+
+	// Wishlist Item Note routes (direct access by note ID)
+	wishlistItemNotes := api.Group("/wishlist-item-notes")
+	wishlistItemNotes.Use(authMiddleware.Authenticate())
+	wishlistItemNotes.GET("/:id", wishlistNoteHandler.GetNote)
+	wishlistItemNotes.PUT("/:id", wishlistNoteHandler.UpdateNote)
+	wishlistItemNotes.DELETE("/:id", wishlistNoteHandler.DeleteNote)
 }
