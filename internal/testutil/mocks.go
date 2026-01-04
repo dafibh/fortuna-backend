@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -2615,4 +2616,90 @@ func (m *MockWishlistNoteRepository) AddNote(note *domain.WishlistItemNote) {
 	if note.ID >= m.nextID {
 		m.nextID = note.ID + 1
 	}
+}
+
+// MockAPITokenRepository is a mock implementation of domain.APITokenRepository
+type MockAPITokenRepository struct {
+	Tokens      map[uuid.UUID]*domain.APIToken
+	ByHash      map[string]*domain.APIToken
+	ByWorkspace map[int32][]*domain.APIToken
+}
+
+// NewMockAPITokenRepository creates a new MockAPITokenRepository
+func NewMockAPITokenRepository() *MockAPITokenRepository {
+	return &MockAPITokenRepository{
+		Tokens:      make(map[uuid.UUID]*domain.APIToken),
+		ByHash:      make(map[string]*domain.APIToken),
+		ByWorkspace: make(map[int32][]*domain.APIToken),
+	}
+}
+
+// Create creates a new API token
+func (m *MockAPITokenRepository) Create(_ context.Context, token *domain.APIToken) error {
+	token.ID = uuid.New()
+	token.CreatedAt = time.Now()
+	m.Tokens[token.ID] = token
+	m.ByHash[token.TokenHash] = token
+	m.ByWorkspace[token.WorkspaceID] = append(m.ByWorkspace[token.WorkspaceID], token)
+	return nil
+}
+
+// GetByWorkspace retrieves all active API tokens for a workspace
+func (m *MockAPITokenRepository) GetByWorkspace(_ context.Context, workspaceID int32) ([]*domain.APIToken, error) {
+	var result []*domain.APIToken
+	for _, t := range m.ByWorkspace[workspaceID] {
+		if t.RevokedAt == nil {
+			result = append(result, t)
+		}
+	}
+	return result, nil
+}
+
+// GetByID retrieves an API token by ID within a workspace
+func (m *MockAPITokenRepository) GetByID(_ context.Context, workspaceID int32, id uuid.UUID) (*domain.APIToken, error) {
+	token, ok := m.Tokens[id]
+	if !ok || token.WorkspaceID != workspaceID {
+		return nil, domain.ErrAPITokenNotFound
+	}
+	return token, nil
+}
+
+// GetByHash retrieves an active API token by its hash
+func (m *MockAPITokenRepository) GetByHash(_ context.Context, hash string) (*domain.APIToken, error) {
+	token, ok := m.ByHash[hash]
+	if !ok || token.RevokedAt != nil {
+		return nil, domain.ErrAPITokenNotFound
+	}
+	return token, nil
+}
+
+// Revoke marks an API token as revoked
+func (m *MockAPITokenRepository) Revoke(_ context.Context, workspaceID int32, id uuid.UUID) error {
+	token, ok := m.Tokens[id]
+	if !ok || token.WorkspaceID != workspaceID || token.RevokedAt != nil {
+		return domain.ErrAPITokenNotFound
+	}
+	now := time.Now()
+	token.RevokedAt = &now
+	return nil
+}
+
+// UpdateLastUsed updates the last_used_at timestamp for a token
+func (m *MockAPITokenRepository) UpdateLastUsed(_ context.Context, id uuid.UUID) error {
+	token, ok := m.Tokens[id]
+	if !ok {
+		return domain.ErrAPITokenNotFound
+	}
+	now := time.Now()
+	token.LastUsedAt = &now
+	return nil
+}
+
+// AddToken adds a token to the mock repository (helper for tests)
+func (m *MockAPITokenRepository) AddToken(token *domain.APIToken) {
+	m.Tokens[token.ID] = token
+	if token.TokenHash != "" {
+		m.ByHash[token.TokenHash] = token
+	}
+	m.ByWorkspace[token.WorkspaceID] = append(m.ByWorkspace[token.WorkspaceID], token)
 }
