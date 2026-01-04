@@ -639,6 +639,118 @@
                 }
             }
         },
+        "/images/url": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Generate a presigned URL for temporary access to a private S3 image",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "images"
+                ],
+                "summary": "Get presigned URL for an image",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Object path (e.g., 1/wishlist_items/5/abc_display.jpg)",
+                        "name": "path",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.PresignedURLResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    }
+                }
+            }
+        },
+        "/images/urls": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Generate presigned URLs for multiple private S3 images in a single request",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "images"
+                ],
+                "summary": "Get presigned URLs for multiple images",
+                "parameters": [
+                    {
+                        "description": "Array of object paths",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.BatchPresignedURLRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.BatchPresignedURLResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    }
+                }
+            }
+        },
         "/loans": {
             "get": {
                 "security": [
@@ -1073,6 +1185,45 @@
                 }
             }
         },
+        "handler.BatchPresignedURLItem": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "expiresAt": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.BatchPresignedURLRequest": {
+            "type": "object",
+            "properties": {
+                "paths": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "handler.BatchPresignedURLResponse": {
+            "type": "object",
+            "properties": {
+                "urls": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.BatchPresignedURLItem"
+                    }
+                }
+            }
+        },
         "handler.BudgetProgressResponse": {
             "type": "object",
             "properties": {
@@ -1494,6 +1645,17 @@
                     "type": "string"
                 },
                 "outstandingBalance": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.PresignedURLResponse": {
+            "type": "object",
+            "properties": {
+                "expiresAt": {
+                    "type": "string"
+                },
+                "url": {
                     "type": "string"
                 }
             }

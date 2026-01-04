@@ -437,3 +437,318 @@ func TestPresignedURL_ExpiryValidation(t *testing.T) {
 		t.Errorf("expected expiry %v, got %v", expectedExpiry, capturedExpiry)
 	}
 }
+
+// Tests for GetPresignedURL endpoint
+
+func TestGetPresignedURL_Success(t *testing.T) {
+	mockRepo := &MockImageRepository{
+		generatePresignedURL: func(ctx context.Context, objectPath string, expiry time.Duration) (string, error) {
+			return "https://s3.amazonaws.com/bucket/" + objectPath + "?X-Amz-Signature=test", nil
+		},
+	}
+	imageSvc := service.NewImageService(mockRepo)
+	handler := NewImageHandler(imageSvc)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/images/url?path=1/wishlist_items/5/abc_display.jpg", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setWorkspaceInContext(c, 1)
+
+	err := handler.GetPresignedURL(c)
+	if err != nil {
+		t.Errorf("expected no error, got %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	// Verify response contains url and expiresAt
+	body := rec.Body.String()
+	if !bytes.Contains([]byte(body), []byte("url")) {
+		t.Error("expected response to contain 'url'")
+	}
+	if !bytes.Contains([]byte(body), []byte("expiresAt")) {
+		t.Error("expected response to contain 'expiresAt'")
+	}
+}
+
+func TestGetPresignedURL_NoWorkspace(t *testing.T) {
+	mockRepo := &MockImageRepository{}
+	imageSvc := service.NewImageService(mockRepo)
+	handler := NewImageHandler(imageSvc)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/images/url?path=1/wishlist_items/5/abc_display.jpg", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	// Don't set workspace ID - should fail with 401
+
+	err := handler.GetPresignedURL(c)
+	if err != nil {
+		t.Errorf("expected error response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected status %d, got %d", http.StatusUnauthorized, rec.Code)
+	}
+}
+
+func TestGetPresignedURL_NoPath(t *testing.T) {
+	mockRepo := &MockImageRepository{}
+	imageSvc := service.NewImageService(mockRepo)
+	handler := NewImageHandler(imageSvc)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/images/url", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setWorkspaceInContext(c, 1)
+
+	err := handler.GetPresignedURL(c)
+	if err != nil {
+		t.Errorf("expected error response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
+	}
+}
+
+func TestGetPresignedURL_WorkspaceMismatch_Returns404(t *testing.T) {
+	// Security test: When accessing image from different workspace, return 404 (not 403)
+	mockRepo := &MockImageRepository{}
+	imageSvc := service.NewImageService(mockRepo)
+	handler := NewImageHandler(imageSvc)
+
+	e := echo.New()
+	// Path contains workspace ID 2, but user is authenticated in workspace 1
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/images/url?path=2/wishlist_items/5/abc_display.jpg", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setWorkspaceInContext(c, 1)
+
+	err := handler.GetPresignedURL(c)
+	if err != nil {
+		t.Errorf("expected error response, got error: %v", err)
+	}
+
+	// Should return 404 to prevent enumeration (not 403)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected status %d, got %d", http.StatusNotFound, rec.Code)
+	}
+}
+
+func TestGetPresignedURL_InvalidPathFormat(t *testing.T) {
+	mockRepo := &MockImageRepository{}
+	imageSvc := service.NewImageService(mockRepo)
+	handler := NewImageHandler(imageSvc)
+
+	e := echo.New()
+	// Invalid path without workspace ID
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/images/url?path=invalid-path", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setWorkspaceInContext(c, 1)
+
+	err := handler.GetPresignedURL(c)
+	if err != nil {
+		t.Errorf("expected error response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected status %d, got %d", http.StatusNotFound, rec.Code)
+	}
+}
+
+func TestGetPresignedURL_StorageNotConfigured(t *testing.T) {
+	imageSvc := service.NewImageService(nil)
+	handler := NewImageHandler(imageSvc)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/images/url?path=1/wishlist_items/5/abc_display.jpg", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setWorkspaceInContext(c, 1)
+
+	err := handler.GetPresignedURL(c)
+	if err != nil {
+		t.Errorf("expected error response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected status %d, got %d", http.StatusServiceUnavailable, rec.Code)
+	}
+}
+
+// Tests for GetBatchPresignedURLs endpoint
+
+func TestGetBatchPresignedURLs_Success(t *testing.T) {
+	mockRepo := &MockImageRepository{
+		generatePresignedURL: func(ctx context.Context, objectPath string, expiry time.Duration) (string, error) {
+			return "https://s3.amazonaws.com/bucket/" + objectPath + "?X-Amz-Signature=test", nil
+		},
+	}
+	imageSvc := service.NewImageService(mockRepo)
+	handler := NewImageHandler(imageSvc)
+
+	e := echo.New()
+	body := bytes.NewBufferString(`{"paths": ["1/wishlist_items/5/abc_display.jpg", "1/wishlist_notes/10/def_thumb.jpg"]}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/images/urls", body)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setWorkspaceInContext(c, 1)
+
+	err := handler.GetBatchPresignedURLs(c)
+	if err != nil {
+		t.Errorf("expected no error, got %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	// Verify response contains urls array
+	respBody := rec.Body.String()
+	if !bytes.Contains([]byte(respBody), []byte("urls")) {
+		t.Error("expected response to contain 'urls'")
+	}
+}
+
+func TestGetBatchPresignedURLs_NoWorkspace(t *testing.T) {
+	mockRepo := &MockImageRepository{}
+	imageSvc := service.NewImageService(mockRepo)
+	handler := NewImageHandler(imageSvc)
+
+	e := echo.New()
+	body := bytes.NewBufferString(`{"paths": ["1/wishlist_items/5/abc_display.jpg"]}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/images/urls", body)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	// Don't set workspace ID - should fail with 401
+
+	err := handler.GetBatchPresignedURLs(c)
+	if err != nil {
+		t.Errorf("expected error response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected status %d, got %d", http.StatusUnauthorized, rec.Code)
+	}
+}
+
+func TestGetBatchPresignedURLs_EmptyPaths(t *testing.T) {
+	mockRepo := &MockImageRepository{}
+	imageSvc := service.NewImageService(mockRepo)
+	handler := NewImageHandler(imageSvc)
+
+	e := echo.New()
+	body := bytes.NewBufferString(`{"paths": []}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/images/urls", body)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setWorkspaceInContext(c, 1)
+
+	err := handler.GetBatchPresignedURLs(c)
+	if err != nil {
+		t.Errorf("expected error response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
+	}
+}
+
+func TestGetBatchPresignedURLs_MixedValidInvalidPaths(t *testing.T) {
+	mockRepo := &MockImageRepository{
+		generatePresignedURL: func(ctx context.Context, objectPath string, expiry time.Duration) (string, error) {
+			return "https://s3.amazonaws.com/bucket/" + objectPath + "?X-Amz-Signature=test", nil
+		},
+	}
+	imageSvc := service.NewImageService(mockRepo)
+	handler := NewImageHandler(imageSvc)
+
+	e := echo.New()
+	// Mix of valid path, invalid path, and path from different workspace
+	body := bytes.NewBufferString(`{"paths": ["1/wishlist_items/5/abc_display.jpg", "invalid-path", "2/wishlist_items/5/other_display.jpg"]}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/images/urls", body)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setWorkspaceInContext(c, 1)
+
+	err := handler.GetBatchPresignedURLs(c)
+	if err != nil {
+		t.Errorf("expected no error, got %v", err)
+	}
+
+	// Should succeed overall but with errors for invalid paths
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	// Verify response contains error for invalid paths
+	respBody := rec.Body.String()
+	if !bytes.Contains([]byte(respBody), []byte("error")) {
+		t.Error("expected response to contain 'error' for invalid paths")
+	}
+}
+
+func TestGetBatchPresignedURLs_TooManyPaths(t *testing.T) {
+	mockRepo := &MockImageRepository{}
+	imageSvc := service.NewImageService(mockRepo)
+	handler := NewImageHandler(imageSvc)
+
+	// Create request with more than 50 paths
+	paths := make([]string, 51)
+	for i := 0; i < 51; i++ {
+		paths[i] = "1/wishlist_items/5/abc_display.jpg"
+	}
+	body := bytes.NewBufferString(`{"paths": ["` + paths[0] + `"`)
+	for i := 1; i < 51; i++ {
+		body.WriteString(`,"` + paths[i] + `"`)
+	}
+	body.WriteString(`]}`)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/images/urls", body)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setWorkspaceInContext(c, 1)
+
+	err := handler.GetBatchPresignedURLs(c)
+	if err != nil {
+		t.Errorf("expected error response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
+	}
+}
+
+func TestGetBatchPresignedURLs_StorageNotConfigured(t *testing.T) {
+	imageSvc := service.NewImageService(nil)
+	handler := NewImageHandler(imageSvc)
+
+	e := echo.New()
+	body := bytes.NewBufferString(`{"paths": ["1/wishlist_items/5/abc_display.jpg"]}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/images/urls", body)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setWorkspaceInContext(c, 1)
+
+	err := handler.GetBatchPresignedURLs(c)
+	if err != nil {
+		t.Errorf("expected error response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected status %d, got %d", http.StatusServiceUnavailable, rec.Code)
+	}
+}

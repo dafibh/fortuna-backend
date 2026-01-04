@@ -54,6 +54,31 @@ definitions:
       workspaceId:
         type: integer
     type: object
+  handler.BatchPresignedURLItem:
+    properties:
+      error:
+        type: string
+      expiresAt:
+        type: string
+      path:
+        type: string
+      url:
+        type: string
+    type: object
+  handler.BatchPresignedURLRequest:
+    properties:
+      paths:
+        items:
+          type: string
+        type: array
+    type: object
+  handler.BatchPresignedURLResponse:
+    properties:
+      urls:
+        items:
+          $ref: '#/definitions/handler.BatchPresignedURLItem'
+        type: array
+    type: object
   handler.BudgetProgressResponse:
     properties:
       allocated:
@@ -330,6 +355,13 @@ definitions:
       accountName:
         type: string
       outstandingBalance:
+        type: string
+    type: object
+  handler.PresignedURLResponse:
+    properties:
+      expiresAt:
+        type: string
+      url:
         type: string
     type: object
   handler.ProblemDetails:
@@ -840,6 +872,76 @@ paths:
       summary: Get dashboard summary
       tags:
       - dashboard
+  /images/url:
+    get:
+      consumes:
+      - application/json
+      description: Generate a presigned URL for temporary access to a private S3 image
+      parameters:
+      - description: Object path (e.g., 1/wishlist_items/5/abc_display.jpg)
+        in: query
+        name: path
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.PresignedURLResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Get presigned URL for an image
+      tags:
+      - images
+  /images/urls:
+    post:
+      consumes:
+      - application/json
+      description: Generate presigned URLs for multiple private S3 images in a single
+        request
+      parameters:
+      - description: Array of object paths
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.BatchPresignedURLRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.BatchPresignedURLResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Get presigned URLs for multiple images
+      tags:
+      - images
   /loans:
     get:
       consumes:

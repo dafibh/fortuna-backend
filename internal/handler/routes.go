@@ -161,11 +161,17 @@ func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateL
 	wishlistItemNotes.PUT("/:id", wishlistNoteHandler.UpdateNote)
 	wishlistItemNotes.DELETE("/:id", wishlistNoteHandler.DeleteNote)
 
-	// Image routes (JWT only - binary uploads not suitable for API tokens)
+	// Image routes (binary uploads JWT only, presigned URLs support dual auth)
 	images := api.Group("/images")
 	images.Use(dualAuth.JWTOnly())
 	images.POST("", imageHandler.UploadImage)
 	images.DELETE("", imageHandler.DeleteImage)
+
+	// Presigned URL routes (dual auth - usable by frontend and API tokens)
+	presignedImages := api.Group("/images")
+	presignedImages.Use(dualAuth.Authenticate(), middleware.RateLimitMiddleware(rateLimiter))
+	presignedImages.GET("/url", imageHandler.GetPresignedURL)
+	presignedImages.POST("/urls", imageHandler.GetBatchPresignedURLs)
 
 	// API Token routes (JWT only - can't manage tokens with tokens)
 	apiTokens := api.Group("/api-tokens")

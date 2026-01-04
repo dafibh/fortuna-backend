@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/dafibh/fortuna/fortuna-backend/internal/middleware"
 	"github.com/dafibh/fortuna/fortuna-backend/internal/service"
@@ -37,6 +39,30 @@ type UploadImageResponse struct {
 	DisplayURL    string `json:"displayUrl"`
 	OriginalPath  string `json:"originalPath"`
 	OriginalURL   string `json:"originalUrl"`
+}
+
+// PresignedURLResponse represents a single presigned URL response
+type PresignedURLResponse struct {
+	URL       string `json:"url"`
+	ExpiresAt string `json:"expiresAt"`
+}
+
+// BatchPresignedURLRequest represents the batch presigned URL request body
+type BatchPresignedURLRequest struct {
+	Paths []string `json:"paths"`
+}
+
+// BatchPresignedURLItem represents a single item in the batch response
+type BatchPresignedURLItem struct {
+	Path      string  `json:"path"`
+	URL       *string `json:"url"`
+	ExpiresAt *string `json:"expiresAt,omitempty"`
+	Error     *string `json:"error,omitempty"`
+}
+
+// BatchPresignedURLResponse represents the batch presigned URL response
+type BatchPresignedURLResponse struct {
+	URLs []BatchPresignedURLItem `json:"urls"`
 }
 
 // UploadImage handles POST /api/v1/images
@@ -196,4 +222,170 @@ func (h *ImageHandler) DeleteImage(c echo.Context) error {
 		Msg("Image deleted successfully")
 
 	return c.NoContent(http.StatusNoContent)
+}
+
+// GetPresignedURL handles GET /api/v1/images/url
+// @Summary Get presigned URL for an image
+// @Description Generate a presigned URL for temporary access to a private S3 image
+// @Tags images
+// @Accept json
+// @Produce json
+// @Param path query string true "Object path (e.g., 1/wishlist_items/5/abc_display.jpg)"
+// @Success 200 {object} PresignedURLResponse
+// @Failure 400 {object} ProblemDetails
+// @Failure 401 {object} ProblemDetails
+// @Failure 404 {object} ProblemDetails
+// @Security BearerAuth
+// @Security ApiKeyAuth
+// @Router /images/url [get]
+func (h *ImageHandler) GetPresignedURL(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Authentication required")
+	}
+
+	if h.imageService == nil || !h.imageService.IsEnabled() {
+		return NewServiceUnavailableError(c, "Image service is disabled (storage not configured)")
+	}
+
+	// Get object path from query parameter
+	objectPath := c.QueryParam("path")
+	if objectPath == "" {
+		return NewValidationError(c, "Path is required", []ValidationError{
+			{Field: "path", Message: "Path query parameter is required"},
+		})
+	}
+
+	// Validate path format and extract workspace ID from path
+	// Path format: {workspace_id}/{entity_type}/{entity_id}/{image_id}_{variant}.{ext}
+	pathParts := strings.SplitN(objectPath, "/", 2)
+	if len(pathParts) < 2 {
+		return NewNotFoundError(c, "Image not found")
+	}
+
+	pathWorkspaceID, err := strconv.ParseInt(pathParts[0], 10, 32)
+	if err != nil {
+		return NewNotFoundError(c, "Image not found")
+	}
+
+	// Verify ownership - return 404 to prevent enumeration
+	if int32(pathWorkspaceID) != workspaceID {
+		log.Warn().
+			Int32("workspace_id", workspaceID).
+			Int64("path_workspace_id", pathWorkspaceID).
+			Str("path", objectPath).
+			Msg("Attempted to access image from different workspace")
+		return NewNotFoundError(c, "Image not found")
+	}
+
+	// Generate presigned URL
+	url, err := h.imageService.GeneratePresignedURL(c.Request().Context(), objectPath)
+	if err != nil {
+		log.Error().Err(err).Str("path", objectPath).Msg("Failed to generate presigned URL")
+		return NewNotFoundError(c, "Image not found")
+	}
+
+	expiresAt := time.Now().Add(2 * time.Hour).Format(time.RFC3339)
+
+	return c.JSON(http.StatusOK, PresignedURLResponse{
+		URL:       url,
+		ExpiresAt: expiresAt,
+	})
+}
+
+// GetBatchPresignedURLs handles POST /api/v1/images/urls
+// @Summary Get presigned URLs for multiple images
+// @Description Generate presigned URLs for multiple private S3 images in a single request
+// @Tags images
+// @Accept json
+// @Produce json
+// @Param request body BatchPresignedURLRequest true "Array of object paths"
+// @Success 200 {object} BatchPresignedURLResponse
+// @Failure 400 {object} ProblemDetails
+// @Failure 401 {object} ProblemDetails
+// @Security BearerAuth
+// @Security ApiKeyAuth
+// @Router /images/urls [post]
+func (h *ImageHandler) GetBatchPresignedURLs(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Authentication required")
+	}
+
+	if h.imageService == nil || !h.imageService.IsEnabled() {
+		return NewServiceUnavailableError(c, "Image service is disabled (storage not configured)")
+	}
+
+	var req BatchPresignedURLRequest
+	if err := c.Bind(&req); err != nil {
+		return NewValidationError(c, "Invalid request body", nil)
+	}
+
+	if len(req.Paths) == 0 {
+		return NewValidationError(c, "At least one path is required", []ValidationError{
+			{Field: "paths", Message: "Paths array cannot be empty"},
+		})
+	}
+
+	// Limit batch size to prevent abuse
+	const maxBatchSize = 50
+	if len(req.Paths) > maxBatchSize {
+		return NewValidationError(c, "Too many paths", []ValidationError{
+			{Field: "paths", Message: fmt.Sprintf("Maximum %d paths per request", maxBatchSize)},
+		})
+	}
+
+	ctx := c.Request().Context()
+	expiresAt := time.Now().Add(2 * time.Hour).Format(time.RFC3339)
+	results := make([]BatchPresignedURLItem, len(req.Paths))
+
+	for i, objectPath := range req.Paths {
+		item := BatchPresignedURLItem{Path: objectPath}
+
+		// Validate path format and extract workspace ID
+		pathParts := strings.SplitN(objectPath, "/", 2)
+		if len(pathParts) < 2 {
+			errMsg := "Invalid path format"
+			item.Error = &errMsg
+			results[i] = item
+			continue
+		}
+
+		pathWorkspaceID, err := strconv.ParseInt(pathParts[0], 10, 32)
+		if err != nil {
+			errMsg := "Invalid path format"
+			item.Error = &errMsg
+			results[i] = item
+			continue
+		}
+
+		// Verify ownership - silently skip (with null URL) for security
+		if int32(pathWorkspaceID) != workspaceID {
+			log.Warn().
+				Int32("workspace_id", workspaceID).
+				Int64("path_workspace_id", pathWorkspaceID).
+				Str("path", objectPath).
+				Msg("Batch request included path from different workspace")
+			errMsg := "Image not found"
+			item.Error = &errMsg
+			results[i] = item
+			continue
+		}
+
+		// Generate presigned URL
+		url, err := h.imageService.GeneratePresignedURL(ctx, objectPath)
+		if err != nil {
+			log.Error().Err(err).Str("path", objectPath).Msg("Failed to generate presigned URL in batch")
+			errMsg := "Failed to generate URL"
+			item.Error = &errMsg
+			results[i] = item
+			continue
+		}
+
+		item.URL = &url
+		item.ExpiresAt = &expiresAt
+		results[i] = item
+	}
+
+	return c.JSON(http.StatusOK, BatchPresignedURLResponse{URLs: results})
 }
