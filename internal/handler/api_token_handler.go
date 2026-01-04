@@ -31,7 +31,18 @@ type CreateAPITokenRequest struct {
 	Description string `json:"description"`
 }
 
-// CreateAPIToken handles POST /api/v1/api-tokens
+// CreateAPIToken godoc
+// @Summary Create an API token
+// @Description Create a new API token for programmatic access (JWT auth only)
+// @Tags api-tokens
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body CreateAPITokenRequest true "Token creation request"
+// @Success 201 {object} domain.CreateAPITokenResponse
+// @Failure 400 {object} ProblemDetails
+// @Failure 401 {object} ProblemDetails
+// @Router /api-tokens [post]
 func (h *APITokenHandler) CreateAPIToken(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
 	if workspaceID == 0 {
@@ -86,7 +97,17 @@ func (h *APITokenHandler) CreateAPIToken(c echo.Context) error {
 	return c.JSON(http.StatusCreated, result)
 }
 
-// GetAPITokens handles GET /api/v1/api-tokens
+// GetAPITokens godoc
+// @Summary List API tokens
+// @Description Get all API tokens for the authenticated workspace (JWT auth only)
+// @Tags api-tokens
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {array} domain.APITokenResponse
+// @Failure 401 {object} ProblemDetails
+// @Failure 500 {object} ProblemDetails
+// @Router /api-tokens [get]
 func (h *APITokenHandler) GetAPITokens(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
 	if workspaceID == 0 {
@@ -102,7 +123,19 @@ func (h *APITokenHandler) GetAPITokens(c echo.Context) error {
 	return c.JSON(http.StatusOK, tokens)
 }
 
-// RevokeAPIToken handles DELETE /api/v1/api-tokens/:id
+// RevokeAPIToken godoc
+// @Summary Revoke an API token
+// @Description Revoke/delete an API token (JWT auth only)
+// @Tags api-tokens
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Token ID (UUID)"
+// @Success 204 "No Content"
+// @Failure 400 {object} ProblemDetails
+// @Failure 401 {object} ProblemDetails
+// @Failure 404 {object} ProblemDetails
+// @Router /api-tokens/{id} [delete]
 func (h *APITokenHandler) RevokeAPIToken(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
 	if workspaceID == 0 {

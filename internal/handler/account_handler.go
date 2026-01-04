@@ -69,7 +69,18 @@ type PerAccountOutstandingEntry struct {
 	OutstandingBalance string `json:"outstandingBalance"`
 }
 
-// CreateAccount handles POST /api/v1/accounts
+// CreateAccount godoc
+// @Summary Create a new account
+// @Description Create a new financial account (bank, cash, e-wallet, or credit card)
+// @Tags accounts
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body CreateAccountRequest true "Account creation request"
+// @Success 201 {object} AccountResponse
+// @Failure 400 {object} ProblemDetails
+// @Failure 401 {object} ProblemDetails
+// @Router /accounts [post]
 func (h *AccountHandler) CreateAccount(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
 	if workspaceID == 0 {
@@ -125,7 +136,18 @@ func (h *AccountHandler) CreateAccount(c echo.Context) error {
 	return c.JSON(http.StatusCreated, toAccountResponse(account))
 }
 
-// GetAccounts handles GET /api/v1/accounts
+// GetAccounts godoc
+// @Summary List all accounts
+// @Description Get all financial accounts for the authenticated workspace
+// @Tags accounts
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param includeArchived query bool false "Include archived accounts"
+// @Success 200 {array} AccountResponse
+// @Failure 401 {object} ProblemDetails
+// @Failure 500 {object} ProblemDetails
+// @Router /accounts [get]
 func (h *AccountHandler) GetAccounts(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
 	if workspaceID == 0 {
@@ -164,7 +186,20 @@ func (h *AccountHandler) GetAccounts(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
-// UpdateAccount handles PUT /api/v1/accounts/:id
+// UpdateAccount godoc
+// @Summary Update an account
+// @Description Update an existing financial account's name
+// @Tags accounts
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Account ID"
+// @Param request body UpdateAccountRequest true "Account update request"
+// @Success 200 {object} AccountResponse
+// @Failure 400 {object} ProblemDetails
+// @Failure 401 {object} ProblemDetails
+// @Failure 404 {object} ProblemDetails
+// @Router /accounts/{id} [put]
 func (h *AccountHandler) UpdateAccount(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
 	if workspaceID == 0 {
@@ -204,7 +239,19 @@ func (h *AccountHandler) UpdateAccount(c echo.Context) error {
 	return c.JSON(http.StatusOK, toAccountResponse(account))
 }
 
-// DeleteAccount handles DELETE /api/v1/accounts/:id
+// DeleteAccount godoc
+// @Summary Delete an account
+// @Description Soft delete a financial account (archive)
+// @Tags accounts
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Account ID"
+// @Success 204 "No Content"
+// @Failure 400 {object} ProblemDetails
+// @Failure 401 {object} ProblemDetails
+// @Failure 404 {object} ProblemDetails
+// @Router /accounts/{id} [delete]
 func (h *AccountHandler) DeleteAccount(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
 	if workspaceID == 0 {
@@ -228,7 +275,17 @@ func (h *AccountHandler) DeleteAccount(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
-// GetCCSummary handles GET /api/v1/accounts/cc-summary
+// GetCCSummary godoc
+// @Summary Get credit card summary
+// @Description Get total outstanding balance across all credit card accounts
+// @Tags accounts
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} CCOutstandingResponse
+// @Failure 401 {object} ProblemDetails
+// @Failure 500 {object} ProblemDetails
+// @Router /accounts/cc-summary [get]
 func (h *AccountHandler) GetCCSummary(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
 	if workspaceID == 0 {

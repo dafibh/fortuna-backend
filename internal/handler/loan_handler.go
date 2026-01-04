@@ -192,8 +192,18 @@ func (h *LoanHandler) CreateLoan(c echo.Context) error {
 	return c.JSON(http.StatusCreated, toLoanResponse(loan))
 }
 
-// GetLoans handles GET /api/v1/loans
-// Supports ?status=active|completed|all query parameter (default: all)
+// GetLoans godoc
+// @Summary List loans
+// @Description Get all loans/installments for the authenticated workspace
+// @Tags loans
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param status query string false "Filter by status: active, completed, all" default(all)
+// @Success 200 {array} LoanWithStatsResponse
+// @Failure 401 {object} ProblemDetails
+// @Failure 500 {object} ProblemDetails
+// @Router /loans [get]
 func (h *LoanHandler) GetLoans(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
 	if workspaceID == 0 {

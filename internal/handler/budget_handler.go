@@ -79,7 +79,20 @@ type MonthlyBudgetSummaryResponse struct {
 	IsHistorical            bool                     `json:"isHistorical"`
 }
 
-// GetAllocations handles GET /api/v1/budgets/:year/:month
+// GetAllocations godoc
+// @Summary Get budget allocations
+// @Description Get budget allocations and progress for a specific month
+// @Tags budgets
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param year path int true "Year"
+// @Param month path int true "Month (1-12)"
+// @Success 200 {object} MonthlyBudgetSummaryResponse
+// @Failure 400 {object} ProblemDetails
+// @Failure 401 {object} ProblemDetails
+// @Failure 500 {object} ProblemDetails
+// @Router /budgets/{year}/{month} [get]
 func (h *BudgetHandler) GetAllocations(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
 	if workspaceID == 0 {

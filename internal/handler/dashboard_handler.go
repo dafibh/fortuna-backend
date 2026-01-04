@@ -54,8 +54,20 @@ type DashboardSummaryResponse struct {
 	Projection            *ProjectionResponse `json:"projection,omitempty"`
 }
 
-// GetSummary handles GET /api/v1/dashboard/summary
-// Accepts optional year and month query params for historical navigation
+// GetSummary godoc
+// @Summary Get dashboard summary
+// @Description Get financial summary including balances, disposable income, and projections
+// @Tags dashboard
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param year query int false "Year for historical data"
+// @Param month query int false "Month for historical data (1-12)"
+// @Success 200 {object} DashboardSummaryResponse
+// @Failure 400 {object} ProblemDetails
+// @Failure 401 {object} ProblemDetails
+// @Failure 500 {object} ProblemDetails
+// @Router /dashboard/summary [get]
 func (h *DashboardHandler) GetSummary(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
 	if workspaceID == 0 {

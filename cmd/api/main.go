@@ -1,3 +1,21 @@
+// @title Fortuna API
+// @version 1.0
+// @description Personal finance tracking API for managing accounts, transactions, budgets, and more.
+//
+// @contact.name API Support
+// @contact.email support@fortuna.app
+//
+// @license.name MIT
+// @license.url https://opensource.org/licenses/MIT
+//
+// @host localhost:8080
+// @BasePath /api/v1
+//
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description JWT or API token authentication. Format: "Bearer <token>". API tokens start with "fort_".
+
 package main
 
 import (
@@ -8,6 +26,7 @@ import (
 	"syscall"
 	"time"
 
+	_ "github.com/dafibh/fortuna/fortuna-backend/docs"
 	"github.com/dafibh/fortuna/fortuna-backend/internal/config"
 	"github.com/dafibh/fortuna/fortuna-backend/internal/handler"
 	"github.com/dafibh/fortuna/fortuna-backend/internal/middleware"
@@ -20,6 +39,7 @@ import (
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	echoSwagger "github.com/swaggo/echo-swagger"
 )
 
 func main() {
@@ -193,6 +213,9 @@ func main() {
 	e.GET("/health", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 	})
+
+	// Swagger API documentation
+	e.GET("/api/docs/*", echoSwagger.WrapHandler)
 
 	// Register API routes
 	handler.RegisterRoutes(e, dualAuthMiddleware, rateLimiter, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler, dashboardHandler, budgetCategoryHandler, budgetHandler, ccHandler, recurringHandler, loanProviderHandler, loanHandler, loanPaymentHandler, wishlistHandler, wishlistItemHandler, wishlistPriceHandler, wishlistNoteHandler, imageHandler, wsHandler, apiTokenHandler)

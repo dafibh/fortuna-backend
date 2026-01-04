@@ -76,7 +76,18 @@ type TransferResponse struct {
 	ToTransaction   TransactionResponse `json:"toTransaction"`
 }
 
-// CreateTransaction handles POST /api/v1/transactions
+// CreateTransaction godoc
+// @Summary Create a transaction
+// @Description Create a new income or expense transaction
+// @Tags transactions
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body CreateTransactionRequest true "Transaction creation request"
+// @Success 201 {object} TransactionResponse
+// @Failure 400 {object} ProblemDetails
+// @Failure 401 {object} ProblemDetails
+// @Router /transactions [post]
 func (h *TransactionHandler) CreateTransaction(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
 	if workspaceID == 0 {
@@ -194,7 +205,23 @@ type PaginatedTransactionsResponse struct {
 	TotalPages int32                 `json:"totalPages"`
 }
 
-// GetTransactions handles GET /api/v1/transactions
+// GetTransactions godoc
+// @Summary List transactions
+// @Description Get paginated transactions with optional filters
+// @Tags transactions
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param accountId query int false "Filter by account ID"
+// @Param startDate query string false "Start date (YYYY-MM-DD)"
+// @Param endDate query string false "End date (YYYY-MM-DD)"
+// @Param type query string false "Transaction type (income or expense)"
+// @Param page query int false "Page number" default(1)
+// @Param pageSize query int false "Items per page" default(20)
+// @Success 200 {object} PaginatedTransactionsResponse
+// @Failure 400 {object} ProblemDetails
+// @Failure 401 {object} ProblemDetails
+// @Router /transactions [get]
 func (h *TransactionHandler) GetTransactions(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
 	if workspaceID == 0 {
@@ -319,7 +346,19 @@ func (h *TransactionHandler) GetTransactions(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
-// TogglePaidStatus handles PATCH /api/v1/transactions/:id/toggle-paid
+// TogglePaidStatus godoc
+// @Summary Toggle transaction paid status
+// @Description Toggle the paid/unpaid status of a transaction
+// @Tags transactions
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Transaction ID"
+// @Success 200 {object} TransactionResponse
+// @Failure 400 {object} ProblemDetails
+// @Failure 401 {object} ProblemDetails
+// @Failure 404 {object} ProblemDetails
+// @Router /transactions/{id}/toggle-paid [patch]
 func (h *TransactionHandler) TogglePaidStatus(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
 	if workspaceID == 0 {
@@ -409,7 +448,20 @@ type UpdateTransactionRequest struct {
 	CategoryID         *int32  `json:"categoryId,omitempty"`
 }
 
-// UpdateTransaction handles PUT /api/v1/transactions/:id
+// UpdateTransaction godoc
+// @Summary Update a transaction
+// @Description Update an existing transaction
+// @Tags transactions
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Transaction ID"
+// @Param request body CreateTransactionRequest true "Transaction update request"
+// @Success 200 {object} TransactionResponse
+// @Failure 400 {object} ProblemDetails
+// @Failure 401 {object} ProblemDetails
+// @Failure 404 {object} ProblemDetails
+// @Router /transactions/{id} [put]
 func (h *TransactionHandler) UpdateTransaction(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
 	if workspaceID == 0 {
@@ -520,7 +572,19 @@ func (h *TransactionHandler) UpdateTransaction(c echo.Context) error {
 	return c.JSON(http.StatusOK, toTransactionResponse(transaction))
 }
 
-// DeleteTransaction handles DELETE /api/v1/transactions/:id
+// DeleteTransaction godoc
+// @Summary Delete a transaction
+// @Description Soft delete a transaction
+// @Tags transactions
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Transaction ID"
+// @Success 204 "No Content"
+// @Failure 400 {object} ProblemDetails
+// @Failure 401 {object} ProblemDetails
+// @Failure 404 {object} ProblemDetails
+// @Router /transactions/{id} [delete]
 func (h *TransactionHandler) DeleteTransaction(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
 	if workspaceID == 0 {

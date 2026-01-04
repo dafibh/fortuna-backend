@@ -87,9 +87,10 @@ type TransactionResponseEntry struct {
 // @Tags cc
 // @Accept json
 // @Produce json
+// @Security BearerAuth
 // @Success 200 {object} CCPayableBreakdownResponse
-// @Failure 401 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Failure 401 {object} ProblemDetails
+// @Failure 500 {object} ProblemDetails
 // @Router /cc/payable/breakdown [get]
 func (h *CCHandler) GetPayableBreakdown(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
@@ -152,12 +153,13 @@ func convertTransactionSlice(transactions []domain.CCPayableTransaction) []CCPay
 // @Tags cc
 // @Accept json
 // @Produce json
+// @Security BearerAuth
 // @Param request body CreateCCPaymentRequest true "CC payment request"
 // @Success 201 {object} CCPaymentResponseEntry
-// @Failure 400 {object} ErrorResponse
-// @Failure 401 {object} ErrorResponse
-// @Failure 404 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Failure 400 {object} ProblemDetails
+// @Failure 401 {object} ProblemDetails
+// @Failure 404 {object} ProblemDetails
+// @Failure 500 {object} ProblemDetails
 // @Router /cc/payments [post]
 func (h *CCHandler) CreateCCPayment(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
