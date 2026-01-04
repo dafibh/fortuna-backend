@@ -108,11 +108,21 @@ func main() {
 	// Create workspace provider adapter for auth middleware
 	workspaceProvider := &workspaceProviderAdapter{authService: authService}
 
-	// Initialize auth middleware
-	authMiddleware, err := middleware.NewAuthMiddleware(cfg.Auth0Domain, cfg.Auth0Audience, workspaceProvider)
+	// Initialize JWT auth middleware
+	jwtAuthMiddleware, err := middleware.NewAuthMiddleware(cfg.Auth0Domain, cfg.Auth0Audience, workspaceProvider)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to create auth middleware")
+		log.Fatal().Err(err).Msg("Failed to create JWT auth middleware")
 	}
+
+	// Initialize API token auth middleware
+	apiTokenAuthMiddleware := middleware.NewAPITokenAuthMiddleware(apiTokenService)
+
+	// Initialize dual auth middleware (supports both JWT and API token)
+	dualAuthMiddleware := middleware.NewDualAuthMiddleware(jwtAuthMiddleware, apiTokenAuthMiddleware)
+
+	// Initialize rate limiter for API token requests
+	rateLimiter := middleware.NewRateLimiter()
+	defer rateLimiter.Stop()
 
 	// Initialize WebSocket hub and JWT validator
 	wsHub := websocket.NewHub()
@@ -185,7 +195,7 @@ func main() {
 	})
 
 	// Register API routes
-	handler.RegisterRoutes(e, authMiddleware, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler, dashboardHandler, budgetCategoryHandler, budgetHandler, ccHandler, recurringHandler, loanProviderHandler, loanHandler, loanPaymentHandler, wishlistHandler, wishlistItemHandler, wishlistPriceHandler, wishlistNoteHandler, imageHandler, wsHandler, apiTokenHandler)
+	handler.RegisterRoutes(e, dualAuthMiddleware, rateLimiter, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler, dashboardHandler, budgetCategoryHandler, budgetHandler, ccHandler, recurringHandler, loanProviderHandler, loanHandler, loanPaymentHandler, wishlistHandler, wishlistItemHandler, wishlistPriceHandler, wishlistNoteHandler, imageHandler, wsHandler, apiTokenHandler)
 
 	// Start server in goroutine
 	go func() {
