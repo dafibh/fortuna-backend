@@ -10,6 +10,7 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/dafibh/fortuna/fortuna-backend/internal/repository/storage"
 	"github.com/disintegration/imaging"
@@ -48,12 +49,12 @@ var AllowedExtensions = map[string]string{
 	".webp": "image/webp",
 }
 
-// ImageMetadata contains URLs for different image sizes
+// ImageMetadata contains object paths for different image sizes (presigned URLs generated on demand)
 type ImageMetadata struct {
-	ID           string `json:"id"`
-	ThumbnailURL string `json:"thumbnailUrl"`
-	DisplayURL   string `json:"displayUrl"`
-	OriginalURL  string `json:"originalUrl"`
+	ID            string `json:"id"`
+	ThumbnailPath string `json:"thumbnailPath"`
+	DisplayPath   string `json:"displayPath"`
+	OriginalPath  string `json:"originalPath"`
 }
 
 // ImageService handles image processing and storage
@@ -129,7 +130,7 @@ func (s *ImageService) ProcessAndUpload(ctx context.Context, workspaceID int32, 
 		{"original", 0}, // 0 means keep original size
 	}
 
-	urls := make(map[string]string)
+	paths := make(map[string]string)
 
 	for _, variant := range variants {
 		var processed image.Image
@@ -149,67 +150,63 @@ func (s *ImageService) ProcessAndUpload(ctx context.Context, workspaceID int32, 
 		// Generate object path
 		objectPath := fmt.Sprintf("%d/%s/%d/%s_%s.jpg", workspaceID, entityType, entityID, imageID, variant.name)
 
-		// Upload to storage
-		url, err := s.storage.Upload(ctx, objectPath, bytes.NewReader(buf.Bytes()), "image/jpeg", int64(buf.Len()))
+		// Upload to storage (returns object path, not URL)
+		path, err := s.storage.Upload(ctx, objectPath, bytes.NewReader(buf.Bytes()), "image/jpeg", int64(buf.Len()))
 		if err != nil {
 			// Try to clean up any already uploaded variants
-			s.cleanupVariants(ctx, urls)
+			s.cleanupVariants(ctx, paths)
 			return nil, fmt.Errorf("failed to upload %s variant: %w", variant.name, err)
 		}
 
-		urls[variant.name] = url
+		paths[variant.name] = path
 	}
 
 	return &ImageMetadata{
-		ID:           imageID,
-		ThumbnailURL: urls["thumb"],
-		DisplayURL:   urls["display"],
-		OriginalURL:  urls["original"],
+		ID:            imageID,
+		ThumbnailPath: paths["thumb"],
+		DisplayPath:   paths["display"],
+		OriginalPath:  paths["original"],
 	}, nil
 }
 
 // cleanupVariants removes any variants that were successfully uploaded during a failed operation
-func (s *ImageService) cleanupVariants(ctx context.Context, urls map[string]string) {
-	for _, url := range urls {
-		// Extract path and delete - ignore errors during cleanup
-		_ = s.DeleteByURL(ctx, url)
+func (s *ImageService) cleanupVariants(ctx context.Context, paths map[string]string) {
+	for _, path := range paths {
+		// Delete by path - ignore errors during cleanup
+		_ = s.storage.Delete(ctx, path)
 	}
 }
 
-// DeleteByURL deletes an image by its URL
-func (s *ImageService) DeleteByURL(ctx context.Context, imageURL string) error {
-	if imageURL == "" {
+// DeleteByPath deletes an image by its object path
+func (s *ImageService) DeleteByPath(ctx context.Context, objectPath string) error {
+	if objectPath == "" {
 		return nil
 	}
 	if !s.IsEnabled() {
 		return ErrImageStorageNotConfigured
 	}
-	if repo, ok := s.storage.(*storage.MinIOImageRepository); ok {
-		return repo.DeleteByURL(ctx, imageURL)
-	}
-	return nil
+	return s.storage.Delete(ctx, objectPath)
 }
 
 // DeleteAllVariants deletes all variants of an image (thumbnail, display, original)
-func (s *ImageService) DeleteAllVariants(ctx context.Context, imageURL string) error {
-	if imageURL == "" {
+func (s *ImageService) DeleteAllVariants(ctx context.Context, objectPath string) error {
+	if objectPath == "" {
 		return nil
 	}
 	if !s.IsEnabled() {
 		return ErrImageStorageNotConfigured
 	}
 
-	// The imageURL is typically the display URL
-	// We need to extract the base path and delete all variants
-	basePath := s.extractBasePath(imageURL)
+	// Extract the base path and delete all variants
+	basePath := s.extractBasePath(objectPath)
 	if basePath == "" {
 		return nil
 	}
 
 	variants := []string{"thumb", "display", "original"}
 	for _, variant := range variants {
-		variantURL := basePath + "_" + variant + ".jpg"
-		if err := s.DeleteByURL(ctx, variantURL); err != nil {
+		variantPath := basePath + "_" + variant + ".jpg"
+		if err := s.storage.Delete(ctx, variantPath); err != nil {
 			// Log but don't fail - best effort cleanup
 			continue
 		}
@@ -218,17 +215,29 @@ func (s *ImageService) DeleteAllVariants(ctx context.Context, imageURL string) e
 	return nil
 }
 
-// extractBasePath extracts the base path from an image URL (without variant suffix)
-func (s *ImageService) extractBasePath(imageURL string) string {
-	// URL format: http://endpoint/bucket/workspace/entity/entityId/uuid_variant.jpg
-	// We want: http://endpoint/bucket/workspace/entity/entityId/uuid
+// extractBasePath extracts the base path from an object path (without variant suffix)
+func (s *ImageService) extractBasePath(objectPath string) string {
+	// Path format: workspace/entity/entityId/uuid_variant.jpg
+	// We want: workspace/entity/entityId/uuid
 	suffixes := []string{"_thumb.jpg", "_display.jpg", "_original.jpg"}
 	for _, suffix := range suffixes {
-		if strings.HasSuffix(imageURL, suffix) {
-			return strings.TrimSuffix(imageURL, suffix)
+		if strings.HasSuffix(objectPath, suffix) {
+			return strings.TrimSuffix(objectPath, suffix)
 		}
 	}
 	return ""
+}
+
+// GeneratePresignedURL generates a presigned URL for an object path
+func (s *ImageService) GeneratePresignedURL(ctx context.Context, objectPath string) (string, error) {
+	if objectPath == "" {
+		return "", nil
+	}
+	if !s.IsEnabled() {
+		return "", ErrImageStorageNotConfigured
+	}
+	// Default expiry of 2 hours
+	return s.storage.GeneratePresignedURL(ctx, objectPath, 2*time.Hour)
 }
 
 // GetContentType returns the content type for a file extension

@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/dafibh/fortuna/fortuna-backend/internal/middleware"
 	"github.com/dafibh/fortuna/fortuna-backend/internal/service"
@@ -20,16 +21,16 @@ import (
 
 // MockImageRepository implements storage.ImageRepository for testing
 type MockImageRepository struct {
-	uploadFunc    func(ctx context.Context, objectPath string, data io.Reader, contentType string, size int64) (string, error)
-	deleteFunc    func(ctx context.Context, objectPath string) error
-	generateURL   func(objectPath string) string
+	uploadFunc             func(ctx context.Context, objectPath string, data io.Reader, contentType string, size int64) (string, error)
+	deleteFunc             func(ctx context.Context, objectPath string) error
+	generatePresignedURL   func(ctx context.Context, objectPath string, expiry time.Duration) (string, error)
 }
 
 func (m *MockImageRepository) Upload(ctx context.Context, objectPath string, data io.Reader, contentType string, size int64) (string, error) {
 	if m.uploadFunc != nil {
 		return m.uploadFunc(ctx, objectPath, data, contentType, size)
 	}
-	return "http://localhost:9000/bucket/" + objectPath, nil
+	return objectPath, nil
 }
 
 func (m *MockImageRepository) Delete(ctx context.Context, objectPath string) error {
@@ -39,11 +40,11 @@ func (m *MockImageRepository) Delete(ctx context.Context, objectPath string) err
 	return nil
 }
 
-func (m *MockImageRepository) GenerateURL(objectPath string) string {
-	if m.generateURL != nil {
-		return m.generateURL(objectPath)
+func (m *MockImageRepository) GeneratePresignedURL(ctx context.Context, objectPath string, expiry time.Duration) (string, error) {
+	if m.generatePresignedURL != nil {
+		return m.generatePresignedURL(ctx, objectPath, expiry)
 	}
-	return "http://localhost:9000/bucket/" + objectPath
+	return "https://s3.amazonaws.com/bucket/" + objectPath + "?X-Amz-Signature=test", nil
 }
 
 // createTestImageData creates a valid JPEG image for testing
@@ -290,7 +291,7 @@ func TestDeleteImage_Success(t *testing.T) {
 	handler := NewImageHandler(imageSvc)
 
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/images?url=http://localhost:9000/bucket/1/notes/0/test_display.jpg", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/images?path=1/notes/0/test_display.jpg", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 	setWorkspaceInContext(c, 1)
@@ -311,7 +312,7 @@ func TestDeleteImage_NoWorkspace(t *testing.T) {
 	handler := NewImageHandler(imageSvc)
 
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/images?url=http://example.com/test.jpg", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/images?path=1/notes/0/test_display.jpg", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
@@ -325,7 +326,7 @@ func TestDeleteImage_NoWorkspace(t *testing.T) {
 	}
 }
 
-func TestDeleteImage_NoURL(t *testing.T) {
+func TestDeleteImage_NoPath(t *testing.T) {
 	mockRepo := &MockImageRepository{}
 	imageSvc := service.NewImageService(mockRepo)
 	handler := NewImageHandler(imageSvc)
@@ -352,11 +353,11 @@ func TestDeleteImage_WrongWorkspace(t *testing.T) {
 	handler := NewImageHandler(imageSvc)
 
 	e := echo.New()
-	// URL contains workspace ID 2, but user is in workspace 1
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/images?url=http://localhost:9000/bucket/2/notes/0/test_display.jpg", nil)
+	// Path contains workspace ID 2, but user is in workspace 1
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/images?path=2/notes/0/test_display.jpg", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
-	setWorkspaceInContext(c, 1) // User is in workspace 1, but URL is for workspace 2
+	setWorkspaceInContext(c, 1) // User is in workspace 1, but path is for workspace 2
 
 	err := handler.DeleteImage(c)
 	if err != nil {
@@ -365,5 +366,74 @@ func TestDeleteImage_WrongWorkspace(t *testing.T) {
 
 	if rec.Code != http.StatusForbidden {
 		t.Errorf("expected status %d, got %d", http.StatusForbidden, rec.Code)
+	}
+}
+
+func TestUploadImage_PresignedURLError(t *testing.T) {
+	// Test that presigned URL errors don't fail the upload but are handled gracefully
+	mockRepo := &MockImageRepository{
+		generatePresignedURL: func(ctx context.Context, objectPath string, expiry time.Duration) (string, error) {
+			// Verify 2-hour expiry is being passed
+			expectedExpiry := 2 * time.Hour
+			if expiry != expectedExpiry {
+				t.Errorf("expected expiry %v, got %v", expectedExpiry, expiry)
+			}
+			return "", errors.New("presigned URL generation failed")
+		},
+	}
+	imageSvc := service.NewImageService(mockRepo)
+	handler := NewImageHandler(imageSvc)
+
+	imageData := createTestImageData(100, 100)
+	body, contentType := createMultipartForm("file", "test.jpg", imageData, "notes")
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/images", body)
+	req.Header.Set(echo.HeaderContentType, contentType)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setWorkspaceInContext(c, 1)
+
+	err := handler.UploadImage(c)
+	if err != nil {
+		t.Errorf("expected no error (graceful handling), got %v", err)
+	}
+
+	// Upload should still succeed even if presigned URL generation fails
+	if rec.Code != http.StatusCreated {
+		t.Errorf("expected status %d, got %d", http.StatusCreated, rec.Code)
+	}
+}
+
+func TestPresignedURL_ExpiryValidation(t *testing.T) {
+	// Test that the correct 2-hour expiry is passed to the repository
+	var capturedExpiry time.Duration
+	mockRepo := &MockImageRepository{
+		generatePresignedURL: func(ctx context.Context, objectPath string, expiry time.Duration) (string, error) {
+			capturedExpiry = expiry
+			return "https://example.com/presigned", nil
+		},
+	}
+	imageSvc := service.NewImageService(mockRepo)
+	handler := NewImageHandler(imageSvc)
+
+	imageData := createTestImageData(100, 100)
+	body, contentType := createMultipartForm("file", "test.jpg", imageData, "notes")
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/images", body)
+	req.Header.Set(echo.HeaderContentType, contentType)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setWorkspaceInContext(c, 1)
+
+	err := handler.UploadImage(c)
+	if err != nil {
+		t.Errorf("expected no error, got %v", err)
+	}
+
+	expectedExpiry := 2 * time.Hour
+	if capturedExpiry != expectedExpiry {
+		t.Errorf("expected expiry %v, got %v", expectedExpiry, capturedExpiry)
 	}
 }

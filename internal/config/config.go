@@ -23,17 +23,17 @@ type Config struct {
 	CORSOrigins []string
 	Env         string
 
-	// MinIO
-	MinIO MinIOConfig
+	// S3 Storage
+	S3 S3Config
 }
 
-// MinIOConfig holds MinIO/S3 configuration
-type MinIOConfig struct {
-	Endpoint        string
+// S3Config holds AWS S3 configuration
+type S3Config struct {
+	Region          string
+	Bucket          string
 	AccessKeyID     string
 	SecretAccessKey string
-	BucketName      string
-	UseSSL          bool
+	Endpoint        string // Optional: for MinIO/LocalStack local dev
 }
 
 // Load reads configuration from environment variables
@@ -49,12 +49,12 @@ func Load() (*Config, error) {
 		Port:          getEnv("PORT", "8080"),
 		CORSOrigins:   strings.Split(getEnv("CORS_ORIGINS", "http://localhost:3000"), ","),
 		Env:           getEnv("ENV", "development"),
-		MinIO: MinIOConfig{
-			Endpoint:        getEnv("MINIO_ENDPOINT", "localhost:9000"),
-			AccessKeyID:     getEnv("MINIO_ACCESS_KEY", ""),
-			SecretAccessKey: getEnv("MINIO_SECRET_KEY", ""),
-			BucketName:      getEnv("MINIO_BUCKET", "fortuna-images"),
-			UseSSL:          getEnv("MINIO_USE_SSL", "false") == "true",
+		S3: S3Config{
+			Region:          getEnv("S3_REGION", "us-east-1"),
+			Bucket:          getEnv("S3_BUCKET", "fortuna-images"),
+			AccessKeyID:     getEnv("AWS_ACCESS_KEY_ID", ""),
+			SecretAccessKey: getEnv("AWS_SECRET_ACCESS_KEY", ""),
+			Endpoint:        getEnv("S3_ENDPOINT", ""), // Empty = use AWS, set for MinIO/LocalStack
 		},
 	}
 

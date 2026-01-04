@@ -86,18 +86,22 @@ func main() {
 	wishlistNoteRepo := postgres.NewWishlistNoteRepository(pool)
 	apiTokenRepo := postgres.NewAPITokenRepository(pool)
 
-	// Initialize image storage repository (optional - won't fail if MinIO not configured)
+	// Initialize S3 image storage repository (optional - won't fail if not configured)
 	var imageRepo storage.ImageRepository
-	if cfg.MinIO.AccessKeyID != "" && cfg.MinIO.SecretAccessKey != "" {
+	if cfg.S3.AccessKeyID != "" && cfg.S3.SecretAccessKey != "" {
 		var err error
-		imageRepo, err = storage.NewMinIOImageRepository(cfg.MinIO)
+		imageRepo, err = storage.NewS3ImageRepository(context.Background(), cfg.S3)
 		if err != nil {
-			log.Warn().Err(err).Msg("Failed to initialize MinIO image repository - image uploads disabled")
+			log.Warn().Err(err).Msg("Failed to initialize S3 image repository - image uploads disabled")
 		} else {
-			log.Info().Str("endpoint", cfg.MinIO.Endpoint).Msg("Connected to MinIO")
+			endpoint := cfg.S3.Endpoint
+			if endpoint == "" {
+				endpoint = "AWS S3 (" + cfg.S3.Region + ")"
+			}
+			log.Info().Str("bucket", cfg.S3.Bucket).Str("endpoint", endpoint).Msg("Connected to S3")
 		}
 	} else {
-		log.Warn().Msg("MinIO not configured - image uploads disabled")
+		log.Warn().Msg("S3 not configured - image uploads disabled")
 	}
 
 	// Initialize services

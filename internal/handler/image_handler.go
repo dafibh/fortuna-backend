@@ -30,10 +30,13 @@ type UploadImageRequest struct {
 
 // UploadImageResponse represents the upload response
 type UploadImageResponse struct {
-	ID           string `json:"id"`
-	ThumbnailURL string `json:"thumbnailUrl"`
-	DisplayURL   string `json:"displayUrl"`
-	OriginalURL  string `json:"originalUrl"`
+	ID            string `json:"id"`
+	ThumbnailPath string `json:"thumbnailPath"`
+	ThumbnailURL  string `json:"thumbnailUrl"`
+	DisplayPath   string `json:"displayPath"`
+	DisplayURL    string `json:"displayUrl"`
+	OriginalPath  string `json:"originalPath"`
+	OriginalURL   string `json:"originalUrl"`
 }
 
 // UploadImage handles POST /api/v1/images
@@ -123,11 +126,29 @@ func (h *ImageHandler) UploadImage(c echo.Context) error {
 		Str("entity_type", entityType).
 		Msg("Image uploaded successfully")
 
+	// Generate presigned URLs for immediate use
+	ctx := c.Request().Context()
+	thumbnailURL, err := h.imageService.GeneratePresignedURL(ctx, metadata.ThumbnailPath)
+	if err != nil {
+		log.Warn().Err(err).Str("path", metadata.ThumbnailPath).Msg("Failed to generate thumbnail presigned URL")
+	}
+	displayURL, err := h.imageService.GeneratePresignedURL(ctx, metadata.DisplayPath)
+	if err != nil {
+		log.Warn().Err(err).Str("path", metadata.DisplayPath).Msg("Failed to generate display presigned URL")
+	}
+	originalURL, err := h.imageService.GeneratePresignedURL(ctx, metadata.OriginalPath)
+	if err != nil {
+		log.Warn().Err(err).Str("path", metadata.OriginalPath).Msg("Failed to generate original presigned URL")
+	}
+
 	return c.JSON(http.StatusCreated, UploadImageResponse{
-		ID:           metadata.ID,
-		ThumbnailURL: metadata.ThumbnailURL,
-		DisplayURL:   metadata.DisplayURL,
-		OriginalURL:  metadata.OriginalURL,
+		ID:            metadata.ID,
+		ThumbnailPath: metadata.ThumbnailPath,
+		ThumbnailURL:  thumbnailURL,
+		DisplayPath:   metadata.DisplayPath,
+		DisplayURL:    displayURL,
+		OriginalPath:  metadata.OriginalPath,
+		OriginalURL:   originalURL,
 	})
 }
 
@@ -142,32 +163,36 @@ func (h *ImageHandler) DeleteImage(c echo.Context) error {
 		return NewServiceUnavailableError(c, "Image deletion is disabled (storage not configured)")
 	}
 
-	imageURL := c.QueryParam("url")
-	if imageURL == "" {
-		return NewValidationError(c, "Image URL required", []ValidationError{
-			{Field: "url", Message: "URL is required"},
+	// Accept either path (new) or url (legacy) parameter
+	objectPath := c.QueryParam("path")
+	if objectPath == "" {
+		objectPath = c.QueryParam("url") // Legacy support
+	}
+	if objectPath == "" {
+		return NewValidationError(c, "Image path required", []ValidationError{
+			{Field: "path", Message: "Path is required"},
 		})
 	}
 
-	// Verify the image URL belongs to the user's workspace
-	// URL format: http://endpoint/bucket/{workspace_id}/...
-	expectedPrefix := fmt.Sprintf("/%d/", workspaceID)
-	if !strings.Contains(imageURL, expectedPrefix) {
+	// Verify the object path belongs to the user's workspace
+	// Path format: {workspace_id}/{entity_type}/{entity_id}/{image_id}_{variant}.jpg
+	expectedPrefix := fmt.Sprintf("%d/", workspaceID)
+	if !strings.HasPrefix(objectPath, expectedPrefix) {
 		log.Warn().
 			Int32("workspace_id", workspaceID).
-			Str("url", imageURL).
+			Str("path", objectPath).
 			Msg("Attempted to delete image from different workspace")
 		return NewForbiddenError(c, "Cannot delete images from another workspace")
 	}
 
-	if err := h.imageService.DeleteAllVariants(c.Request().Context(), imageURL); err != nil {
-		log.Error().Err(err).Int32("workspace_id", workspaceID).Str("url", imageURL).Msg("Failed to delete image")
+	if err := h.imageService.DeleteAllVariants(c.Request().Context(), objectPath); err != nil {
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Str("path", objectPath).Msg("Failed to delete image")
 		return NewInternalError(c, "Failed to delete image")
 	}
 
 	log.Info().
 		Int32("workspace_id", workspaceID).
-		Str("url", imageURL).
+		Str("path", objectPath).
 		Msg("Image deleted successfully")
 
 	return c.NoContent(http.StatusNoContent)
