@@ -6,7 +6,7 @@ import (
 )
 
 // RegisterRoutes sets up all API routes
-func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler, recurringHandler *RecurringHandler, loanProviderHandler *LoanProviderHandler, loanHandler *LoanHandler, loanPaymentHandler *LoanPaymentHandler, wishlistHandler *WishlistHandler, wishlistItemHandler *WishlistItemHandler, wishlistPriceHandler *WishlistPriceHandler, wishlistNoteHandler *WishlistNoteHandler, imageHandler *ImageHandler, wsHandler *WebSocketHandler) {
+func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler, recurringHandler *RecurringHandler, loanProviderHandler *LoanProviderHandler, loanHandler *LoanHandler, loanPaymentHandler *LoanPaymentHandler, wishlistHandler *WishlistHandler, wishlistItemHandler *WishlistItemHandler, wishlistPriceHandler *WishlistPriceHandler, wishlistNoteHandler *WishlistNoteHandler, imageHandler *ImageHandler, wsHandler *WebSocketHandler, apiTokenHandler *APITokenHandler) {
 	// WebSocket route (auth via query param token)
 	e.GET("/ws", wsHandler.HandleWS)
 
@@ -166,4 +166,11 @@ func RegisterRoutes(e *echo.Echo, authMiddleware *middleware.AuthMiddleware, aut
 	images.Use(authMiddleware.Authenticate())
 	images.POST("", imageHandler.UploadImage)
 	images.DELETE("", imageHandler.DeleteImage)
+
+	// API Token routes (protected - JWT only, can't create tokens with tokens)
+	apiTokens := api.Group("/api-tokens")
+	apiTokens.Use(authMiddleware.Authenticate())
+	apiTokens.POST("", apiTokenHandler.CreateAPIToken)
+	apiTokens.GET("", apiTokenHandler.GetAPITokens)
+	apiTokens.DELETE("/:id", apiTokenHandler.RevokeAPIToken)
 }

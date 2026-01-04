@@ -23,6 +23,7 @@ type Querier interface {
 	CountTransactionsByCategory(ctx context.Context, arg CountTransactionsByCategoryParams) (int64, error)
 	CountTransactionsByWorkspace(ctx context.Context, arg CountTransactionsByWorkspaceParams) (int64, error)
 	CountWishlistItems(ctx context.Context, arg CountWishlistItemsParams) (int64, error)
+	CreateAPIToken(ctx context.Context, arg CreateAPITokenParams) (ApiToken, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
 	CreateBudgetCategory(ctx context.Context, arg CreateBudgetCategoryParams) (BudgetCategory, error)
 	CreateLoan(ctx context.Context, arg CreateLoanParams) (Loan, error)
@@ -46,6 +47,9 @@ type Querier interface {
 	DeleteWishlistItemNote(ctx context.Context, arg DeleteWishlistItemNoteParams) error
 	DeleteWishlistItemPrice(ctx context.Context, arg DeleteWishlistItemPriceParams) error
 	DeleteWorkspace(ctx context.Context, id int32) error
+	GetAPITokenByHash(ctx context.Context, tokenHash string) (ApiToken, error)
+	GetAPITokenByID(ctx context.Context, arg GetAPITokenByIDParams) (ApiToken, error)
+	GetAPITokensByWorkspace(ctx context.Context, workspaceID int32) ([]ApiToken, error)
 	GetAccountByID(ctx context.Context, arg GetAccountByIDParams) (Account, error)
 	GetAccountByIDIncludeDeleted(ctx context.Context, arg GetAccountByIDIncludeDeletedParams) (Account, error)
 	GetAccountTransactionSummaries(ctx context.Context, workspaceID int32) ([]GetAccountTransactionSummariesRow, error)
@@ -121,6 +125,7 @@ type Querier interface {
 	ListWishlistItemsWithStats(ctx context.Context, arg ListWishlistItemsWithStatsParams) ([]ListWishlistItemsWithStatsRow, error)
 	ListWishlists(ctx context.Context, workspaceID int32) ([]Wishlist, error)
 	MoveWishlistItem(ctx context.Context, arg MoveWishlistItemParams) (WishlistItem, error)
+	RevokeAPIToken(ctx context.Context, arg RevokeAPITokenParams) (int64, error)
 	SoftDeleteAccount(ctx context.Context, arg SoftDeleteAccountParams) (int64, error)
 	SoftDeleteBudgetCategory(ctx context.Context, arg SoftDeleteBudgetCategoryParams) error
 	SoftDeleteRecurringTransaction(ctx context.Context, arg SoftDeleteRecurringTransactionParams) (int64, error)
@@ -134,6 +139,7 @@ type Querier interface {
 	SumUnpaidLoanPaymentsByMonth(ctx context.Context, arg SumUnpaidLoanPaymentsByMonthParams) (pgtype.Numeric, error)
 	ToggleLoanPaymentPaid(ctx context.Context, arg ToggleLoanPaymentPaidParams) (LoanPayment, error)
 	ToggleTransactionPaidStatus(ctx context.Context, arg ToggleTransactionPaidStatusParams) (Transaction, error)
+	UpdateAPITokenLastUsed(ctx context.Context, id pgtype.UUID) error
 	UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error)
 	UpdateBudgetCategory(ctx context.Context, arg UpdateBudgetCategoryParams) (BudgetCategory, error)
 	UpdateLoan(ctx context.Context, arg UpdateLoanParams) (Loan, error)

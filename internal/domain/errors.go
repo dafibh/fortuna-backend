@@ -34,6 +34,8 @@ var (
 	ErrRecurringNotFound            = errors.New("recurring transaction not found")
 	ErrInvalidFrequency             = errors.New("invalid frequency")
 	ErrInvalidDueDay                = errors.New("due day must be between 1 and 31")
+	ErrAPITokenNotFound             = errors.New("API token not found")
+	ErrTooManyAPITokens             = errors.New("maximum number of API tokens reached")
 )
 
 // Validation constants

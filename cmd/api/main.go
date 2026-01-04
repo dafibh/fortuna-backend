@@ -64,6 +64,7 @@ func main() {
 	wishlistItemRepo := postgres.NewWishlistItemRepository(pool)
 	wishlistPriceRepo := postgres.NewWishlistPriceRepository(pool)
 	wishlistNoteRepo := postgres.NewWishlistNoteRepository(pool)
+	apiTokenRepo := postgres.NewAPITokenRepository(pool)
 
 	// Initialize image storage repository (optional - won't fail if MinIO not configured)
 	var imageRepo storage.ImageRepository
@@ -99,6 +100,7 @@ func main() {
 	wishlistPriceService := service.NewWishlistPriceService(wishlistPriceRepo, wishlistItemRepo)
 	wishlistNoteService := service.NewWishlistNoteService(wishlistNoteRepo, wishlistItemRepo)
 	imageService := service.NewImageService(imageRepo)
+	apiTokenService := service.NewAPITokenService(apiTokenRepo)
 
 	// Link image service for cleanup on delete
 	wishlistNoteService.SetImageService(imageService)
@@ -142,6 +144,7 @@ func main() {
 	wishlistNoteHandler := handler.NewWishlistNoteHandler(wishlistNoteService)
 	imageHandler := handler.NewImageHandler(imageService)
 	wsHandler := handler.NewWebSocketHandler(wsHub, wsJWTValidator, cfg.CORSOrigins)
+	apiTokenHandler := handler.NewAPITokenHandler(apiTokenService, authService)
 
 	// Create Echo instance
 	e := echo.New()
@@ -182,7 +185,7 @@ func main() {
 	})
 
 	// Register API routes
-	handler.RegisterRoutes(e, authMiddleware, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler, dashboardHandler, budgetCategoryHandler, budgetHandler, ccHandler, recurringHandler, loanProviderHandler, loanHandler, loanPaymentHandler, wishlistHandler, wishlistItemHandler, wishlistPriceHandler, wishlistNoteHandler, imageHandler, wsHandler)
+	handler.RegisterRoutes(e, authMiddleware, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler, dashboardHandler, budgetCategoryHandler, budgetHandler, ccHandler, recurringHandler, loanProviderHandler, loanHandler, loanPaymentHandler, wishlistHandler, wishlistItemHandler, wishlistPriceHandler, wishlistNoteHandler, imageHandler, wsHandler, apiTokenHandler)
 
 	// Start server in goroutine
 	go func() {
