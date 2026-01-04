@@ -1,5 +1,5 @@
 -- name: CreateWishlistItemPrice :one
-INSERT INTO wishlist_item_prices (item_id, platform_name, price, price_date, image_url)
+INSERT INTO wishlist_item_prices (item_id, platform_name, price, price_date, image_path)
 VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
@@ -18,7 +18,7 @@ ORDER BY wip.platform_name, wip.price_date DESC, wip.created_at DESC;
 
 -- name: GetCurrentPricesByItem :many
 SELECT DISTINCT ON (wip.platform_name)
-    wip.id, wip.item_id, wip.platform_name, wip.price, wip.price_date, wip.image_url, wip.created_at
+    wip.id, wip.item_id, wip.platform_name, wip.price, wip.price_date, wip.image_path, wip.created_at
 FROM wishlist_item_prices wip
 JOIN wishlist_items wi ON wi.id = wip.item_id
 JOIN wishlists w ON w.id = wi.wishlist_id

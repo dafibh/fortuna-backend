@@ -1,5 +1,5 @@
 -- name: CreateWishlistItem :one
-INSERT INTO wishlist_items (wishlist_id, title, description, external_link, image_url)
+INSERT INTO wishlist_items (wishlist_id, title, description, external_link, image_path)
 VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
@@ -16,7 +16,7 @@ ORDER BY wi.created_at DESC;
 
 -- name: UpdateWishlistItem :one
 UPDATE wishlist_items wi
-SET title = $3, description = $4, external_link = $5, image_url = $6, updated_at = NOW()
+SET title = $3, description = $4, external_link = $5, image_path = $6, updated_at = NOW()
 FROM wishlists w
 WHERE wi.id = $1 AND w.id = wi.wishlist_id AND w.workspace_id = $2 AND wi.deleted_at IS NULL AND w.deleted_at IS NULL
 RETURNING wi.*;
@@ -35,9 +35,9 @@ FROM wishlists w
 WHERE wi.id = $1 AND w.id = wi.wishlist_id AND w.workspace_id = $2 AND wi.deleted_at IS NULL AND w.deleted_at IS NULL;
 
 -- name: GetFirstItemImage :one
-SELECT wi.image_url FROM wishlist_items wi
+SELECT wi.image_path FROM wishlist_items wi
 JOIN wishlists w ON w.id = wi.wishlist_id
-WHERE wi.wishlist_id = $1 AND w.workspace_id = $2 AND wi.image_url IS NOT NULL AND wi.deleted_at IS NULL AND w.deleted_at IS NULL
+WHERE wi.wishlist_id = $1 AND w.workspace_id = $2 AND wi.image_path IS NOT NULL AND wi.deleted_at IS NULL AND w.deleted_at IS NULL
 ORDER BY wi.created_at ASC
 LIMIT 1;
 

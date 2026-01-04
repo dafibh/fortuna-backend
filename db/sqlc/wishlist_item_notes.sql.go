@@ -32,19 +32,19 @@ func (q *Queries) CountNotesByItem(ctx context.Context, arg CountNotesByItemPara
 }
 
 const createWishlistItemNote = `-- name: CreateWishlistItemNote :one
-INSERT INTO wishlist_item_notes (item_id, content, image_url)
+INSERT INTO wishlist_item_notes (item_id, content, image_path)
 VALUES ($1, $2, $3)
-RETURNING id, item_id, content, created_at, updated_at, deleted_at, image_url
+RETURNING id, item_id, content, created_at, updated_at, deleted_at, image_url, image_path
 `
 
 type CreateWishlistItemNoteParams struct {
-	ItemID   int32       `json:"item_id"`
-	Content  string      `json:"content"`
-	ImageUrl pgtype.Text `json:"image_url"`
+	ItemID    int32       `json:"item_id"`
+	Content   string      `json:"content"`
+	ImagePath pgtype.Text `json:"image_path"`
 }
 
 func (q *Queries) CreateWishlistItemNote(ctx context.Context, arg CreateWishlistItemNoteParams) (WishlistItemNote, error) {
-	row := q.db.QueryRow(ctx, createWishlistItemNote, arg.ItemID, arg.Content, arg.ImageUrl)
+	row := q.db.QueryRow(ctx, createWishlistItemNote, arg.ItemID, arg.Content, arg.ImagePath)
 	var i WishlistItemNote
 	err := row.Scan(
 		&i.ID,
@@ -54,6 +54,7 @@ func (q *Queries) CreateWishlistItemNote(ctx context.Context, arg CreateWishlist
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.ImageUrl,
+		&i.ImagePath,
 	)
 	return i, err
 }
@@ -77,7 +78,7 @@ func (q *Queries) DeleteWishlistItemNote(ctx context.Context, arg DeleteWishlist
 }
 
 const getWishlistItemNoteByID = `-- name: GetWishlistItemNoteByID :one
-SELECT win.id, win.item_id, win.content, win.created_at, win.updated_at, win.deleted_at, win.image_url FROM wishlist_item_notes win
+SELECT win.id, win.item_id, win.content, win.created_at, win.updated_at, win.deleted_at, win.image_url, win.image_path FROM wishlist_item_notes win
 JOIN wishlist_items wi ON wi.id = win.item_id
 JOIN wishlists w ON w.id = wi.wishlist_id
 WHERE win.id = $1 AND w.workspace_id = $2 AND win.deleted_at IS NULL
@@ -100,12 +101,13 @@ func (q *Queries) GetWishlistItemNoteByID(ctx context.Context, arg GetWishlistIt
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.ImageUrl,
+		&i.ImagePath,
 	)
 	return i, err
 }
 
 const listNotesByItemAsc = `-- name: ListNotesByItemAsc :many
-SELECT win.id, win.item_id, win.content, win.created_at, win.updated_at, win.deleted_at, win.image_url FROM wishlist_item_notes win
+SELECT win.id, win.item_id, win.content, win.created_at, win.updated_at, win.deleted_at, win.image_url, win.image_path FROM wishlist_item_notes win
 JOIN wishlist_items wi ON wi.id = win.item_id
 JOIN wishlists w ON w.id = wi.wishlist_id
 WHERE win.item_id = $1 AND w.workspace_id = $2 AND win.deleted_at IS NULL
@@ -135,6 +137,7 @@ func (q *Queries) ListNotesByItemAsc(ctx context.Context, arg ListNotesByItemAsc
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.ImageUrl,
+			&i.ImagePath,
 		); err != nil {
 			return nil, err
 		}
@@ -147,7 +150,7 @@ func (q *Queries) ListNotesByItemAsc(ctx context.Context, arg ListNotesByItemAsc
 }
 
 const listNotesByItemDesc = `-- name: ListNotesByItemDesc :many
-SELECT win.id, win.item_id, win.content, win.created_at, win.updated_at, win.deleted_at, win.image_url FROM wishlist_item_notes win
+SELECT win.id, win.item_id, win.content, win.created_at, win.updated_at, win.deleted_at, win.image_url, win.image_path FROM wishlist_item_notes win
 JOIN wishlist_items wi ON wi.id = win.item_id
 JOIN wishlists w ON w.id = wi.wishlist_id
 WHERE win.item_id = $1 AND w.workspace_id = $2 AND win.deleted_at IS NULL
@@ -177,6 +180,7 @@ func (q *Queries) ListNotesByItemDesc(ctx context.Context, arg ListNotesByItemDe
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.ImageUrl,
+			&i.ImagePath,
 		); err != nil {
 			return nil, err
 		}
@@ -190,18 +194,18 @@ func (q *Queries) ListNotesByItemDesc(ctx context.Context, arg ListNotesByItemDe
 
 const updateWishlistItemNote = `-- name: UpdateWishlistItemNote :one
 UPDATE wishlist_item_notes win
-SET content = $3, image_url = $4, updated_at = NOW()
+SET content = $3, image_path = $4, updated_at = NOW()
 FROM wishlist_items wi, wishlists w
 WHERE win.id = $1 AND win.item_id = wi.id AND wi.wishlist_id = w.id AND w.workspace_id = $2
 AND win.deleted_at IS NULL AND wi.deleted_at IS NULL AND w.deleted_at IS NULL
-RETURNING win.id, win.item_id, win.content, win.created_at, win.updated_at, win.deleted_at, win.image_url
+RETURNING win.id, win.item_id, win.content, win.created_at, win.updated_at, win.deleted_at, win.image_url, win.image_path
 `
 
 type UpdateWishlistItemNoteParams struct {
 	ID          int32       `json:"id"`
 	WorkspaceID int32       `json:"workspace_id"`
 	Content     string      `json:"content"`
-	ImageUrl    pgtype.Text `json:"image_url"`
+	ImagePath   pgtype.Text `json:"image_path"`
 }
 
 func (q *Queries) UpdateWishlistItemNote(ctx context.Context, arg UpdateWishlistItemNoteParams) (WishlistItemNote, error) {
@@ -209,7 +213,7 @@ func (q *Queries) UpdateWishlistItemNote(ctx context.Context, arg UpdateWishlist
 		arg.ID,
 		arg.WorkspaceID,
 		arg.Content,
-		arg.ImageUrl,
+		arg.ImagePath,
 	)
 	var i WishlistItemNote
 	err := row.Scan(
@@ -220,6 +224,7 @@ func (q *Queries) UpdateWishlistItemNote(ctx context.Context, arg UpdateWishlist
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.ImageUrl,
+		&i.ImagePath,
 	)
 	return i, err
 }

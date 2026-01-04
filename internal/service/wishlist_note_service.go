@@ -29,8 +29,8 @@ func (s *WishlistNoteService) SetImageService(imageSvc *ImageService) {
 
 // CreateNoteInput contains input for creating a note
 type CreateNoteInput struct {
-	Content  string
-	ImageURL *string
+	Content   string
+	ImagePath *string
 }
 
 // CreateNote creates a new note for an item
@@ -48,9 +48,9 @@ func (s *WishlistNoteService) CreateNote(workspaceID int32, itemID int32, input 
 	}
 
 	note := &domain.WishlistItemNote{
-		ItemID:   itemID,
-		Content:  content,
-		ImageURL: input.ImageURL,
+		ItemID:    itemID,
+		Content:   content,
+		ImagePath: input.ImagePath,
 	}
 
 	return s.noteRepo.Create(note)
@@ -84,7 +84,7 @@ func (s *WishlistNoteService) CountNotesByItem(workspaceID int32, itemID int32) 
 }
 
 // UpdateNote updates a note's content and image
-func (s *WishlistNoteService) UpdateNote(workspaceID int32, id int32, content string, imageURL *string) (*domain.WishlistItemNote, error) {
+func (s *WishlistNoteService) UpdateNote(workspaceID int32, id int32, content string, imagePath *string) (*domain.WishlistItemNote, error) {
 	// Verify note exists
 	_, err := s.noteRepo.GetByID(workspaceID, id)
 	if err != nil {
@@ -97,7 +97,7 @@ func (s *WishlistNoteService) UpdateNote(workspaceID int32, id int32, content st
 		return nil, domain.ErrNoteContentEmpty
 	}
 
-	return s.noteRepo.Update(workspaceID, id, content, imageURL)
+	return s.noteRepo.Update(workspaceID, id, content, imagePath)
 }
 
 // DeleteNote soft-deletes a note and cleans up associated images
@@ -109,9 +109,9 @@ func (s *WishlistNoteService) DeleteNote(workspaceID int32, id int32) error {
 	}
 
 	// Delete associated image if present
-	if note.ImageURL != nil && s.imageService != nil {
+	if note.ImagePath != nil && s.imageService != nil {
 		// Best effort cleanup - don't fail if image deletion fails
-		_ = s.imageService.DeleteAllVariants(context.Background(), *note.ImageURL)
+		_ = s.imageService.DeleteAllVariants(context.Background(), *note.ImagePath)
 	}
 
 	return s.noteRepo.Delete(workspaceID, id)

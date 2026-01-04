@@ -172,6 +172,7 @@ type WishlistItem struct {
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 	DeletedAt    pgtype.Timestamptz `json:"deleted_at"`
+	ImagePath    pgtype.Text        `json:"image_path"`
 }
 
 type WishlistItemNote struct {
@@ -182,6 +183,7 @@ type WishlistItemNote struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 	DeletedAt pgtype.Timestamptz `json:"deleted_at"`
 	ImageUrl  pgtype.Text        `json:"image_url"`
+	ImagePath pgtype.Text        `json:"image_path"`
 }
 
 type WishlistItemPrice struct {
@@ -192,6 +194,7 @@ type WishlistItemPrice struct {
 	PriceDate    pgtype.Date        `json:"price_date"`
 	ImageUrl     pgtype.Text        `json:"image_url"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	ImagePath    pgtype.Text        `json:"image_path"`
 }
 
 type Workspace struct {

@@ -29,7 +29,7 @@ type CreatePriceRequest struct {
 	PlatformName string  `json:"platformName"`
 	Price        string  `json:"price"`
 	PriceDate    *string `json:"priceDate"` // Optional, defaults to today (YYYY-MM-DD)
-	ImageURL     *string `json:"imageUrl"`
+	ImagePath    *string `json:"imagePath"`
 }
 
 // PriceEntryResponse represents a price entry in API responses
@@ -39,7 +39,7 @@ type PriceEntryResponse struct {
 	PlatformName string  `json:"platformName"`
 	Price        string  `json:"price"`
 	PriceDate    string  `json:"priceDate"` // YYYY-MM-DD
-	ImageURL     *string `json:"imageUrl,omitempty"`
+	ImagePath    *string `json:"imagePath,omitempty"`
 	CreatedAt    string  `json:"createdAt"`
 }
 
@@ -52,13 +52,13 @@ type PriceChangeResponse struct {
 
 // PlatformPriceGroupResponse represents prices grouped by platform
 type PlatformPriceGroupResponse struct {
-	PlatformName    string               `json:"platformName"`
-	CurrentPrice    string               `json:"currentPrice"`
-	PreviousPrice   *string              `json:"previousPrice,omitempty"`
-	PriceChange     *PriceChangeResponse `json:"priceChange,omitempty"`
-	CurrentImageURL *string              `json:"currentImageUrl,omitempty"`
-	PriceHistory    []PriceEntryResponse `json:"priceHistory"`
-	IsLowestPrice   bool                 `json:"isLowestPrice"`
+	PlatformName     string               `json:"platformName"`
+	CurrentPrice     string               `json:"currentPrice"`
+	PreviousPrice    *string              `json:"previousPrice,omitempty"`
+	PriceChange      *PriceChangeResponse `json:"priceChange,omitempty"`
+	CurrentImagePath *string              `json:"currentImagePath,omitempty"`
+	PriceHistory     []PriceEntryResponse `json:"priceHistory"`
+	IsLowestPrice    bool                 `json:"isLowestPrice"`
 }
 
 // CreatePrice handles POST /api/v1/wishlist-items/:id/prices
@@ -102,7 +102,7 @@ func (h *WishlistPriceHandler) CreatePrice(c echo.Context) error {
 		PlatformName: req.PlatformName,
 		Price:        price,
 		PriceDate:    priceDate,
-		ImageURL:     req.ImageURL,
+		ImagePath:    req.ImagePath,
 	}
 
 	priceEntry, err := h.priceService.CreatePrice(workspaceID, int32(itemID), input)
@@ -128,11 +128,6 @@ func (h *WishlistPriceHandler) CreatePrice(c echo.Context) error {
 		if errors.Is(err, domain.ErrPriceDateFuture) {
 			return NewValidationError(c, "Validation failed", []ValidationError{
 				{Field: "priceDate", Message: "Price date cannot be in the future"},
-			})
-		}
-		if errors.Is(err, domain.ErrPriceInvalidImageURL) {
-			return NewValidationError(c, "Validation failed", []ValidationError{
-				{Field: "imageUrl", Message: "Must be a valid URL"},
 			})
 		}
 		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("item_id", itemID).Msg("Failed to create price entry")
@@ -240,7 +235,7 @@ func toPriceEntryResponse(price *domain.WishlistItemPrice) PriceEntryResponse {
 		PlatformName: price.PlatformName,
 		Price:        price.Price.String(),
 		PriceDate:    price.PriceDate.Format("2006-01-02"),
-		ImageURL:     price.ImageURL,
+		ImagePath:    price.ImagePath,
 		CreatedAt:    price.CreatedAt.Format(time.RFC3339),
 	}
 }
@@ -262,12 +257,12 @@ func toPlatformPriceGroupResponse(group *domain.PriceByPlatform) PlatformPriceGr
 	}
 
 	return PlatformPriceGroupResponse{
-		PlatformName:    group.PlatformName,
-		CurrentPrice:    group.CurrentPrice,
-		PreviousPrice:   group.PreviousPrice,
-		PriceChange:     priceChange,
-		CurrentImageURL: group.CurrentImageURL,
-		PriceHistory:    history,
-		IsLowestPrice:   group.IsLowestPrice,
+		PlatformName:     group.PlatformName,
+		CurrentPrice:     group.CurrentPrice,
+		PreviousPrice:    group.PreviousPrice,
+		PriceChange:      priceChange,
+		CurrentImagePath: group.CurrentImagePath,
+		PriceHistory:     history,
+		IsLowestPrice:    group.IsLowestPrice,
 	}
 }

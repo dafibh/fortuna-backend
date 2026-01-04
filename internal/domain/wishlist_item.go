@@ -7,11 +7,10 @@ import (
 )
 
 var (
-	ErrWishlistItemNotFound        = errors.New("wishlist item not found")
-	ErrWishlistItemTitleEmpty      = errors.New("wishlist item title is required")
-	ErrWishlistItemTitleLong       = errors.New("wishlist item title must be 255 characters or less")
-	ErrWishlistItemInvalidURL      = errors.New("external link must be a valid URL")
-	ErrWishlistItemInvalidImageURL = errors.New("image URL must be a valid URL")
+	ErrWishlistItemNotFound   = errors.New("wishlist item not found")
+	ErrWishlistItemTitleEmpty = errors.New("wishlist item title is required")
+	ErrWishlistItemTitleLong  = errors.New("wishlist item title must be 255 characters or less")
+	ErrWishlistItemInvalidURL = errors.New("external link must be a valid URL")
 )
 
 type WishlistItem struct {
@@ -20,7 +19,7 @@ type WishlistItem struct {
 	Title        string     `json:"title"`
 	Description  *string    `json:"description,omitempty"`
 	ExternalLink *string    `json:"externalLink,omitempty"`
-	ImageURL     *string    `json:"imageUrl,omitempty"`
+	ImagePath    *string    `json:"imagePath,omitempty"`
 	CreatedAt    time.Time  `json:"createdAt"`
 	UpdatedAt    time.Time  `json:"updatedAt"`
 	DeletedAt    *time.Time `json:"deletedAt,omitempty"`
@@ -45,11 +44,7 @@ func (item *WishlistItem) Validate() error {
 			return ErrWishlistItemInvalidURL
 		}
 	}
-	if item.ImageURL != nil && *item.ImageURL != "" {
-		if _, err := url.ParseRequestURI(*item.ImageURL); err != nil {
-			return ErrWishlistItemInvalidImageURL
-		}
-	}
+	// ImagePath is an S3 object path, not a URL - no URL validation needed
 	return nil
 }
 

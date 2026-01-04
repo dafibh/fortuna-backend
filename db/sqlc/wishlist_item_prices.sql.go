@@ -12,9 +12,9 @@ import (
 )
 
 const createWishlistItemPrice = `-- name: CreateWishlistItemPrice :one
-INSERT INTO wishlist_item_prices (item_id, platform_name, price, price_date, image_url)
+INSERT INTO wishlist_item_prices (item_id, platform_name, price, price_date, image_path)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, item_id, platform_name, price, price_date, image_url, created_at
+RETURNING id, item_id, platform_name, price, price_date, image_url, created_at, image_path
 `
 
 type CreateWishlistItemPriceParams struct {
@@ -22,7 +22,7 @@ type CreateWishlistItemPriceParams struct {
 	PlatformName string         `json:"platform_name"`
 	Price        pgtype.Numeric `json:"price"`
 	PriceDate    pgtype.Date    `json:"price_date"`
-	ImageUrl     pgtype.Text    `json:"image_url"`
+	ImagePath    pgtype.Text    `json:"image_path"`
 }
 
 func (q *Queries) CreateWishlistItemPrice(ctx context.Context, arg CreateWishlistItemPriceParams) (WishlistItemPrice, error) {
@@ -31,7 +31,7 @@ func (q *Queries) CreateWishlistItemPrice(ctx context.Context, arg CreateWishlis
 		arg.PlatformName,
 		arg.Price,
 		arg.PriceDate,
-		arg.ImageUrl,
+		arg.ImagePath,
 	)
 	var i WishlistItemPrice
 	err := row.Scan(
@@ -42,6 +42,7 @@ func (q *Queries) CreateWishlistItemPrice(ctx context.Context, arg CreateWishlis
 		&i.PriceDate,
 		&i.ImageUrl,
 		&i.CreatedAt,
+		&i.ImagePath,
 	)
 	return i, err
 }
@@ -89,7 +90,7 @@ func (q *Queries) GetBestPriceForItem(ctx context.Context, arg GetBestPriceForIt
 
 const getCurrentPricesByItem = `-- name: GetCurrentPricesByItem :many
 SELECT DISTINCT ON (wip.platform_name)
-    wip.id, wip.item_id, wip.platform_name, wip.price, wip.price_date, wip.image_url, wip.created_at
+    wip.id, wip.item_id, wip.platform_name, wip.price, wip.price_date, wip.image_path, wip.created_at
 FROM wishlist_item_prices wip
 JOIN wishlist_items wi ON wi.id = wip.item_id
 JOIN wishlists w ON w.id = wi.wishlist_id
@@ -102,22 +103,32 @@ type GetCurrentPricesByItemParams struct {
 	WorkspaceID int32 `json:"workspace_id"`
 }
 
-func (q *Queries) GetCurrentPricesByItem(ctx context.Context, arg GetCurrentPricesByItemParams) ([]WishlistItemPrice, error) {
+type GetCurrentPricesByItemRow struct {
+	ID           int32              `json:"id"`
+	ItemID       int32              `json:"item_id"`
+	PlatformName string             `json:"platform_name"`
+	Price        pgtype.Numeric     `json:"price"`
+	PriceDate    pgtype.Date        `json:"price_date"`
+	ImagePath    pgtype.Text        `json:"image_path"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) GetCurrentPricesByItem(ctx context.Context, arg GetCurrentPricesByItemParams) ([]GetCurrentPricesByItemRow, error) {
 	rows, err := q.db.Query(ctx, getCurrentPricesByItem, arg.ItemID, arg.WorkspaceID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []WishlistItemPrice{}
+	items := []GetCurrentPricesByItemRow{}
 	for rows.Next() {
-		var i WishlistItemPrice
+		var i GetCurrentPricesByItemRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ItemID,
 			&i.PlatformName,
 			&i.Price,
 			&i.PriceDate,
-			&i.ImageUrl,
+			&i.ImagePath,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -131,7 +142,7 @@ func (q *Queries) GetCurrentPricesByItem(ctx context.Context, arg GetCurrentPric
 }
 
 const getPriceHistoryByPlatform = `-- name: GetPriceHistoryByPlatform :many
-SELECT wip.id, wip.item_id, wip.platform_name, wip.price, wip.price_date, wip.image_url, wip.created_at FROM wishlist_item_prices wip
+SELECT wip.id, wip.item_id, wip.platform_name, wip.price, wip.price_date, wip.image_url, wip.created_at, wip.image_path FROM wishlist_item_prices wip
 JOIN wishlist_items wi ON wi.id = wip.item_id
 JOIN wishlists w ON w.id = wi.wishlist_id
 WHERE wip.item_id = $1 AND wip.platform_name = $2 AND w.workspace_id = $3
@@ -162,6 +173,7 @@ func (q *Queries) GetPriceHistoryByPlatform(ctx context.Context, arg GetPriceHis
 			&i.PriceDate,
 			&i.ImageUrl,
 			&i.CreatedAt,
+			&i.ImagePath,
 		); err != nil {
 			return nil, err
 		}
@@ -174,7 +186,7 @@ func (q *Queries) GetPriceHistoryByPlatform(ctx context.Context, arg GetPriceHis
 }
 
 const getWishlistItemPriceByID = `-- name: GetWishlistItemPriceByID :one
-SELECT wip.id, wip.item_id, wip.platform_name, wip.price, wip.price_date, wip.image_url, wip.created_at FROM wishlist_item_prices wip
+SELECT wip.id, wip.item_id, wip.platform_name, wip.price, wip.price_date, wip.image_url, wip.created_at, wip.image_path FROM wishlist_item_prices wip
 JOIN wishlist_items wi ON wi.id = wip.item_id
 JOIN wishlists w ON w.id = wi.wishlist_id
 WHERE wip.id = $1 AND w.workspace_id = $2 AND wi.deleted_at IS NULL AND w.deleted_at IS NULL
@@ -196,12 +208,13 @@ func (q *Queries) GetWishlistItemPriceByID(ctx context.Context, arg GetWishlistI
 		&i.PriceDate,
 		&i.ImageUrl,
 		&i.CreatedAt,
+		&i.ImagePath,
 	)
 	return i, err
 }
 
 const listPricesByItem = `-- name: ListPricesByItem :many
-SELECT wip.id, wip.item_id, wip.platform_name, wip.price, wip.price_date, wip.image_url, wip.created_at FROM wishlist_item_prices wip
+SELECT wip.id, wip.item_id, wip.platform_name, wip.price, wip.price_date, wip.image_url, wip.created_at, wip.image_path FROM wishlist_item_prices wip
 JOIN wishlist_items wi ON wi.id = wip.item_id
 JOIN wishlists w ON w.id = wi.wishlist_id
 WHERE wip.item_id = $1 AND w.workspace_id = $2 AND wi.deleted_at IS NULL AND w.deleted_at IS NULL
@@ -230,6 +243,7 @@ func (q *Queries) ListPricesByItem(ctx context.Context, arg ListPricesByItemPara
 			&i.PriceDate,
 			&i.ImageUrl,
 			&i.CreatedAt,
+			&i.ImagePath,
 		); err != nil {
 			return nil, err
 		}

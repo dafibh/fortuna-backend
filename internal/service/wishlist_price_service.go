@@ -1,7 +1,6 @@
 package service
 
 import (
-	"net/url"
 	"strings"
 	"time"
 
@@ -28,7 +27,7 @@ type CreatePriceInput struct {
 	PlatformName string
 	Price        decimal.Decimal
 	PriceDate    *time.Time
-	ImageURL     *string
+	ImagePath    *string
 }
 
 // CreatePrice creates a new price entry for an item
@@ -63,21 +62,12 @@ func (s *WishlistPriceService) CreatePrice(workspaceID int32, itemID int32, inpu
 		}
 	}
 
-	// Validate image URL if provided
-	if input.ImageURL != nil && *input.ImageURL != "" {
-		imageURL := strings.TrimSpace(*input.ImageURL)
-		if _, err := url.ParseRequestURI(imageURL); err != nil {
-			return nil, domain.ErrPriceInvalidImageURL
-		}
-		input.ImageURL = &imageURL
-	}
-
 	price := &domain.WishlistItemPrice{
 		ItemID:       itemID,
 		PlatformName: platformName,
 		Price:        input.Price,
 		PriceDate:    priceDate,
-		ImageURL:     input.ImageURL,
+		ImagePath:    input.ImagePath,
 	}
 
 	return s.priceRepo.Create(price)
@@ -139,11 +129,11 @@ func (s *WishlistPriceService) GetPricesGroupedByPlatform(workspaceID int32, ite
 		group, exists := platformMap[price.PlatformName]
 		if !exists {
 			group = &domain.PriceByPlatform{
-				PlatformName:    price.PlatformName,
-				CurrentPrice:    price.Price.String(),
-				CurrentImageURL: price.ImageURL, // First (current) entry's image
-				PriceHistory:    []*domain.WishlistItemPrice{},
-				IsLowestPrice:   false,
+				PlatformName:     price.PlatformName,
+				CurrentPrice:     price.Price.String(),
+				CurrentImagePath: price.ImagePath, // First (current) entry's image
+				PriceHistory:     []*domain.WishlistItemPrice{},
+				IsLowestPrice:    false,
 			}
 			platformMap[price.PlatformName] = group
 			platformOrder = append(platformOrder, price.PlatformName)

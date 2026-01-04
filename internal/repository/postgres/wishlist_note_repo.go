@@ -29,7 +29,7 @@ func (r *WishlistNoteRepository) Create(note *domain.WishlistItemNote) (*domain.
 	created, err := r.queries.CreateWishlistItemNote(ctx, sqlc.CreateWishlistItemNoteParams{
 		ItemID:   note.ItemID,
 		Content:  note.Content,
-		ImageUrl: stringPtrToPgText(note.ImageURL),
+		ImagePath: stringPtrToPgText(note.ImagePath),
 	})
 	if err != nil {
 		return nil, err
@@ -93,13 +93,13 @@ func (r *WishlistNoteRepository) CountByItem(workspaceID int32, itemID int32) (i
 }
 
 // Update updates a note's content and image
-func (r *WishlistNoteRepository) Update(workspaceID int32, id int32, content string, imageURL *string) (*domain.WishlistItemNote, error) {
+func (r *WishlistNoteRepository) Update(workspaceID int32, id int32, content string, imagePath *string) (*domain.WishlistItemNote, error) {
 	ctx := context.Background()
 	updated, err := r.queries.UpdateWishlistItemNote(ctx, sqlc.UpdateWishlistItemNoteParams{
 		ID:          id,
 		WorkspaceID: workspaceID,
 		Content:     content,
-		ImageUrl:    stringPtrToPgText(imageURL),
+		ImagePath:   stringPtrToPgText(imagePath),
 	})
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -121,15 +121,15 @@ func (r *WishlistNoteRepository) Delete(workspaceID int32, id int32) error {
 
 // Helper function to convert sqlc type to domain type
 func sqlcNoteToDomain(note sqlc.WishlistItemNote) *domain.WishlistItemNote {
-	var imageURL *string
-	if note.ImageUrl.Valid {
-		imageURL = &note.ImageUrl.String
+	var imagePath *string
+	if note.ImagePath.Valid {
+		imagePath = &note.ImagePath.String
 	}
 	return &domain.WishlistItemNote{
 		ID:        note.ID,
 		ItemID:    note.ItemID,
 		Content:   note.Content,
-		ImageURL:  imageURL,
+		ImagePath: imagePath,
 		CreatedAt: note.CreatedAt.Time,
 		UpdatedAt: note.UpdatedAt.Time,
 	}

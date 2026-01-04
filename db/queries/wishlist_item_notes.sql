@@ -1,5 +1,5 @@
 -- name: CreateWishlistItemNote :one
-INSERT INTO wishlist_item_notes (item_id, content, image_url)
+INSERT INTO wishlist_item_notes (item_id, content, image_path)
 VALUES ($1, $2, $3)
 RETURNING *;
 
@@ -35,7 +35,7 @@ AND wi.deleted_at IS NULL AND w.deleted_at IS NULL;
 
 -- name: UpdateWishlistItemNote :one
 UPDATE wishlist_item_notes win
-SET content = $3, image_url = $4, updated_at = NOW()
+SET content = $3, image_path = $4, updated_at = NOW()
 FROM wishlist_items wi, wishlists w
 WHERE win.id = $1 AND win.item_id = wi.id AND wi.wishlist_id = w.id AND w.workspace_id = $2
 AND win.deleted_at IS NULL AND wi.deleted_at IS NULL AND w.deleted_at IS NULL

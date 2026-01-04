@@ -37,7 +37,7 @@ func (r *WishlistPriceRepository) Create(price *domain.WishlistItemPrice) (*doma
 		PlatformName: price.PlatformName,
 		Price:        priceNum,
 		PriceDate:    timeToPgDate(price.PriceDate),
-		ImageUrl:     stringPtrToPgText(price.ImageURL),
+		ImagePath:    stringPtrToPgText(price.ImagePath),
 	})
 	if err != nil {
 		return nil, err
@@ -90,7 +90,7 @@ func (r *WishlistPriceRepository) GetCurrentPricesByItem(workspaceID int32, item
 	}
 	result := make([]*domain.WishlistItemPrice, len(prices))
 	for i, price := range prices {
-		result[i] = sqlcPriceToDomain(price)
+		result[i] = sqlcCurrentPriceRowToDomain(price)
 	}
 	return result, nil
 }
@@ -151,8 +151,24 @@ func sqlcPriceToDomain(price sqlc.WishlistItemPrice) *domain.WishlistItemPrice {
 		PriceDate:    pgDateToTime(price.PriceDate),
 		CreatedAt:    price.CreatedAt.Time,
 	}
-	if price.ImageUrl.Valid {
-		result.ImageURL = &price.ImageUrl.String
+	if price.ImagePath.Valid {
+		result.ImagePath = &price.ImagePath.String
+	}
+	return result
+}
+
+// Helper function to convert GetCurrentPricesByItemRow to domain type
+func sqlcCurrentPriceRowToDomain(price sqlc.GetCurrentPricesByItemRow) *domain.WishlistItemPrice {
+	result := &domain.WishlistItemPrice{
+		ID:           price.ID,
+		ItemID:       price.ItemID,
+		PlatformName: price.PlatformName,
+		Price:        pgNumericToDecimal(price.Price),
+		PriceDate:    pgDateToTime(price.PriceDate),
+		CreatedAt:    price.CreatedAt.Time,
+	}
+	if price.ImagePath.Valid {
+		result.ImagePath = &price.ImagePath.String
 	}
 	return result
 }

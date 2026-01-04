@@ -74,7 +74,7 @@ type Querier interface {
 	// Returns all transactions for a specific category in a month
 	GetCategoryTransactions(ctx context.Context, arg GetCategoryTransactionsParams) ([]GetCategoryTransactionsRow, error)
 	GetCompletedLoansWithStats(ctx context.Context, workspaceID int32) ([]GetCompletedLoansWithStatsRow, error)
-	GetCurrentPricesByItem(ctx context.Context, arg GetCurrentPricesByItemParams) ([]WishlistItemPrice, error)
+	GetCurrentPricesByItem(ctx context.Context, arg GetCurrentPricesByItemParams) ([]GetCurrentPricesByItemRow, error)
 	GetFirstItemImage(ctx context.Context, arg GetFirstItemImageParams) (pgtype.Text, error)
 	GetLatestMonth(ctx context.Context, workspaceID int32) (Month, error)
 	GetLoanByID(ctx context.Context, arg GetLoanByIDParams) (Loan, error)

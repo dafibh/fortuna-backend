@@ -31,7 +31,7 @@ func (r *WishlistItemRepository) Create(item *domain.WishlistItem) (*domain.Wish
 		Title:        item.Title,
 		Description:  stringPtrToPgText(item.Description),
 		ExternalLink: stringPtrToPgText(item.ExternalLink),
-		ImageUrl:     stringPtrToPgText(item.ImageURL),
+		ImagePath:    stringPtrToPgText(item.ImagePath),
 	})
 	if err != nil {
 		return nil, err
@@ -98,7 +98,7 @@ func (r *WishlistItemRepository) Update(workspaceID int32, item *domain.Wishlist
 		Title:        item.Title,
 		Description:  stringPtrToPgText(item.Description),
 		ExternalLink: stringPtrToPgText(item.ExternalLink),
-		ImageUrl:     stringPtrToPgText(item.ImageURL),
+		ImagePath:    stringPtrToPgText(item.ImagePath),
 	})
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -135,10 +135,10 @@ func (r *WishlistItemRepository) SoftDelete(workspaceID int32, id int32) error {
 	})
 }
 
-// GetFirstItemImage gets the image URL of the first item in a wishlist (for thumbnail)
+// GetFirstItemImage gets the image path of the first item in a wishlist (for thumbnail)
 func (r *WishlistItemRepository) GetFirstItemImage(workspaceID int32, wishlistID int32) (*string, error) {
 	ctx := context.Background()
-	imageURL, err := r.queries.GetFirstItemImage(ctx, sqlc.GetFirstItemImageParams{
+	imagePath, err := r.queries.GetFirstItemImage(ctx, sqlc.GetFirstItemImageParams{
 		WishlistID:  wishlistID,
 		WorkspaceID: workspaceID,
 	})
@@ -148,10 +148,10 @@ func (r *WishlistItemRepository) GetFirstItemImage(workspaceID int32, wishlistID
 		}
 		return nil, err
 	}
-	if !imageURL.Valid {
+	if !imagePath.Valid {
 		return nil, nil
 	}
-	return &imageURL.String, nil
+	return &imagePath.String, nil
 }
 
 // CountByWishlist counts items in a wishlist
@@ -178,8 +178,8 @@ func sqlcWishlistItemToDomain(item sqlc.WishlistItem) *domain.WishlistItem {
 	if item.ExternalLink.Valid {
 		result.ExternalLink = &item.ExternalLink.String
 	}
-	if item.ImageUrl.Valid {
-		result.ImageURL = &item.ImageUrl.String
+	if item.ImagePath.Valid {
+		result.ImagePath = &item.ImagePath.String
 	}
 	if item.DeletedAt.Valid {
 		result.DeletedAt = &item.DeletedAt.Time
@@ -205,8 +205,8 @@ func sqlcWishlistItemWithStatsToDomain(row sqlc.ListWishlistItemsWithStatsRow) *
 	if row.ExternalLink.Valid {
 		result.ExternalLink = &row.ExternalLink.String
 	}
-	if row.ImageUrl.Valid {
-		result.ImageURL = &row.ImageUrl.String
+	if row.ImagePath.Valid {
+		result.ImagePath = &row.ImagePath.String
 	}
 	if row.DeletedAt.Valid {
 		result.DeletedAt = &row.DeletedAt.Time

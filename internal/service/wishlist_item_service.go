@@ -26,7 +26,7 @@ type CreateWishlistItemInput struct {
 	Title        string
 	Description  *string
 	ExternalLink *string
-	ImageURL     *string
+	ImagePath    *string
 }
 
 // CreateItem creates a new item in a wishlist
@@ -54,20 +54,12 @@ func (s *WishlistItemService) CreateItem(workspaceID int32, wishlistID int32, in
 		}
 		input.ExternalLink = &link
 	}
-	if input.ImageURL != nil && *input.ImageURL != "" {
-		imageURL := strings.TrimSpace(*input.ImageURL)
-		if _, err := url.ParseRequestURI(imageURL); err != nil {
-			return nil, domain.ErrWishlistItemInvalidImageURL
-		}
-		input.ImageURL = &imageURL
-	}
-
 	item := &domain.WishlistItem{
 		WishlistID:   wishlistID,
 		Title:        title,
 		Description:  input.Description,
 		ExternalLink: input.ExternalLink,
-		ImageURL:     input.ImageURL,
+		ImagePath:    input.ImagePath,
 	}
 
 	return s.itemRepo.Create(item)
@@ -105,7 +97,7 @@ type UpdateWishlistItemInput struct {
 	Title        string
 	Description  *string
 	ExternalLink *string
-	ImageURL     *string
+	ImagePath    *string
 }
 
 // UpdateItem updates a wishlist item
@@ -133,18 +125,10 @@ func (s *WishlistItemService) UpdateItem(workspaceID int32, id int32, input Upda
 		}
 		input.ExternalLink = &link
 	}
-	if input.ImageURL != nil && *input.ImageURL != "" {
-		imageURL := strings.TrimSpace(*input.ImageURL)
-		if _, err := url.ParseRequestURI(imageURL); err != nil {
-			return nil, domain.ErrWishlistItemInvalidImageURL
-		}
-		input.ImageURL = &imageURL
-	}
-
 	existing.Title = title
 	existing.Description = input.Description
 	existing.ExternalLink = input.ExternalLink
-	existing.ImageURL = input.ImageURL
+	existing.ImagePath = input.ImagePath
 
 	return s.itemRepo.Update(workspaceID, existing)
 }

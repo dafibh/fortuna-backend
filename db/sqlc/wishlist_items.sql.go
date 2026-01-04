@@ -30,9 +30,9 @@ func (q *Queries) CountWishlistItems(ctx context.Context, arg CountWishlistItems
 }
 
 const createWishlistItem = `-- name: CreateWishlistItem :one
-INSERT INTO wishlist_items (wishlist_id, title, description, external_link, image_url)
+INSERT INTO wishlist_items (wishlist_id, title, description, external_link, image_path)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, wishlist_id, title, description, external_link, image_url, created_at, updated_at, deleted_at
+RETURNING id, wishlist_id, title, description, external_link, image_url, created_at, updated_at, deleted_at, image_path
 `
 
 type CreateWishlistItemParams struct {
@@ -40,7 +40,7 @@ type CreateWishlistItemParams struct {
 	Title        string      `json:"title"`
 	Description  pgtype.Text `json:"description"`
 	ExternalLink pgtype.Text `json:"external_link"`
-	ImageUrl     pgtype.Text `json:"image_url"`
+	ImagePath    pgtype.Text `json:"image_path"`
 }
 
 func (q *Queries) CreateWishlistItem(ctx context.Context, arg CreateWishlistItemParams) (WishlistItem, error) {
@@ -49,7 +49,7 @@ func (q *Queries) CreateWishlistItem(ctx context.Context, arg CreateWishlistItem
 		arg.Title,
 		arg.Description,
 		arg.ExternalLink,
-		arg.ImageUrl,
+		arg.ImagePath,
 	)
 	var i WishlistItem
 	err := row.Scan(
@@ -62,6 +62,7 @@ func (q *Queries) CreateWishlistItem(ctx context.Context, arg CreateWishlistItem
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.ImagePath,
 	)
 	return i, err
 }
@@ -84,9 +85,9 @@ func (q *Queries) DeleteWishlistItem(ctx context.Context, arg DeleteWishlistItem
 }
 
 const getFirstItemImage = `-- name: GetFirstItemImage :one
-SELECT wi.image_url FROM wishlist_items wi
+SELECT wi.image_path FROM wishlist_items wi
 JOIN wishlists w ON w.id = wi.wishlist_id
-WHERE wi.wishlist_id = $1 AND w.workspace_id = $2 AND wi.image_url IS NOT NULL AND wi.deleted_at IS NULL AND w.deleted_at IS NULL
+WHERE wi.wishlist_id = $1 AND w.workspace_id = $2 AND wi.image_path IS NOT NULL AND wi.deleted_at IS NULL AND w.deleted_at IS NULL
 ORDER BY wi.created_at ASC
 LIMIT 1
 `
@@ -98,13 +99,13 @@ type GetFirstItemImageParams struct {
 
 func (q *Queries) GetFirstItemImage(ctx context.Context, arg GetFirstItemImageParams) (pgtype.Text, error) {
 	row := q.db.QueryRow(ctx, getFirstItemImage, arg.WishlistID, arg.WorkspaceID)
-	var image_url pgtype.Text
-	err := row.Scan(&image_url)
-	return image_url, err
+	var image_path pgtype.Text
+	err := row.Scan(&image_path)
+	return image_path, err
 }
 
 const getWishlistItemByID = `-- name: GetWishlistItemByID :one
-SELECT wi.id, wi.wishlist_id, wi.title, wi.description, wi.external_link, wi.image_url, wi.created_at, wi.updated_at, wi.deleted_at FROM wishlist_items wi
+SELECT wi.id, wi.wishlist_id, wi.title, wi.description, wi.external_link, wi.image_url, wi.created_at, wi.updated_at, wi.deleted_at, wi.image_path FROM wishlist_items wi
 JOIN wishlists w ON w.id = wi.wishlist_id
 WHERE wi.id = $1 AND w.workspace_id = $2 AND wi.deleted_at IS NULL AND w.deleted_at IS NULL
 `
@@ -127,12 +128,13 @@ func (q *Queries) GetWishlistItemByID(ctx context.Context, arg GetWishlistItemBy
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.ImagePath,
 	)
 	return i, err
 }
 
 const listWishlistItems = `-- name: ListWishlistItems :many
-SELECT wi.id, wi.wishlist_id, wi.title, wi.description, wi.external_link, wi.image_url, wi.created_at, wi.updated_at, wi.deleted_at FROM wishlist_items wi
+SELECT wi.id, wi.wishlist_id, wi.title, wi.description, wi.external_link, wi.image_url, wi.created_at, wi.updated_at, wi.deleted_at, wi.image_path FROM wishlist_items wi
 JOIN wishlists w ON w.id = wi.wishlist_id
 WHERE wi.wishlist_id = $1 AND w.workspace_id = $2 AND wi.deleted_at IS NULL AND w.deleted_at IS NULL
 ORDER BY wi.created_at DESC
@@ -162,6 +164,7 @@ func (q *Queries) ListWishlistItems(ctx context.Context, arg ListWishlistItemsPa
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.ImagePath,
 		); err != nil {
 			return nil, err
 		}
@@ -175,7 +178,7 @@ func (q *Queries) ListWishlistItems(ctx context.Context, arg ListWishlistItemsPa
 
 const listWishlistItemsWithStats = `-- name: ListWishlistItemsWithStats :many
 SELECT
-    wi.id, wi.wishlist_id, wi.title, wi.description, wi.external_link, wi.image_url, wi.created_at, wi.updated_at, wi.deleted_at,
+    wi.id, wi.wishlist_id, wi.title, wi.description, wi.external_link, wi.image_url, wi.created_at, wi.updated_at, wi.deleted_at, wi.image_path,
     (
         SELECT MIN(current_prices.price)::TEXT
         FROM (
@@ -207,6 +210,7 @@ type ListWishlistItemsWithStatsRow struct {
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 	DeletedAt    pgtype.Timestamptz `json:"deleted_at"`
+	ImagePath    pgtype.Text        `json:"image_path"`
 	BestPrice    string             `json:"best_price"`
 	NoteCount    int32              `json:"note_count"`
 }
@@ -230,6 +234,7 @@ func (q *Queries) ListWishlistItemsWithStats(ctx context.Context, arg ListWishli
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.ImagePath,
 			&i.BestPrice,
 			&i.NoteCount,
 		); err != nil {
@@ -248,7 +253,7 @@ UPDATE wishlist_items wi
 SET wishlist_id = $3, updated_at = NOW()
 FROM wishlists w
 WHERE wi.id = $1 AND w.id = wi.wishlist_id AND w.workspace_id = $2 AND wi.deleted_at IS NULL AND w.deleted_at IS NULL
-RETURNING wi.id, wi.wishlist_id, wi.title, wi.description, wi.external_link, wi.image_url, wi.created_at, wi.updated_at, wi.deleted_at
+RETURNING wi.id, wi.wishlist_id, wi.title, wi.description, wi.external_link, wi.image_url, wi.created_at, wi.updated_at, wi.deleted_at, wi.image_path
 `
 
 type MoveWishlistItemParams struct {
@@ -270,16 +275,17 @@ func (q *Queries) MoveWishlistItem(ctx context.Context, arg MoveWishlistItemPara
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.ImagePath,
 	)
 	return i, err
 }
 
 const updateWishlistItem = `-- name: UpdateWishlistItem :one
 UPDATE wishlist_items wi
-SET title = $3, description = $4, external_link = $5, image_url = $6, updated_at = NOW()
+SET title = $3, description = $4, external_link = $5, image_path = $6, updated_at = NOW()
 FROM wishlists w
 WHERE wi.id = $1 AND w.id = wi.wishlist_id AND w.workspace_id = $2 AND wi.deleted_at IS NULL AND w.deleted_at IS NULL
-RETURNING wi.id, wi.wishlist_id, wi.title, wi.description, wi.external_link, wi.image_url, wi.created_at, wi.updated_at, wi.deleted_at
+RETURNING wi.id, wi.wishlist_id, wi.title, wi.description, wi.external_link, wi.image_url, wi.created_at, wi.updated_at, wi.deleted_at, wi.image_path
 `
 
 type UpdateWishlistItemParams struct {
@@ -288,7 +294,7 @@ type UpdateWishlistItemParams struct {
 	Title        string      `json:"title"`
 	Description  pgtype.Text `json:"description"`
 	ExternalLink pgtype.Text `json:"external_link"`
-	ImageUrl     pgtype.Text `json:"image_url"`
+	ImagePath    pgtype.Text `json:"image_path"`
 }
 
 func (q *Queries) UpdateWishlistItem(ctx context.Context, arg UpdateWishlistItemParams) (WishlistItem, error) {
@@ -298,7 +304,7 @@ func (q *Queries) UpdateWishlistItem(ctx context.Context, arg UpdateWishlistItem
 		arg.Title,
 		arg.Description,
 		arg.ExternalLink,
-		arg.ImageUrl,
+		arg.ImagePath,
 	)
 	var i WishlistItem
 	err := row.Scan(
@@ -311,6 +317,7 @@ func (q *Queries) UpdateWishlistItem(ctx context.Context, arg UpdateWishlistItem
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.ImagePath,
 	)
 	return i, err
 }

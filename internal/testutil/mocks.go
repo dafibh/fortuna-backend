@@ -2362,8 +2362,8 @@ func (m *MockWishlistItemRepository) SoftDelete(workspaceID int32, id int32) err
 func (m *MockWishlistItemRepository) GetFirstItemImage(workspaceID int32, wishlistID int32) (*string, error) {
 	items := m.ByWishlist[wishlistID]
 	for _, item := range items {
-		if item.DeletedAt == nil && item.ImageURL != nil {
-			return item.ImageURL, nil
+		if item.DeletedAt == nil && item.ImagePath != nil {
+			return item.ImagePath, nil
 		}
 	}
 	return nil, nil
@@ -2580,13 +2580,13 @@ func (m *MockWishlistNoteRepository) CountByItem(workspaceID int32, itemID int32
 }
 
 // Update updates a note's content and image
-func (m *MockWishlistNoteRepository) Update(workspaceID int32, id int32, content string, imageURL *string) (*domain.WishlistItemNote, error) {
+func (m *MockWishlistNoteRepository) Update(workspaceID int32, id int32, content string, imagePath *string) (*domain.WishlistItemNote, error) {
 	note, ok := m.Notes[id]
 	if !ok {
 		return nil, domain.ErrNoteNotFound
 	}
 	note.Content = content
-	note.ImageURL = imageURL
+	note.ImagePath = imagePath
 	note.UpdatedAt = time.Now()
 	return note, nil
 }

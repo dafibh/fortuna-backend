@@ -28,7 +28,7 @@ type CreateWishlistItemRequest struct {
 	Title        string  `json:"title"`
 	Description  *string `json:"description"`
 	ExternalLink *string `json:"externalLink"`
-	ImageURL     *string `json:"imageUrl"`
+	ImagePath    *string `json:"imagePath"`
 }
 
 // UpdateWishlistItemRequest represents the update item request body
@@ -36,7 +36,7 @@ type UpdateWishlistItemRequest struct {
 	Title        string  `json:"title"`
 	Description  *string `json:"description"`
 	ExternalLink *string `json:"externalLink"`
-	ImageURL     *string `json:"imageUrl"`
+	ImagePath    *string `json:"imagePath"`
 }
 
 // MoveWishlistItemRequest represents the move item request body
@@ -51,7 +51,7 @@ type WishlistItemResponse struct {
 	Title        string  `json:"title"`
 	Description  *string `json:"description,omitempty"`
 	ExternalLink *string `json:"externalLink,omitempty"`
-	ImageURL     *string `json:"imageUrl,omitempty"`
+	ImagePath    *string `json:"imagePath,omitempty"`
 	BestPrice    *string `json:"bestPrice,omitempty"`
 	NoteCount    int     `json:"noteCount"`
 	CreatedAt    string  `json:"createdAt"`
@@ -79,7 +79,7 @@ func (h *WishlistItemHandler) CreateItem(c echo.Context) error {
 		Title:        req.Title,
 		Description:  req.Description,
 		ExternalLink: req.ExternalLink,
-		ImageURL:     req.ImageURL,
+		ImagePath:    req.ImagePath,
 	}
 
 	item, err := h.itemService.CreateItem(workspaceID, int32(wishlistID), input)
@@ -100,11 +100,6 @@ func (h *WishlistItemHandler) CreateItem(c echo.Context) error {
 		if errors.Is(err, domain.ErrWishlistItemInvalidURL) {
 			return NewValidationError(c, "Validation failed", []ValidationError{
 				{Field: "externalLink", Message: "Must be a valid URL"},
-			})
-		}
-		if errors.Is(err, domain.ErrWishlistItemInvalidImageURL) {
-			return NewValidationError(c, "Validation failed", []ValidationError{
-				{Field: "imageUrl", Message: "Must be a valid URL"},
 			})
 		}
 		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("wishlist_id", wishlistID).Msg("Failed to create wishlist item")
@@ -190,7 +185,7 @@ func (h *WishlistItemHandler) UpdateItem(c echo.Context) error {
 		Title:        req.Title,
 		Description:  req.Description,
 		ExternalLink: req.ExternalLink,
-		ImageURL:     req.ImageURL,
+		ImagePath:    req.ImagePath,
 	}
 
 	item, err := h.itemService.UpdateItem(workspaceID, int32(id), input)
@@ -211,11 +206,6 @@ func (h *WishlistItemHandler) UpdateItem(c echo.Context) error {
 		if errors.Is(err, domain.ErrWishlistItemInvalidURL) {
 			return NewValidationError(c, "Validation failed", []ValidationError{
 				{Field: "externalLink", Message: "Must be a valid URL"},
-			})
-		}
-		if errors.Is(err, domain.ErrWishlistItemInvalidImageURL) {
-			return NewValidationError(c, "Validation failed", []ValidationError{
-				{Field: "imageUrl", Message: "Must be a valid URL"},
 			})
 		}
 		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("item_id", id).Msg("Failed to update wishlist item")
@@ -300,7 +290,7 @@ func toWishlistItemResponse(item *domain.WishlistItem) WishlistItemResponse {
 		Title:        item.Title,
 		Description:  item.Description,
 		ExternalLink: item.ExternalLink,
-		ImageURL:     item.ImageURL,
+		ImagePath:    item.ImagePath,
 		BestPrice:    nil,
 		NoteCount:    0,
 		CreatedAt:    item.CreatedAt.Format(time.RFC3339),
@@ -316,7 +306,7 @@ func toWishlistItemWithStatsResponse(item *domain.WishlistItemWithStats) Wishlis
 		Title:        item.Title,
 		Description:  item.Description,
 		ExternalLink: item.ExternalLink,
-		ImageURL:     item.ImageURL,
+		ImagePath:    item.ImagePath,
 		BestPrice:    item.BestPrice,
 		NoteCount:    item.NoteCount,
 		CreatedAt:    item.CreatedAt.Format(time.RFC3339),

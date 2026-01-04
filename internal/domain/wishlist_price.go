@@ -2,19 +2,17 @@ package domain
 
 import (
 	"errors"
-	"net/url"
 	"time"
 
 	"github.com/shopspring/decimal"
 )
 
 var (
-	ErrPriceEntryNotFound       = errors.New("price entry not found")
-	ErrPricePlatformEmpty       = errors.New("platform name is required")
-	ErrPricePlatformLong        = errors.New("platform name must be 100 characters or less")
-	ErrPriceNotPositive         = errors.New("price must be greater than zero")
-	ErrPriceDateFuture          = errors.New("price date cannot be in the future")
-	ErrPriceInvalidImageURL     = errors.New("price image URL must be a valid URL")
+	ErrPriceEntryNotFound   = errors.New("price entry not found")
+	ErrPricePlatformEmpty   = errors.New("platform name is required")
+	ErrPricePlatformLong    = errors.New("platform name must be 100 characters or less")
+	ErrPriceNotPositive     = errors.New("price must be greater than zero")
+	ErrPriceDateFuture      = errors.New("price date cannot be in the future")
 )
 
 // WishlistItemPrice represents a price entry for a wishlist item
@@ -25,7 +23,7 @@ type WishlistItemPrice struct {
 	PlatformName string          `json:"platformName"`
 	Price        decimal.Decimal `json:"price"`
 	PriceDate    time.Time       `json:"priceDate"`
-	ImageURL     *string         `json:"imageUrl,omitempty"`
+	ImagePath    *string         `json:"imagePath,omitempty"`
 	CreatedAt    time.Time       `json:"createdAt"`
 }
 
@@ -38,13 +36,13 @@ type PriceChange struct {
 
 // PriceByPlatform groups price entries by platform for display
 type PriceByPlatform struct {
-	PlatformName    string               `json:"platformName"`
-	CurrentPrice    string               `json:"currentPrice"`
-	PreviousPrice   *string              `json:"previousPrice,omitempty"`
-	PriceChange     *PriceChange         `json:"priceChange,omitempty"`
-	CurrentImageURL *string              `json:"currentImageUrl,omitempty"`
-	PriceHistory    []*WishlistItemPrice `json:"priceHistory"`
-	IsLowestPrice   bool                 `json:"isLowestPrice"`
+	PlatformName     string               `json:"platformName"`
+	CurrentPrice     string               `json:"currentPrice"`
+	PreviousPrice    *string              `json:"previousPrice,omitempty"`
+	PriceChange      *PriceChange         `json:"priceChange,omitempty"`
+	CurrentImagePath *string              `json:"currentImagePath,omitempty"`
+	PriceHistory     []*WishlistItemPrice `json:"priceHistory"`
+	IsLowestPrice    bool                 `json:"isLowestPrice"`
 }
 
 // Validate validates a price entry
@@ -61,11 +59,7 @@ func (p *WishlistItemPrice) Validate() error {
 	if p.PriceDate.After(time.Now().AddDate(0, 0, 1)) {
 		return ErrPriceDateFuture
 	}
-	if p.ImageURL != nil && *p.ImageURL != "" {
-		if _, err := url.ParseRequestURI(*p.ImageURL); err != nil {
-			return ErrPriceInvalidImageURL
-		}
-	}
+	// ImagePath is an S3 object path, not a URL - no URL validation needed
 	return nil
 }
 

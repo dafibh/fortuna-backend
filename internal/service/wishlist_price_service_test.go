@@ -194,7 +194,7 @@ func TestCreatePrice_ValidPastDate(t *testing.T) {
 	}
 }
 
-func TestCreatePrice_InvalidImageURL(t *testing.T) {
+func TestCreatePrice_WithImagePath(t *testing.T) {
 	priceRepo := testutil.NewMockWishlistPriceRepository()
 	itemRepo := testutil.NewMockWishlistItemRepository()
 	itemRepo.AddItem(&domain.WishlistItem{ID: 1, WishlistID: 1, Title: "Test Item"})
@@ -204,34 +204,15 @@ func TestCreatePrice_InvalidImageURL(t *testing.T) {
 	input := CreatePriceInput{
 		PlatformName: "Lazada",
 		Price:        decimal.NewFromFloat(50.00),
-		ImageURL:     strPtr("not-a-valid-url"),
-	}
-
-	_, err := svc.CreatePrice(1, 1, input)
-	if err != domain.ErrPriceInvalidImageURL {
-		t.Errorf("expected ErrPriceInvalidImageURL, got %v", err)
-	}
-}
-
-func TestCreatePrice_ValidImageURL(t *testing.T) {
-	priceRepo := testutil.NewMockWishlistPriceRepository()
-	itemRepo := testutil.NewMockWishlistItemRepository()
-	itemRepo.AddItem(&domain.WishlistItem{ID: 1, WishlistID: 1, Title: "Test Item"})
-
-	svc := NewWishlistPriceService(priceRepo, itemRepo)
-
-	input := CreatePriceInput{
-		PlatformName: "Lazada",
-		Price:        decimal.NewFromFloat(50.00),
-		ImageURL:     strPtr("https://example.com/price-screenshot.png"),
+		ImagePath:    strPtr("1/wishlist_prices/1/uuid_display.png"),
 	}
 
 	price, err := svc.CreatePrice(1, 1, input)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if *price.ImageURL != "https://example.com/price-screenshot.png" {
-		t.Errorf("expected image URL 'https://example.com/price-screenshot.png', got '%s'", *price.ImageURL)
+	if *price.ImagePath != "1/wishlist_prices/1/uuid_display.png" {
+		t.Errorf("expected image path '1/wishlist_prices/1/uuid_display.png', got '%s'", *price.ImagePath)
 	}
 }
 

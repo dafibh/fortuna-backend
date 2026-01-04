@@ -15,7 +15,7 @@ type WishlistItemNote struct {
 	ID        int32     `json:"id"`
 	ItemID    int32     `json:"itemId"`
 	Content   string    `json:"content"`
-	ImageURL  *string   `json:"imageUrl,omitempty"`
+	ImagePath *string   `json:"imagePath,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
@@ -26,6 +26,6 @@ type WishlistNoteRepository interface {
 	GetByID(workspaceID int32, id int32) (*WishlistItemNote, error)
 	ListByItem(workspaceID int32, itemID int32, sortAsc bool) ([]*WishlistItemNote, error)
 	CountByItem(workspaceID int32, itemID int32) (int64, error)
-	Update(workspaceID int32, id int32, content string, imageURL *string) (*WishlistItemNote, error)
+	Update(workspaceID int32, id int32, content string, imagePath *string) (*WishlistItemNote, error)
 	Delete(workspaceID int32, id int32) error
 }

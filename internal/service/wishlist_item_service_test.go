@@ -146,7 +146,7 @@ func TestCreateItem_ValidURL(t *testing.T) {
 	}
 }
 
-func TestCreateItem_InvalidImageURL(t *testing.T) {
+func TestCreateItem_WithImagePath(t *testing.T) {
 	itemRepo := testutil.NewMockWishlistItemRepository()
 	wishlistRepo := testutil.NewMockWishlistRepository()
 	wishlistRepo.AddWishlist(&domain.Wishlist{ID: 1, WorkspaceID: 1, Name: "My Wishlist"})
@@ -154,34 +154,16 @@ func TestCreateItem_InvalidImageURL(t *testing.T) {
 	svc := NewWishlistItemService(itemRepo, wishlistRepo)
 
 	input := CreateWishlistItemInput{
-		Title:    "Test Item",
-		ImageURL: strPtr("not-a-valid-url"),
-	}
-
-	_, err := svc.CreateItem(1, 1, input)
-	if err != domain.ErrWishlistItemInvalidImageURL {
-		t.Errorf("expected ErrWishlistItemInvalidImageURL, got %v", err)
-	}
-}
-
-func TestCreateItem_ValidImageURL(t *testing.T) {
-	itemRepo := testutil.NewMockWishlistItemRepository()
-	wishlistRepo := testutil.NewMockWishlistRepository()
-	wishlistRepo.AddWishlist(&domain.Wishlist{ID: 1, WorkspaceID: 1, Name: "My Wishlist"})
-
-	svc := NewWishlistItemService(itemRepo, wishlistRepo)
-
-	input := CreateWishlistItemInput{
-		Title:    "Test Item",
-		ImageURL: strPtr("https://example.com/image.jpg"),
+		Title:     "Test Item",
+		ImagePath: strPtr("1/wishlist_items/1/uuid_display.jpg"),
 	}
 
 	item, err := svc.CreateItem(1, 1, input)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if *item.ImageURL != "https://example.com/image.jpg" {
-		t.Errorf("expected imageURL 'https://example.com/image.jpg', got '%s'", *item.ImageURL)
+	if *item.ImagePath != "1/wishlist_items/1/uuid_display.jpg" {
+		t.Errorf("expected imagePath '1/wishlist_items/1/uuid_display.jpg', got '%s'", *item.ImagePath)
 	}
 }
 
@@ -372,29 +354,6 @@ func TestUpdateItem_InvalidURL(t *testing.T) {
 	}
 }
 
-func TestUpdateItem_InvalidImageURL(t *testing.T) {
-	itemRepo := testutil.NewMockWishlistItemRepository()
-	wishlistRepo := testutil.NewMockWishlistRepository()
-
-	itemRepo.AddItem(&domain.WishlistItem{
-		ID:         1,
-		WishlistID: 1,
-		Title:      "Original Title",
-	})
-
-	svc := NewWishlistItemService(itemRepo, wishlistRepo)
-
-	input := UpdateWishlistItemInput{
-		Title:    "Updated Title",
-		ImageURL: strPtr("invalid-url"),
-	}
-
-	_, err := svc.UpdateItem(1, 1, input)
-	if err != domain.ErrWishlistItemInvalidImageURL {
-		t.Errorf("expected ErrWishlistItemInvalidImageURL, got %v", err)
-	}
-}
-
 func TestMoveItem_Success(t *testing.T) {
 	itemRepo := testutil.NewMockWishlistItemRepository()
 	wishlistRepo := testutil.NewMockWishlistRepository()
@@ -513,22 +472,22 @@ func TestGetWishlistThumbnail_WithImage(t *testing.T) {
 	itemRepo := testutil.NewMockWishlistItemRepository()
 	wishlistRepo := testutil.NewMockWishlistRepository()
 
-	imageURL := "https://example.com/image.jpg"
+	imagePath := "1/wishlist_items/1/uuid_display.jpg"
 	itemRepo.AddItem(&domain.WishlistItem{
 		ID:         1,
 		WishlistID: 1,
 		Title:      "Item with Image",
-		ImageURL:   &imageURL,
+		ImagePath:  &imagePath,
 	})
 
 	svc := NewWishlistItemService(itemRepo, wishlistRepo)
 
-	url, err := svc.GetWishlistThumbnail(1, 1)
+	path, err := svc.GetWishlistThumbnail(1, 1)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if url == nil || *url != imageURL {
-		t.Errorf("expected URL '%s', got '%v'", imageURL, url)
+	if path == nil || *path != imagePath {
+		t.Errorf("expected path '%s', got '%v'", imagePath, path)
 	}
 }
 
