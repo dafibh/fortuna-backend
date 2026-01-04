@@ -224,7 +224,7 @@ FROM transactions t
 JOIN accounts a ON t.account_id = a.id
 WHERE t.workspace_id = $1
     AND t.category_id = $2
-    AND t.transaction_type = 'expense'
+    AND t.type = 'expense'
     AND t.deleted_at IS NULL
     AND EXTRACT(YEAR FROM t.transaction_date) = $3::int
     AND EXTRACT(MONTH FROM t.transaction_date) = $4::int
@@ -311,7 +311,7 @@ SELECT
 FROM transactions t
 WHERE t.workspace_id = $1
     AND t.category_id IS NOT NULL
-    AND t.transaction_type = 'expense'
+    AND t.type = 'expense'
     AND t.deleted_at IS NULL
     AND EXTRACT(YEAR FROM t.transaction_date) = $2::int
     AND EXTRACT(MONTH FROM t.transaction_date) = $3::int

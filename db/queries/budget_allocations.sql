@@ -40,7 +40,7 @@ SELECT
 FROM transactions t
 WHERE t.workspace_id = @workspace_id
     AND t.category_id IS NOT NULL
-    AND t.transaction_type = 'expense'
+    AND t.type = 'expense'
     AND t.deleted_at IS NULL
     AND EXTRACT(YEAR FROM t.transaction_date) = @year::int
     AND EXTRACT(MONTH FROM t.transaction_date) = @month::int
@@ -53,7 +53,7 @@ FROM transactions t
 JOIN accounts a ON t.account_id = a.id
 WHERE t.workspace_id = @workspace_id
     AND t.category_id = @category_id
-    AND t.transaction_type = 'expense'
+    AND t.type = 'expense'
     AND t.deleted_at IS NULL
     AND EXTRACT(YEAR FROM t.transaction_date) = @year::int
     AND EXTRACT(MONTH FROM t.transaction_date) = @month::int
