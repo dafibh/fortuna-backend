@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/dafibh/fortuna/fortuna-backend/internal/domain"
+	"github.com/dafibh/fortuna/fortuna-backend/internal/websocket"
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
@@ -15,6 +16,7 @@ type TransactionService struct {
 	transactionRepo domain.TransactionRepository
 	accountRepo     domain.AccountRepository
 	categoryRepo    domain.BudgetCategoryRepository
+	eventPublisher  websocket.EventPublisher
 }
 
 // NewTransactionService creates a new TransactionService
@@ -23,6 +25,18 @@ func NewTransactionService(transactionRepo domain.TransactionRepository, account
 		transactionRepo: transactionRepo,
 		accountRepo:     accountRepo,
 		categoryRepo:    categoryRepo,
+	}
+}
+
+// SetEventPublisher sets the event publisher for real-time updates
+func (s *TransactionService) SetEventPublisher(publisher websocket.EventPublisher) {
+	s.eventPublisher = publisher
+}
+
+// publishEvent publishes a WebSocket event if a publisher is configured
+func (s *TransactionService) publishEvent(workspaceID int32, event websocket.Event) {
+	if s.eventPublisher != nil {
+		s.eventPublisher.Publish(workspaceID, event)
 	}
 }
 
@@ -129,7 +143,15 @@ func (s *TransactionService) CreateTransaction(workspaceID int32, input CreateTr
 		CategoryID:         input.CategoryID,
 	}
 
-	return s.transactionRepo.Create(transaction)
+	created, err := s.transactionRepo.Create(transaction)
+	if err != nil {
+		return nil, err
+	}
+
+	// Publish event for real-time updates
+	s.publishEvent(workspaceID, websocket.TransactionCreated(created))
+
+	return created, nil
 }
 
 // GetTransactions retrieves transactions for a workspace with optional filters and pagination
@@ -144,7 +166,15 @@ func (s *TransactionService) GetTransactionByID(workspaceID int32, id int32) (*d
 
 // TogglePaidStatus toggles the paid status of a transaction
 func (s *TransactionService) TogglePaidStatus(workspaceID int32, id int32) (*domain.Transaction, error) {
-	return s.transactionRepo.TogglePaid(workspaceID, id)
+	updated, err := s.transactionRepo.TogglePaid(workspaceID, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Publish event for real-time updates
+	s.publishEvent(workspaceID, websocket.TransactionUpdated(updated))
+
+	return updated, nil
 }
 
 // UpdateTransactionInput holds the input for updating a transaction
@@ -224,7 +254,7 @@ func (s *TransactionService) UpdateTransaction(workspaceID int32, id int32, inpu
 		}
 	}
 
-	return s.transactionRepo.Update(workspaceID, id, &domain.UpdateTransactionData{
+	updated, err := s.transactionRepo.Update(workspaceID, id, &domain.UpdateTransactionData{
 		Name:               name,
 		Amount:             input.Amount,
 		Type:               input.Type,
@@ -234,6 +264,14 @@ func (s *TransactionService) UpdateTransaction(workspaceID int32, id int32, inpu
 		Notes:              notes,
 		CategoryID:         input.CategoryID,
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Publish event for real-time updates
+	s.publishEvent(workspaceID, websocket.TransactionUpdated(updated))
+
+	return updated, nil
 }
 
 // UpdateSettlementIntent updates the CC settlement intent for an unpaid CC transaction
@@ -263,7 +301,15 @@ func (s *TransactionService) UpdateSettlementIntent(workspaceID int32, id int32,
 		return nil, domain.ErrSettlementIntentNotApplicable
 	}
 
-	return s.transactionRepo.UpdateSettlementIntent(workspaceID, id, intent)
+	updated, err := s.transactionRepo.UpdateSettlementIntent(workspaceID, id, intent)
+	if err != nil {
+		return nil, err
+	}
+
+	// Publish event for real-time updates
+	s.publishEvent(workspaceID, websocket.TransactionUpdated(updated))
+
+	return updated, nil
 }
 
 // DeleteTransaction soft deletes a transaction (or both sides of a transfer)
@@ -276,11 +322,25 @@ func (s *TransactionService) DeleteTransaction(workspaceID int32, id int32) erro
 
 	// If it's a transfer, delete both linked transactions
 	if tx.TransferPairID != nil {
-		return s.transactionRepo.SoftDeleteTransferPair(workspaceID, *tx.TransferPairID)
+		err := s.transactionRepo.SoftDeleteTransferPair(workspaceID, *tx.TransferPairID)
+		if err != nil {
+			return err
+		}
+		// Publish delete events for both transactions
+		s.publishEvent(workspaceID, websocket.TransactionDeleted(map[string]interface{}{"id": id, "transferPairId": tx.TransferPairID.String()}))
+		return nil
 	}
 
 	// Regular delete
-	return s.transactionRepo.SoftDelete(workspaceID, id)
+	err = s.transactionRepo.SoftDelete(workspaceID, id)
+	if err != nil {
+		return err
+	}
+
+	// Publish event for real-time updates
+	s.publishEvent(workspaceID, websocket.TransactionDeleted(map[string]interface{}{"id": id}))
+
+	return nil
 }
 
 // CreateTransferInput holds the input for creating a transfer
@@ -352,7 +412,16 @@ func (s *TransactionService) CreateTransfer(workspaceID int32, input CreateTrans
 		Notes:           input.Notes,
 	}
 
-	return s.transactionRepo.CreateTransferPair(fromTx, toTx)
+	result, err := s.transactionRepo.CreateTransferPair(fromTx, toTx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Publish events for both created transactions
+	s.publishEvent(workspaceID, websocket.TransactionCreated(result.FromTransaction))
+	s.publishEvent(workspaceID, websocket.TransactionCreated(result.ToTransaction))
+
+	return result, nil
 }
 
 // GetRecentlyUsedCategories returns recently used categories for suggestions dropdown

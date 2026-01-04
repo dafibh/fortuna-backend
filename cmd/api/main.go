@@ -14,6 +14,7 @@ import (
 	"github.com/dafibh/fortuna/fortuna-backend/internal/repository/postgres"
 	"github.com/dafibh/fortuna/fortuna-backend/internal/repository/storage"
 	"github.com/dafibh/fortuna/fortuna-backend/internal/service"
+	"github.com/dafibh/fortuna/fortuna-backend/internal/websocket"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
@@ -111,6 +112,16 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to create auth middleware")
 	}
 
+	// Initialize WebSocket hub and JWT validator
+	wsHub := websocket.NewHub()
+	wsJWTValidator, err := websocket.NewAuth0JWTValidator(cfg.Auth0Domain, cfg.Auth0Audience, workspaceProvider)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to create WebSocket JWT validator")
+	}
+
+	// Link WebSocket event publisher to transaction service for real-time updates
+	transactionService.SetEventPublisher(wsHub)
+
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(authService)
 	profileHandler := handler.NewProfileHandler(profileService)
@@ -130,6 +141,7 @@ func main() {
 	wishlistPriceHandler := handler.NewWishlistPriceHandler(wishlistPriceService)
 	wishlistNoteHandler := handler.NewWishlistNoteHandler(wishlistNoteService)
 	imageHandler := handler.NewImageHandler(imageService)
+	wsHandler := handler.NewWebSocketHandler(wsHub, wsJWTValidator, cfg.CORSOrigins)
 
 	// Create Echo instance
 	e := echo.New()
@@ -170,7 +182,7 @@ func main() {
 	})
 
 	// Register API routes
-	handler.RegisterRoutes(e, authMiddleware, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler, dashboardHandler, budgetCategoryHandler, budgetHandler, ccHandler, recurringHandler, loanProviderHandler, loanHandler, loanPaymentHandler, wishlistHandler, wishlistItemHandler, wishlistPriceHandler, wishlistNoteHandler, imageHandler)
+	handler.RegisterRoutes(e, authMiddleware, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler, dashboardHandler, budgetCategoryHandler, budgetHandler, ccHandler, recurringHandler, loanProviderHandler, loanHandler, loanPaymentHandler, wishlistHandler, wishlistItemHandler, wishlistPriceHandler, wishlistNoteHandler, imageHandler, wsHandler)
 
 	// Start server in goroutine
 	go func() {
