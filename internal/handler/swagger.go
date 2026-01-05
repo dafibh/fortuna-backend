@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/dafibh/fortuna/fortuna-backend/docs"
 	"github.com/labstack/echo/v4"
@@ -24,6 +25,34 @@ type Server struct {
 	Description string `json:"description"`
 }
 
+// transformRefs recursively transforms $ref from #/definitions/ to #/components/schemas/
+func transformRefs(data interface{}) interface{} {
+	switch v := data.(type) {
+	case map[string]interface{}:
+		result := make(map[string]interface{})
+		for key, value := range v {
+			if key == "$ref" {
+				if ref, ok := value.(string); ok {
+					result[key] = strings.Replace(ref, "#/definitions/", "#/components/schemas/", 1)
+				} else {
+					result[key] = value
+				}
+			} else {
+				result[key] = transformRefs(value)
+			}
+		}
+		return result
+	case []interface{}:
+		result := make([]interface{}, len(v))
+		for i, item := range v {
+			result[i] = transformRefs(item)
+		}
+		return result
+	default:
+		return data
+	}
+}
+
 // ServeOpenAPI3Spec serves the swagger spec converted to OpenAPI 3.0 with multiple servers
 func ServeOpenAPI3Spec(c echo.Context) error {
 	// Get the swagger 2.0 spec
@@ -41,8 +70,9 @@ func ServeOpenAPI3Spec(c echo.Context) error {
 	// Extract info
 	info, _ := swagger2["info"].(map[string]interface{})
 
-	// Extract paths
+	// Extract and transform paths (convert $ref from definitions to components/schemas)
 	paths, _ := swagger2["paths"].(map[string]interface{})
+	transformedPaths := transformRefs(paths).(map[string]interface{})
 
 	// Convert securityDefinitions to components/securitySchemes
 	components := make(map[string]interface{})
@@ -50,7 +80,8 @@ func ServeOpenAPI3Spec(c echo.Context) error {
 		components["securitySchemes"] = secDefs
 	}
 	if definitions, ok := swagger2["definitions"].(map[string]interface{}); ok {
-		components["schemas"] = definitions
+		// Also transform $refs within definitions themselves
+		components["schemas"] = transformRefs(definitions)
 	}
 
 	// Build OpenAPI 3.0 spec
@@ -67,7 +98,7 @@ func ServeOpenAPI3Spec(c echo.Context) error {
 				Description: "Production",
 			},
 		},
-		Paths:      paths,
+		Paths:      transformedPaths,
 		Components: components,
 	}
 
