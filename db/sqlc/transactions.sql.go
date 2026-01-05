@@ -23,19 +23,19 @@ WHERE workspace_id = $1
 
 type CountTransactionsByWorkspaceParams struct {
 	WorkspaceID int32       `json:"workspace_id"`
-	Column2     int32       `json:"column_2"`
-	Column3     pgtype.Date `json:"column_3"`
-	Column4     pgtype.Date `json:"column_4"`
-	Column5     string      `json:"column_5"`
+	AccountID   pgtype.Int4 `json:"account_id"`
+	StartDate   pgtype.Date `json:"start_date"`
+	EndDate     pgtype.Date `json:"end_date"`
+	Type        pgtype.Text `json:"type"`
 }
 
 func (q *Queries) CountTransactionsByWorkspace(ctx context.Context, arg CountTransactionsByWorkspaceParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countTransactionsByWorkspace,
 		arg.WorkspaceID,
-		arg.Column2,
-		arg.Column3,
-		arg.Column4,
-		arg.Column5,
+		arg.AccountID,
+		arg.StartDate,
+		arg.EndDate,
+		arg.Type,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -470,17 +470,17 @@ WHERE t.workspace_id = $1
   AND ($4::DATE IS NULL OR t.transaction_date <= $4)
   AND ($5::VARCHAR IS NULL OR t.type = $5)
 ORDER BY t.transaction_date DESC, t.created_at DESC
-LIMIT $6 OFFSET $7
+LIMIT $7 OFFSET $6
 `
 
 type GetTransactionsWithCategoryParams struct {
 	WorkspaceID int32       `json:"workspace_id"`
-	Column2     int32       `json:"column_2"`
-	Column3     pgtype.Date `json:"column_3"`
-	Column4     pgtype.Date `json:"column_4"`
-	Column5     string      `json:"column_5"`
-	Limit       int32       `json:"limit"`
-	Offset      int32       `json:"offset"`
+	AccountID   pgtype.Int4 `json:"account_id"`
+	StartDate   pgtype.Date `json:"start_date"`
+	EndDate     pgtype.Date `json:"end_date"`
+	Type        pgtype.Text `json:"type"`
+	PageOffset  int32       `json:"page_offset"`
+	PageSize    int32       `json:"page_size"`
 }
 
 type GetTransactionsWithCategoryRow struct {
@@ -508,12 +508,12 @@ type GetTransactionsWithCategoryRow struct {
 func (q *Queries) GetTransactionsWithCategory(ctx context.Context, arg GetTransactionsWithCategoryParams) ([]GetTransactionsWithCategoryRow, error) {
 	rows, err := q.db.Query(ctx, getTransactionsWithCategory,
 		arg.WorkspaceID,
-		arg.Column2,
-		arg.Column3,
-		arg.Column4,
-		arg.Column5,
-		arg.Limit,
-		arg.Offset,
+		arg.AccountID,
+		arg.StartDate,
+		arg.EndDate,
+		arg.Type,
+		arg.PageOffset,
+		arg.PageSize,
 	)
 	if err != nil {
 		return nil, err

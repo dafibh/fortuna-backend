@@ -23,12 +23,12 @@ LIMIT $6 OFFSET $7;
 
 -- name: CountTransactionsByWorkspace :one
 SELECT COUNT(*) FROM transactions
-WHERE workspace_id = $1
+WHERE workspace_id = @workspace_id
   AND deleted_at IS NULL
-  AND ($2::INTEGER IS NULL OR account_id = $2)
-  AND ($3::DATE IS NULL OR transaction_date >= $3)
-  AND ($4::DATE IS NULL OR transaction_date <= $4)
-  AND ($5::VARCHAR IS NULL OR type = $5);
+  AND (sqlc.narg('account_id')::INTEGER IS NULL OR account_id = sqlc.narg('account_id'))
+  AND (sqlc.narg('start_date')::DATE IS NULL OR transaction_date >= sqlc.narg('start_date'))
+  AND (sqlc.narg('end_date')::DATE IS NULL OR transaction_date <= sqlc.narg('end_date'))
+  AND (sqlc.narg('type')::VARCHAR IS NULL OR type = sqlc.narg('type'));
 
 -- name: ToggleTransactionPaidStatus :one
 UPDATE transactions
@@ -160,14 +160,14 @@ SELECT
     bc.name AS category_name
 FROM transactions t
 LEFT JOIN budget_categories bc ON t.category_id = bc.id AND bc.deleted_at IS NULL
-WHERE t.workspace_id = $1
+WHERE t.workspace_id = @workspace_id
   AND t.deleted_at IS NULL
-  AND ($2::INTEGER IS NULL OR t.account_id = $2)
-  AND ($3::DATE IS NULL OR t.transaction_date >= $3)
-  AND ($4::DATE IS NULL OR t.transaction_date <= $4)
-  AND ($5::VARCHAR IS NULL OR t.type = $5)
+  AND (sqlc.narg('account_id')::INTEGER IS NULL OR t.account_id = sqlc.narg('account_id'))
+  AND (sqlc.narg('start_date')::DATE IS NULL OR t.transaction_date >= sqlc.narg('start_date'))
+  AND (sqlc.narg('end_date')::DATE IS NULL OR t.transaction_date <= sqlc.narg('end_date'))
+  AND (sqlc.narg('type')::VARCHAR IS NULL OR t.type = sqlc.narg('type'))
 ORDER BY t.transaction_date DESC, t.created_at DESC
-LIMIT $6 OFFSET $7;
+LIMIT @page_size OFFSET @page_offset;
 
 -- name: GetRecentlyUsedCategories :many
 -- Returns recently used categories for suggestions dropdown

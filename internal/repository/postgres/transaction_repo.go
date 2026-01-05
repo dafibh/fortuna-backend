@@ -133,8 +133,8 @@ func (r *TransactionRepository) GetByWorkspace(workspaceID int32, filters *domai
 	// Build query params - using GetTransactionsWithCategory for category info
 	params := sqlc.GetTransactionsWithCategoryParams{
 		WorkspaceID: workspaceID,
-		Limit:       pageSize,
-		Offset:      offset,
+		PageSize:    pageSize,
+		PageOffset:  offset,
 	}
 
 	countParams := sqlc.CountTransactionsByWorkspaceParams{
@@ -143,24 +143,20 @@ func (r *TransactionRepository) GetByWorkspace(workspaceID int32, filters *domai
 
 	if filters != nil {
 		if filters.AccountID != nil {
-			params.Column2 = *filters.AccountID
-			countParams.Column2 = *filters.AccountID
+			params.AccountID = pgtype.Int4{Int32: *filters.AccountID, Valid: true}
+			countParams.AccountID = pgtype.Int4{Int32: *filters.AccountID, Valid: true}
 		}
 		if filters.StartDate != nil {
-			params.Column3.Time = *filters.StartDate
-			params.Column3.Valid = true
-			countParams.Column3.Time = *filters.StartDate
-			countParams.Column3.Valid = true
+			params.StartDate = pgtype.Date{Time: *filters.StartDate, Valid: true}
+			countParams.StartDate = pgtype.Date{Time: *filters.StartDate, Valid: true}
 		}
 		if filters.EndDate != nil {
-			params.Column4.Time = *filters.EndDate
-			params.Column4.Valid = true
-			countParams.Column4.Time = *filters.EndDate
-			countParams.Column4.Valid = true
+			params.EndDate = pgtype.Date{Time: *filters.EndDate, Valid: true}
+			countParams.EndDate = pgtype.Date{Time: *filters.EndDate, Valid: true}
 		}
 		if filters.Type != nil {
-			params.Column5 = string(*filters.Type)
-			countParams.Column5 = string(*filters.Type)
+			params.Type = pgtype.Text{String: string(*filters.Type), Valid: true}
+			countParams.Type = pgtype.Text{String: string(*filters.Type), Valid: true}
 		}
 	}
 
