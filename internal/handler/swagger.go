@@ -26,10 +26,19 @@ type Server struct {
 }
 
 // transformRefs recursively transforms $ref from #/definitions/ to #/components/schemas/
+// and converts Swagger 2.0 parameters to OpenAPI 3.0 format
 func transformRefs(data interface{}) interface{} {
 	switch v := data.(type) {
 	case map[string]interface{}:
 		result := make(map[string]interface{})
+
+		// Check if this is a parameter object (has "in" and "name" fields)
+		if _, hasIn := v["in"]; hasIn {
+			if _, hasName := v["name"]; hasName {
+				return transformParameter(v)
+			}
+		}
+
 		for key, value := range v {
 			if key == "$ref" {
 				if ref, ok := value.(string); ok {
@@ -51,6 +60,43 @@ func transformRefs(data interface{}) interface{} {
 	default:
 		return data
 	}
+}
+
+// transformParameter converts a Swagger 2.0 parameter to OpenAPI 3.0 format
+func transformParameter(param map[string]interface{}) map[string]interface{} {
+	result := make(map[string]interface{})
+
+	// Copy standard fields
+	for _, field := range []string{"name", "in", "description", "required"} {
+		if val, ok := param[field]; ok {
+			result[field] = val
+		}
+	}
+
+	// Check if it's a body parameter (OpenAPI 3.0 handles these differently via requestBody)
+	if param["in"] == "body" {
+		// Keep as-is for now, body params need special handling
+		return param
+	}
+
+	// Build schema object from type-related fields
+	schema := make(map[string]interface{})
+	for _, field := range []string{"type", "format", "enum", "default", "minimum", "maximum", "items"} {
+		if val, ok := param[field]; ok {
+			if field == "items" {
+				// Transform $ref in items
+				schema[field] = transformRefs(val)
+			} else {
+				schema[field] = val
+			}
+		}
+	}
+
+	if len(schema) > 0 {
+		result["schema"] = schema
+	}
+
+	return result
 }
 
 // ServeOpenAPI3Spec serves the swagger spec converted to OpenAPI 3.0 with multiple servers
