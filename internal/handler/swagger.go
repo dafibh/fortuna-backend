@@ -32,6 +32,11 @@ func transformRefs(data interface{}) interface{} {
 	case map[string]interface{}:
 		result := make(map[string]interface{})
 
+		// Check if this is an operation object (has parameters, might need requestBody extraction)
+		if params, hasParams := v["parameters"]; hasParams {
+			return transformOperation(v, params)
+		}
+
 		// Check if this is a parameter object (has "in" and "name" fields)
 		if _, hasIn := v["in"]; hasIn {
 			if _, hasName := v["name"]; hasName {
@@ -60,6 +65,60 @@ func transformRefs(data interface{}) interface{} {
 	default:
 		return data
 	}
+}
+
+// transformOperation converts an operation, extracting body params to requestBody
+func transformOperation(op map[string]interface{}, params interface{}) map[string]interface{} {
+	result := make(map[string]interface{})
+
+	// Copy all fields except parameters
+	for key, value := range op {
+		if key == "parameters" {
+			continue
+		}
+		result[key] = transformRefs(value)
+	}
+
+	// Process parameters - separate body params from others
+	if paramList, ok := params.([]interface{}); ok {
+		var nonBodyParams []interface{}
+		var bodyParam map[string]interface{}
+
+		for _, p := range paramList {
+			if param, ok := p.(map[string]interface{}); ok {
+				if param["in"] == "body" {
+					bodyParam = param
+				} else {
+					nonBodyParams = append(nonBodyParams, transformParameter(param))
+				}
+			}
+		}
+
+		// Set non-body parameters
+		if len(nonBodyParams) > 0 {
+			result["parameters"] = nonBodyParams
+		}
+
+		// Convert body param to requestBody
+		if bodyParam != nil {
+			if schema, ok := bodyParam["schema"].(map[string]interface{}); ok {
+				requestBody := map[string]interface{}{
+					"required": bodyParam["required"],
+					"content": map[string]interface{}{
+						"application/json": map[string]interface{}{
+							"schema": transformRefs(schema),
+						},
+					},
+				}
+				if desc, ok := bodyParam["description"]; ok {
+					requestBody["description"] = desc
+				}
+				result["requestBody"] = requestBody
+			}
+		}
+	}
+
+	return result
 }
 
 // transformParameter converts a Swagger 2.0 parameter to OpenAPI 3.0 format
