@@ -460,7 +460,7 @@ definitions:
       message:
         type: string
     type: object
-host: localhost:8080
+host: localhost:18080
 info:
   contact:
     email: support@fortuna.app
