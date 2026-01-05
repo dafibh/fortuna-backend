@@ -219,6 +219,9 @@ func main() {
 	})
 
 	// Swagger API documentation
+	// Override default doc.json with OpenAPI 3.0 spec (multiple servers)
+	e.GET("/api/docs/doc.json", handler.ServeOpenAPI3Spec)
+	// Swagger UI (will use doc.json by default)
 	e.GET("/api/docs/*", echoSwagger.WrapHandler)
 
 	// Register API routes
