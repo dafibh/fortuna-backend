@@ -14,7 +14,7 @@
 // @securityDefinitions.apikey BearerAuth
 // @in header
 // @name Authorization
-// @description JWT or API token authentication. Format: "Bearer <token>". API tokens start with "fort_".
+// @description For JWT: "Bearer <jwt_token>". For API tokens: just enter "fort_xxx" (Bearer prefix optional).
 
 package main
 

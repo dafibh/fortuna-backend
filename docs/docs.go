@@ -1816,7 +1816,7 @@ const docTemplate = `{
     },
     "securityDefinitions": {
         "BearerAuth": {
-            "description": "JWT or API token authentication. Format: \"Bearer \u003ctoken\u003e\". API tokens start with \"fort_\".",
+            "description": "For JWT: \"Bearer \u003cjwt_token\u003e\". For API tokens: just enter \"fort_xxx\" (Bearer prefix optional).",
             "type": "apiKey",
             "name": "Authorization",
             "in": "header"

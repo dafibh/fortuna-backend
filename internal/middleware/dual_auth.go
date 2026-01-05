@@ -30,19 +30,24 @@ func (m *DualAuthMiddleware) Authenticate() echo.MiddlewareFunc {
 				return unauthorizedError(c, "Missing authorization header")
 			}
 
-			// Check Bearer prefix
+			var token string
+
+			// Check if header starts with "Bearer " prefix
 			parts := strings.SplitN(authHeader, " ", 2)
-			if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+			if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
+				token = parts[1]
+			} else if strings.HasPrefix(authHeader, "fort_") {
+				// Accept API tokens without Bearer prefix (for Swagger/simple clients)
+				token = authHeader
+			} else {
 				return unauthorizedError(c, "Invalid authorization header format")
 			}
-
-			token := parts[1]
 
 			// Determine auth type based on token format
 			if strings.HasPrefix(token, "fort_") {
 				// This is an API token
 				log.Debug().Msg("Attempting API token authentication")
-				return m.apiTokenAuth.Authenticate()(next)(c)
+				return m.apiTokenAuth.authenticateWithToken(token)(next)(c)
 			}
 
 			// Try JWT authentication

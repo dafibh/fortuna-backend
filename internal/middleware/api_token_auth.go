@@ -43,47 +43,66 @@ func (m *APITokenAuthMiddleware) Authenticate() echo.MiddlewareFunc {
 				return unauthorizedError(c, "Missing authorization header")
 			}
 
-			// Check Bearer prefix
+			var token string
+
+			// Check if header starts with "Bearer " prefix
 			parts := strings.SplitN(authHeader, " ", 2)
-			if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+			if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
+				token = parts[1]
+			} else if strings.HasPrefix(authHeader, "fort_") {
+				// Accept API tokens without Bearer prefix (for Swagger/simple clients)
+				token = authHeader
+			} else {
 				return unauthorizedError(c, "Invalid authorization header format")
 			}
-
-			token := parts[1]
 
 			// Validate token format - must start with "fort_"
 			if !strings.HasPrefix(token, "fort_") {
 				return unauthorizedError(c, "Invalid token format")
 			}
 
-			// Validate the token
-			apiToken, err := m.validator.ValidateToken(c.Request().Context(), token)
-			if err != nil {
-				if err == domain.ErrAPITokenNotFound {
-					log.Debug().Msg("API token not found or revoked")
-					return unauthorizedError(c, "Invalid or expired API token")
-				}
-				log.Error().Err(err).Msg("Token validation failed")
-				return unauthorizedError(c, "Token validation failed")
-			}
-
-			// Set context values
-			ctx := c.Request().Context()
-			ctx = context.WithValue(ctx, WorkspaceIDKey, apiToken.WorkspaceID)
-			ctx = context.WithValue(ctx, UserIDKey, apiToken.UserID)
-			ctx = context.WithValue(ctx, APITokenIDKey, apiToken.ID)
-			ctx = context.WithValue(ctx, IsAPITokenAuthKey, true)
-
-			c.SetRequest(c.Request().WithContext(ctx))
-
-			log.Debug().
-				Int32("workspace_id", apiToken.WorkspaceID).
-				Str("token_id", apiToken.ID.String()).
-				Msg("API token authentication successful")
-
-			return next(c)
+			return m.validateAndSetContext(c, token, next)
 		}
 	}
+}
+
+// authenticateWithToken validates a pre-extracted token (used by DualAuthMiddleware)
+func (m *APITokenAuthMiddleware) authenticateWithToken(token string) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			return m.validateAndSetContext(c, token, next)
+		}
+	}
+}
+
+// validateAndSetContext validates the token and sets context values
+func (m *APITokenAuthMiddleware) validateAndSetContext(c echo.Context, token string, next echo.HandlerFunc) error {
+	// Validate the token
+	apiToken, err := m.validator.ValidateToken(c.Request().Context(), token)
+	if err != nil {
+		if err == domain.ErrAPITokenNotFound {
+			log.Debug().Msg("API token not found or revoked")
+			return unauthorizedError(c, "Invalid or expired API token")
+		}
+		log.Error().Err(err).Msg("Token validation failed")
+		return unauthorizedError(c, "Token validation failed")
+	}
+
+	// Set context values
+	ctx := c.Request().Context()
+	ctx = context.WithValue(ctx, WorkspaceIDKey, apiToken.WorkspaceID)
+	ctx = context.WithValue(ctx, UserIDKey, apiToken.UserID)
+	ctx = context.WithValue(ctx, APITokenIDKey, apiToken.ID)
+	ctx = context.WithValue(ctx, IsAPITokenAuthKey, true)
+
+	c.SetRequest(c.Request().WithContext(ctx))
+
+	log.Debug().
+		Int32("workspace_id", apiToken.WorkspaceID).
+		Str("token_id", apiToken.ID.String()).
+		Msg("API token authentication successful")
+
+	return next(c)
 }
 
 // GetUserID extracts the user ID from the context (set by API token auth)
