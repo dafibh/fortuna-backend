@@ -30,13 +30,14 @@ func NewLoanService(pool *pgxpool.Pool, loanRepo domain.LoanRepository, provider
 
 // CreateLoanInput contains input for creating a loan
 type CreateLoanInput struct {
-	ProviderID   int32
-	ItemName     string
-	TotalAmount  decimal.Decimal
-	NumMonths    int32
-	PurchaseDate time.Time
-	InterestRate *decimal.Decimal // Optional override, uses provider default if nil
-	Notes        *string
+	ProviderID     int32
+	ItemName       string
+	TotalAmount    decimal.Decimal
+	NumMonths      int32
+	PurchaseDate   time.Time
+	InterestRate   *decimal.Decimal  // Optional override, uses provider default if nil
+	Notes          *string
+	PaymentAmounts []decimal.Decimal // Optional custom amounts for each payment
 }
 
 // CreateLoan creates a new loan with calculated values and generates payment schedule
@@ -121,6 +122,7 @@ func (s *LoanService) CreateLoan(workspaceID int32, input CreateLoanInput) (*dom
 			int(createdLoan.NumMonths),
 			int(createdLoan.FirstPaymentYear),
 			int(createdLoan.FirstPaymentMonth),
+			input.PaymentAmounts,
 		)
 
 		// Create payments in transaction
@@ -349,16 +351,25 @@ func CalculateFirstPaymentMonth(purchaseDate time.Time, cutoffDay int) (year, mo
 }
 
 // GeneratePaymentSchedule generates all payment entries for a loan
-func GeneratePaymentSchedule(loanID int32, monthlyPayment decimal.Decimal, numMonths int, firstPaymentYear, firstPaymentMonth int) []*domain.LoanPayment {
+// If customAmounts is provided and matches numMonths, use those amounts instead of monthlyPayment
+func GeneratePaymentSchedule(loanID int32, monthlyPayment decimal.Decimal, numMonths int, firstPaymentYear, firstPaymentMonth int, customAmounts []decimal.Decimal) []*domain.LoanPayment {
 	payments := make([]*domain.LoanPayment, numMonths)
 	year := firstPaymentYear
 	month := firstPaymentMonth
 
+	// Use custom amounts if provided and correct length
+	useCustom := len(customAmounts) == numMonths
+
 	for i := 0; i < numMonths; i++ {
+		amount := monthlyPayment
+		if useCustom {
+			amount = customAmounts[i]
+		}
+
 		payments[i] = &domain.LoanPayment{
 			LoanID:        loanID,
 			PaymentNumber: int32(i + 1), // 1-indexed
-			Amount:        monthlyPayment,
+			Amount:        amount,
 			DueYear:       int32(year),
 			DueMonth:      int32(month),
 			Paid:          false,

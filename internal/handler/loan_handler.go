@@ -33,13 +33,14 @@ type UpdateLoanRequest struct {
 
 // CreateLoanRequest represents the create loan request body
 type CreateLoanRequest struct {
-	ProviderID   int32   `json:"providerId"`
-	ItemName     string  `json:"itemName"`
-	TotalAmount  string  `json:"totalAmount"`
-	NumMonths    int32   `json:"numMonths"`
-	PurchaseDate string  `json:"purchaseDate"`
-	InterestRate *string `json:"interestRate,omitempty"`
-	Notes        *string `json:"notes,omitempty"`
+	ProviderID     int32    `json:"providerId"`
+	ItemName       string   `json:"itemName"`
+	TotalAmount    string   `json:"totalAmount"`
+	NumMonths      int32    `json:"numMonths"`
+	PurchaseDate   string   `json:"purchaseDate"`
+	InterestRate   *string  `json:"interestRate,omitempty"`
+	Notes          *string  `json:"notes,omitempty"`
+	PaymentAmounts []string `json:"paymentAmounts,omitempty"` // Optional custom amounts for each payment
 }
 
 // PreviewLoanRequest represents the preview loan request body
@@ -146,14 +147,40 @@ func (h *LoanHandler) CreateLoan(c echo.Context) error {
 		interestRate = &rate
 	}
 
+	// Parse optional custom payment amounts
+	var paymentAmounts []decimal.Decimal
+	if len(req.PaymentAmounts) > 0 {
+		if len(req.PaymentAmounts) != int(req.NumMonths) {
+			return NewValidationError(c, "Invalid payment amounts", []ValidationError{
+				{Field: "paymentAmounts", Message: "Must have exactly numMonths amounts"},
+			})
+		}
+		paymentAmounts = make([]decimal.Decimal, len(req.PaymentAmounts))
+		for i, amtStr := range req.PaymentAmounts {
+			amt, err := decimal.NewFromString(amtStr)
+			if err != nil {
+				return NewValidationError(c, "Invalid payment amount", []ValidationError{
+					{Field: "paymentAmounts", Message: "All amounts must be valid decimal numbers"},
+				})
+			}
+			if amt.LessThanOrEqual(decimal.Zero) {
+				return NewValidationError(c, "Invalid payment amount", []ValidationError{
+					{Field: "paymentAmounts", Message: "All amounts must be positive"},
+				})
+			}
+			paymentAmounts[i] = amt
+		}
+	}
+
 	input := service.CreateLoanInput{
-		ProviderID:   req.ProviderID,
-		ItemName:     req.ItemName,
-		TotalAmount:  totalAmount,
-		NumMonths:    req.NumMonths,
-		PurchaseDate: purchaseDate,
-		InterestRate: interestRate,
-		Notes:        req.Notes,
+		ProviderID:     req.ProviderID,
+		ItemName:       req.ItemName,
+		TotalAmount:    totalAmount,
+		NumMonths:      req.NumMonths,
+		PurchaseDate:   purchaseDate,
+		InterestRate:   interestRate,
+		Notes:          req.Notes,
+		PaymentAmounts: paymentAmounts,
 	}
 
 	loan, err := h.loanService.CreateLoan(workspaceID, input)
