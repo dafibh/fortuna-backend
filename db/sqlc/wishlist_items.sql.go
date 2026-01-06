@@ -179,14 +179,17 @@ func (q *Queries) ListWishlistItems(ctx context.Context, arg ListWishlistItemsPa
 const listWishlistItemsWithStats = `-- name: ListWishlistItemsWithStats :many
 SELECT
     wi.id, wi.wishlist_id, wi.title, wi.description, wi.external_link, wi.image_url, wi.created_at, wi.updated_at, wi.deleted_at, wi.image_path,
-    (
-        SELECT MIN(current_prices.price)::TEXT
-        FROM (
-            SELECT DISTINCT ON (wip.platform_name) wip.price
-            FROM wishlist_item_prices wip
-            WHERE wip.item_id = wi.id
-            ORDER BY wip.platform_name, wip.price_date DESC, wip.created_at DESC
-        ) AS current_prices
+    COALESCE(
+        (
+            SELECT MIN(current_prices.price)::TEXT
+            FROM (
+                SELECT DISTINCT ON (wip.platform_name) wip.price
+                FROM wishlist_item_prices wip
+                WHERE wip.item_id = wi.id
+                ORDER BY wip.platform_name, wip.price_date DESC, wip.created_at DESC
+            ) AS current_prices
+        ),
+        ''
     ) AS best_price,
     0::int AS note_count  -- Placeholder for Story 8-5
 FROM wishlist_items wi
@@ -211,7 +214,7 @@ type ListWishlistItemsWithStatsRow struct {
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 	DeletedAt    pgtype.Timestamptz `json:"deleted_at"`
 	ImagePath    pgtype.Text        `json:"image_path"`
-	BestPrice    string             `json:"best_price"`
+	BestPrice    interface{}        `json:"best_price"`
 	NoteCount    int32              `json:"note_count"`
 }
 

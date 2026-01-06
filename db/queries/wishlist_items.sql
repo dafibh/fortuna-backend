@@ -49,14 +49,17 @@ WHERE wi.wishlist_id = $1 AND w.workspace_id = $2 AND wi.deleted_at IS NULL AND 
 -- name: ListWishlistItemsWithStats :many
 SELECT
     wi.*,
-    (
-        SELECT MIN(current_prices.price)::TEXT
-        FROM (
-            SELECT DISTINCT ON (wip.platform_name) wip.price
-            FROM wishlist_item_prices wip
-            WHERE wip.item_id = wi.id
-            ORDER BY wip.platform_name, wip.price_date DESC, wip.created_at DESC
-        ) AS current_prices
+    COALESCE(
+        (
+            SELECT MIN(current_prices.price)::TEXT
+            FROM (
+                SELECT DISTINCT ON (wip.platform_name) wip.price
+                FROM wishlist_item_prices wip
+                WHERE wip.item_id = wi.id
+                ORDER BY wip.platform_name, wip.price_date DESC, wip.created_at DESC
+            ) AS current_prices
+        ),
+        ''
     ) AS best_price,
     0::int AS note_count  -- Placeholder for Story 8-5
 FROM wishlist_items wi

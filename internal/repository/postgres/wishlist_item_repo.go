@@ -211,8 +211,10 @@ func sqlcWishlistItemWithStatsToDomain(row sqlc.ListWishlistItemsWithStatsRow) *
 	if row.DeletedAt.Valid {
 		result.DeletedAt = &row.DeletedAt.Time
 	}
-	if row.BestPrice != "" {
-		result.BestPrice = &row.BestPrice
+	if row.BestPrice != nil {
+		if priceStr, ok := row.BestPrice.(string); ok && priceStr != "" {
+			result.BestPrice = &priceStr
+		}
 	}
 	return result
 }
