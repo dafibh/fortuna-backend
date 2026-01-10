@@ -6,7 +6,7 @@ import (
 )
 
 // RegisterRoutes sets up all API routes
-func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateLimiter *middleware.RateLimiter, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler, recurringHandler *RecurringHandler, loanProviderHandler *LoanProviderHandler, loanHandler *LoanHandler, loanPaymentHandler *LoanPaymentHandler, wishlistHandler *WishlistHandler, wishlistItemHandler *WishlistItemHandler, wishlistPriceHandler *WishlistPriceHandler, wishlistNoteHandler *WishlistNoteHandler, imageHandler *ImageHandler, wsHandler *WebSocketHandler, apiTokenHandler *APITokenHandler) {
+func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateLimiter *middleware.RateLimiter, authHandler *AuthHandler, profileHandler *ProfileHandler, workspaceHandler *WorkspaceHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler, recurringHandler *RecurringHandler, loanProviderHandler *LoanProviderHandler, loanHandler *LoanHandler, loanPaymentHandler *LoanPaymentHandler, wishlistHandler *WishlistHandler, wishlistItemHandler *WishlistItemHandler, wishlistPriceHandler *WishlistPriceHandler, wishlistNoteHandler *WishlistNoteHandler, imageHandler *ImageHandler, wsHandler *WebSocketHandler, apiTokenHandler *APITokenHandler) {
 	// WebSocket route (auth via query param token)
 	e.GET("/ws", wsHandler.HandleWS)
 
@@ -25,6 +25,11 @@ func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateL
 	profile.Use(dualAuth.JWTOnly())
 	profile.GET("", profileHandler.GetProfile)
 	profile.PUT("", profileHandler.UpdateProfile)
+
+	// Workspace routes (dual auth with rate limiting)
+	workspace := api.Group("/workspace")
+	workspace.Use(dualAuth.Authenticate(), middleware.RateLimitMiddleware(rateLimiter))
+	workspace.DELETE("/clear", workspaceHandler.ClearAllData)
 
 	// Account routes (dual auth with rate limiting)
 	accounts := api.Group("/accounts")

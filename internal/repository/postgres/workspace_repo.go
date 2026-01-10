@@ -109,6 +109,48 @@ func (r *WorkspaceRepository) GetAllWorkspaces() ([]*domain.Workspace, error) {
 	return result, nil
 }
 
+// ClearAllData deletes all data for a workspace (but keeps the workspace itself)
+// This is a destructive operation that removes all accounts, transactions, budgets, loans, wishlists, etc.
+func (r *WorkspaceRepository) ClearAllData(workspaceID int32) error {
+	ctx := context.Background()
+
+	// Start a transaction
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	// Delete in order to respect foreign key constraints
+	// Note: Some deletes will cascade automatically, but we're explicit for clarity
+	deleteStatements := []string{
+		"DELETE FROM wishlist_items WHERE wishlist_id IN (SELECT id FROM wishlists WHERE workspace_id = $1)",
+		"DELETE FROM wishlists WHERE workspace_id = $1",
+		"DELETE FROM loans WHERE workspace_id = $1",
+		"DELETE FROM loan_providers WHERE workspace_id = $1",
+		"DELETE FROM transactions WHERE workspace_id = $1",
+		"DELETE FROM recurring_transactions WHERE workspace_id = $1",
+		"DELETE FROM budget_allocations WHERE workspace_id = $1",
+		"DELETE FROM budget_categories WHERE workspace_id = $1",
+		"DELETE FROM months WHERE workspace_id = $1",
+		"DELETE FROM accounts WHERE workspace_id = $1",
+	}
+
+	for _, stmt := range deleteStatements {
+		_, err := tx.Exec(ctx, stmt, workspaceID)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Commit the transaction
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // Helper functions
 
 func sqlcWorkspaceToDomain(w sqlc.Workspace) *domain.Workspace {

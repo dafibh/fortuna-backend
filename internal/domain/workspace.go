@@ -24,4 +24,5 @@ type WorkspaceRepository interface {
 	Update(workspace *Workspace) (*Workspace, error)
 	Delete(id int32) error
 	GetAllWorkspaces() ([]*Workspace, error) // For projection sync
+	ClearAllData(workspaceID int32) error    // Delete all workspace data (but keep workspace)
 }

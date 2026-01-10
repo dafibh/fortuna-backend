@@ -107,6 +107,7 @@ func main() {
 	// Initialize services
 	authService := service.NewAuthService(userRepo, workspaceRepo)
 	profileService := service.NewProfileService(userRepo)
+	workspaceService := service.NewWorkspaceService(workspaceRepo)
 	accountService := service.NewAccountService(accountRepo)
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, budgetCategoryRepo)
 	calculationService := service.NewCalculationService(accountRepo, transactionRepo)
@@ -162,6 +163,7 @@ func main() {
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(authService)
 	profileHandler := handler.NewProfileHandler(profileService)
+	workspaceHandler := handler.NewWorkspaceHandler(workspaceService)
 	accountHandler := handler.NewAccountHandler(accountService, calculationService)
 	transactionHandler := handler.NewTransactionHandler(transactionService, recurringService, projectionService)
 	monthHandler := handler.NewMonthHandler(monthService)
@@ -226,7 +228,7 @@ func main() {
 	e.GET("/api/docs/*", echoSwagger.WrapHandler)
 
 	// Register API routes
-	handler.RegisterRoutes(e, dualAuthMiddleware, rateLimiter, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler, dashboardHandler, budgetCategoryHandler, budgetHandler, ccHandler, recurringHandler, loanProviderHandler, loanHandler, loanPaymentHandler, wishlistHandler, wishlistItemHandler, wishlistPriceHandler, wishlistNoteHandler, imageHandler, wsHandler, apiTokenHandler)
+	handler.RegisterRoutes(e, dualAuthMiddleware, rateLimiter, authHandler, profileHandler, workspaceHandler, accountHandler, transactionHandler, monthHandler, dashboardHandler, budgetCategoryHandler, budgetHandler, ccHandler, recurringHandler, loanProviderHandler, loanHandler, loanPaymentHandler, wishlistHandler, wishlistItemHandler, wishlistPriceHandler, wishlistNoteHandler, imageHandler, wsHandler, apiTokenHandler)
 
 	// Start server in goroutine
 	go func() {
