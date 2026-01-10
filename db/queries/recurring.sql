@@ -73,3 +73,9 @@ SELECT * FROM recurring_templates
 WHERE workspace_id = $1
   AND (end_date IS NULL OR end_date >= CURRENT_DATE)
 ORDER BY start_date;
+
+-- name: GetAllActiveTemplates :many
+-- Get all active templates across all workspaces (for daily sync goroutine)
+SELECT * FROM recurring_templates
+WHERE end_date IS NULL OR end_date >= CURRENT_DATE
+ORDER BY workspace_id, id;

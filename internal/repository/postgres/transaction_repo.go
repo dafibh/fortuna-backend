@@ -925,3 +925,14 @@ func (r *TransactionRepository) OrphanActualsByTemplate(workspaceID int32, templ
 		TemplateID:  pgtype.Int4{Int32: templateID, Valid: true},
 	})
 }
+
+// DeleteProjectionsBeyondDate deletes projections beyond a specific date (used when template end_date changes)
+func (r *TransactionRepository) DeleteProjectionsBeyondDate(workspaceID int32, templateID int32, date time.Time) error {
+	ctx := context.Background()
+
+	return r.queries.DeleteProjectionsBeyondDate(ctx, sqlc.DeleteProjectionsBeyondDateParams{
+		WorkspaceID:     workspaceID,
+		TemplateID:      pgtype.Int4{Int32: templateID, Valid: true},
+		TransactionDate: pgtype.Date{Time: date, Valid: true},
+	})
+}

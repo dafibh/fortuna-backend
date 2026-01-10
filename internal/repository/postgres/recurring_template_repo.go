@@ -161,6 +161,24 @@ func (r *RecurringTemplateRepository) GetActive(workspaceID int32) ([]*domain.Re
 	return result, nil
 }
 
+// GetAllActive retrieves all active recurring templates across all workspaces
+// Used by the daily projection sync goroutine
+func (r *RecurringTemplateRepository) GetAllActive() ([]*domain.RecurringTemplate, error) {
+	ctx := context.Background()
+
+	templates, err := r.queries.GetAllActiveTemplates(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*domain.RecurringTemplate, len(templates))
+	for i, template := range templates {
+		result[i] = sqlcRecurringTemplateToDomain(template)
+	}
+
+	return result, nil
+}
+
 // sqlcRecurringTemplateToDomain converts sqlc model to domain model
 func sqlcRecurringTemplateToDomain(t sqlc.RecurringTemplate) *domain.RecurringTemplate {
 	template := &domain.RecurringTemplate{

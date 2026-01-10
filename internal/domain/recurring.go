@@ -85,6 +85,7 @@ type RecurringTemplateRepository interface {
 	GetByID(workspaceID int32, id int32) (*RecurringTemplate, error)
 	ListByWorkspace(workspaceID int32) ([]*RecurringTemplate, error)
 	GetActive(workspaceID int32) ([]*RecurringTemplate, error)
+	GetAllActive() ([]*RecurringTemplate, error) // For daily sync goroutine
 }
 
 // RecurringTemplateService defines the interface for recurring template business logic

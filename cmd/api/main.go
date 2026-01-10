@@ -118,6 +118,14 @@ func main() {
 	recurringService := service.NewRecurringService(recurringRepo, transactionRepo, accountRepo, budgetCategoryRepo)
 	recurringTemplateRepo := postgres.NewRecurringTemplateRepository(pool)
 	recurringTemplateService := service.NewRecurringTemplateService(recurringTemplateRepo, transactionRepo, accountRepo, budgetCategoryRepo)
+
+	// Link template repository to transaction service for on-access projection generation
+	transactionService.SetRecurringTemplateRepository(recurringTemplateRepo)
+
+	// Link exclusion repository to transaction service for projection deletion tracking
+	exclusionRepo := postgres.NewExclusionRepository(pool)
+	transactionService.SetExclusionRepository(exclusionRepo)
+
 	loanProviderService := service.NewLoanProviderService(loanProviderRepo)
 	loanService := service.NewLoanService(pool, loanRepo, loanProviderRepo, loanPaymentRepo)
 	loanPaymentService := service.NewLoanPaymentService(loanPaymentRepo, loanRepo)
@@ -183,6 +191,13 @@ func main() {
 	wsHandler := handler.NewWebSocketHandler(wsHub, wsJWTValidator, cfg.CORSOrigins)
 	apiTokenHandler := handler.NewAPITokenHandler(apiTokenService, authService)
 
+	// Initialize projection sync service for daily background sync
+	projectionSyncService := service.NewProjectionSyncService(recurringTemplateRepo, transactionRepo)
+
+	// Start projection sync goroutine with context for graceful shutdown
+	projectionCtx, projectionCancel := context.WithCancel(context.Background())
+	go startProjectionSync(projectionCtx, projectionSyncService)
+
 	// Create Echo instance
 	e := echo.New()
 	e.HideBanner = true
@@ -245,6 +260,9 @@ func main() {
 
 	log.Info().Msg("Shutting down server...")
 
+	// Stop background projection sync goroutine
+	projectionCancel()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -253,6 +271,36 @@ func main() {
 	}
 
 	log.Info().Msg("Server exited")
+}
+
+// startProjectionSync runs the projection sync service on startup and every 24 hours
+func startProjectionSync(ctx context.Context, syncService *service.ProjectionSyncService) {
+	// Run immediately on startup
+	log.Info().Msg("Running initial projection sync")
+	if err := syncService.SyncAllActive(); err != nil {
+		log.Error().Err(err).Msg("Initial projection sync failed")
+	} else {
+		log.Info().Msg("Initial projection sync completed")
+	}
+
+	// Run every 24 hours
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Info().Msg("Projection sync goroutine stopping")
+			return
+		case <-ticker.C:
+			log.Info().Msg("Running scheduled projection sync")
+			if err := syncService.SyncAllActive(); err != nil {
+				log.Error().Err(err).Msg("Scheduled projection sync failed")
+			} else {
+				log.Info().Msg("Scheduled projection sync completed")
+			}
+		}
+	}
 }
 
 // workspaceProviderAdapter adapts AuthService to middleware.WorkspaceProvider

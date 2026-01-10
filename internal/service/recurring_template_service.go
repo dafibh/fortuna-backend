@@ -326,11 +326,8 @@ func (s *RecurringTemplateServiceImpl) generateProjections(workspaceID int32, te
 	return nil
 }
 
-// recalculateProjections deletes existing projections and regenerates them
-// NOTE: This operation is not fully atomic. There is a small window between checking for
-// user-edited projections and deleting/regenerating where a concurrent edit could be lost.
-// For MVP, this is acceptable as the window is milliseconds and the scenario is rare.
-// Future improvement: wrap in database transaction for full atomicity.
+// recalculateProjections updates existing projections when template changes
+// User-edited projections are PRESERVED, unedited ones are updated with new template values
 func (s *RecurringTemplateServiceImpl) recalculateProjections(workspaceID int32, oldTemplate, newTemplate *domain.RecurringTemplate) error {
 	// Get existing projections to check for user edits
 	existingProjections, err := s.transactionRepo.GetProjectionsByTemplate(workspaceID, newTemplate.ID)
@@ -338,22 +335,42 @@ func (s *RecurringTemplateServiceImpl) recalculateProjections(workspaceID int32,
 		return err
 	}
 
-	// Find projections that have been user-edited (values differ from old template)
-	editedDates := make(map[string]bool)
+	// Build map of existing projections by date
+	existingByDate := make(map[string]*domain.Transaction)
+	for _, proj := range existingProjections {
+		dateKey := proj.TransactionDate.Format("2006-01-02")
+		existingByDate[dateKey] = proj
+	}
+
+	// Process each existing projection
 	for _, proj := range existingProjections {
 		if s.isUserEdited(proj, oldTemplate) {
-			// Mark this date as user-edited (don't regenerate)
-			dateKey := proj.TransactionDate.Format("2006-01-02")
-			editedDates[dateKey] = true
+			// PRESERVE user-edited projection - don't modify it
+			continue
+		}
+
+		// Update unedited projection with new template values
+		updateData := &domain.UpdateTransactionData{
+			Name:            newTemplate.Description,
+			Amount:          newTemplate.Amount,
+			Type:            domain.TransactionTypeExpense,
+			TransactionDate: proj.TransactionDate,
+			AccountID:       newTemplate.AccountID,
+			CategoryID:      &newTemplate.CategoryID,
+			Source:          "recurring",
+			TemplateID:      &newTemplate.ID,
+			IsProjected:     true,
+		}
+		if _, err := s.transactionRepo.Update(workspaceID, proj.ID, updateData); err != nil {
+			return err
 		}
 	}
 
-	// Delete all projections (we'll regenerate non-edited ones)
-	if err := s.transactionRepo.DeleteProjectionsByTemplate(workspaceID, newTemplate.ID); err != nil {
-		return err
+	// Generate any new projections for dates that don't exist yet
+	editedDates := make(map[string]bool)
+	for dateKey := range existingByDate {
+		editedDates[dateKey] = true // Skip all existing dates (both edited and just-updated)
 	}
-
-	// Regenerate projections, skipping user-edited dates
 	return s.generateProjectionsWithSkips(workspaceID, newTemplate, editedDates)
 }
 

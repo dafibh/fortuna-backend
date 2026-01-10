@@ -59,6 +59,12 @@ type TransactionResponse struct {
 	RecurringTransactionID *int32  `json:"recurringTransactionId,omitempty"`
 	CreatedAt              string  `json:"createdAt"`
 	UpdatedAt              string  `json:"updatedAt"`
+
+	// Recurring/Projection fields (v2)
+	Source      string `json:"source"`                // "manual", "recurring", or "import"
+	TemplateID  *int32 `json:"templateId,omitempty"`  // ID of recurring template that generated this
+	IsProjected bool   `json:"isProjected"`           // true if this is a projected (not yet actual) transaction
+	IsModified  bool   `json:"isModified"`            // true if projected instance differs from template
 }
 
 // CreateTransferRequest represents the create transfer request body
@@ -213,6 +219,7 @@ type PaginatedTransactionsResponse struct {
 // @Produce json
 // @Security BearerAuth
 // @Param accountId query int false "Filter by account ID"
+// @Param month query string false "Filter by month (YYYY-MM format, overrides startDate/endDate)"
 // @Param startDate query string false "Start date (YYYY-MM-DD)"
 // @Param endDate query string false "End date (YYYY-MM-DD)"
 // @Param type query string false "Transaction type (income or expense)"
@@ -235,6 +242,7 @@ func (h *TransactionHandler) GetTransactions(c echo.Context) error {
 	}
 
 	accountIDStr := c.QueryParam("accountId")
+	monthStr := c.QueryParam("month")
 	startDateStr := c.QueryParam("startDate")
 	endDateStr := c.QueryParam("endDate")
 	typeStr := c.QueryParam("type")
@@ -249,20 +257,34 @@ func (h *TransactionHandler) GetTransactions(c echo.Context) error {
 		filters.AccountID = &accountID
 	}
 
-	if startDateStr != "" {
-		parsed, err := time.Parse("2006-01-02", startDateStr)
+	// Parse month parameter (YYYY-MM format) - overrides startDate/endDate
+	if monthStr != "" {
+		parsed, err := time.Parse("2006-01", monthStr)
 		if err != nil {
-			return NewValidationError(c, "Invalid startDate format (use YYYY-MM-DD)", nil)
+			return NewValidationError(c, "Invalid month format (use YYYY-MM)", nil)
 		}
-		filters.StartDate = &parsed
-	}
+		// Set start and end to cover the entire month
+		startOfMonth := time.Date(parsed.Year(), parsed.Month(), 1, 0, 0, 0, 0, time.UTC)
+		endOfMonth := startOfMonth.AddDate(0, 1, -1) // Last day of month
+		filters.StartDate = &startOfMonth
+		filters.EndDate = &endOfMonth
+	} else {
+		// Use startDate/endDate if month not provided
+		if startDateStr != "" {
+			parsed, err := time.Parse("2006-01-02", startDateStr)
+			if err != nil {
+				return NewValidationError(c, "Invalid startDate format (use YYYY-MM-DD)", nil)
+			}
+			filters.StartDate = &parsed
+		}
 
-	if endDateStr != "" {
-		parsed, err := time.Parse("2006-01-02", endDateStr)
-		if err != nil {
-			return NewValidationError(c, "Invalid endDate format (use YYYY-MM-DD)", nil)
+		if endDateStr != "" {
+			parsed, err := time.Parse("2006-01-02", endDateStr)
+			if err != nil {
+				return NewValidationError(c, "Invalid endDate format (use YYYY-MM-DD)", nil)
+			}
+			filters.EndDate = &parsed
 		}
-		filters.EndDate = &parsed
 	}
 
 	if typeStr != "" {
@@ -331,6 +353,9 @@ func (h *TransactionHandler) GetTransactions(c echo.Context) error {
 		log.Error().Err(err).Int32("workspace_id", workspaceID).Msg("Failed to get transactions")
 		return NewInternalError(c, "Failed to get transactions")
 	}
+
+	// Enrich projected transactions with modification status
+	h.transactionService.EnrichWithModificationStatus(workspaceID, result.Data)
 
 	response := PaginatedTransactionsResponse{
 		Data:       make([]TransactionResponse, len(result.Data)),
@@ -740,6 +765,12 @@ func parseIntParam(s string, out *int32) (bool, error) {
 
 // Helper function to convert domain.Transaction to TransactionResponse
 func toTransactionResponse(transaction *domain.Transaction) TransactionResponse {
+	// Default source to "manual" if not set
+	source := transaction.Source
+	if source == "" {
+		source = "manual"
+	}
+
 	resp := TransactionResponse{
 		ID:              transaction.ID,
 		WorkspaceID:     transaction.WorkspaceID,
@@ -751,6 +782,12 @@ func toTransactionResponse(transaction *domain.Transaction) TransactionResponse 
 		IsPaid:          transaction.IsPaid,
 		CreatedAt:       transaction.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:       transaction.UpdatedAt.Format(time.RFC3339),
+
+		// Recurring/Projection fields (v2)
+		Source:      source,
+		TemplateID:  transaction.TemplateID,
+		IsProjected: transaction.IsProjected,
+		IsModified:  transaction.IsModified,
 	}
 	if transaction.CCSettlementIntent != nil {
 		intent := string(*transaction.CCSettlementIntent)

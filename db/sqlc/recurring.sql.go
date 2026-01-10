@@ -197,6 +197,45 @@ func (q *Queries) GetActiveRecurringTemplates(ctx context.Context, workspaceID i
 	return items, nil
 }
 
+const getAllActiveTemplates = `-- name: GetAllActiveTemplates :many
+SELECT id, workspace_id, description, amount, category_id, account_id, frequency, start_date, end_date, created_at, updated_at FROM recurring_templates
+WHERE end_date IS NULL OR end_date >= CURRENT_DATE
+ORDER BY workspace_id, id
+`
+
+// Get all active templates across all workspaces (for daily sync goroutine)
+func (q *Queries) GetAllActiveTemplates(ctx context.Context) ([]RecurringTemplate, error) {
+	rows, err := q.db.Query(ctx, getAllActiveTemplates)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RecurringTemplate{}
+	for rows.Next() {
+		var i RecurringTemplate
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Description,
+			&i.Amount,
+			&i.CategoryID,
+			&i.AccountID,
+			&i.Frequency,
+			&i.StartDate,
+			&i.EndDate,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getRecurringTemplateByID = `-- name: GetRecurringTemplateByID :one
 SELECT id, workspace_id, description, amount, category_id, account_id, frequency, start_date, end_date, created_at, updated_at FROM recurring_templates
 WHERE id = $1 AND workspace_id = $2

@@ -106,6 +106,14 @@ type Month struct {
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
+type ProjectionExclusion struct {
+	ID            int32              `json:"id"`
+	WorkspaceID   int32              `json:"workspace_id"`
+	TemplateID    int32              `json:"template_id"`
+	ExcludedMonth pgtype.Date        `json:"excluded_month"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}
+
 type RecurringTemplate struct {
 	ID          int32              `json:"id"`
 	WorkspaceID int32              `json:"workspace_id"`

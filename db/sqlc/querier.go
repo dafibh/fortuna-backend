@@ -33,6 +33,7 @@ type Querier interface {
 	CreateLoanProvider(ctx context.Context, arg CreateLoanProviderParams) (LoanProvider, error)
 	CreateMonth(ctx context.Context, arg CreateMonthParams) (Month, error)
 	CreateOrGetUserByAuth0ID(ctx context.Context, arg CreateOrGetUserByAuth0IDParams) (User, error)
+	CreateProjectionExclusion(ctx context.Context, arg CreateProjectionExclusionParams) error
 	// ========================================
 	// V2 Recurring Templates (recurring_templates table)
 	// ========================================
@@ -46,6 +47,7 @@ type Querier interface {
 	CreateWishlistItemPrice(ctx context.Context, arg CreateWishlistItemPriceParams) (WishlistItemPrice, error)
 	CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams) (Workspace, error)
 	DeleteBudgetAllocation(ctx context.Context, arg DeleteBudgetAllocationParams) error
+	DeleteExclusionsByTemplate(ctx context.Context, templateID int32) error
 	DeleteLoan(ctx context.Context, arg DeleteLoanParams) error
 	DeleteLoanProvider(ctx context.Context, arg DeleteLoanProviderParams) error
 	// Delete projections beyond a specific date (used when changing template end_date)
@@ -68,6 +70,8 @@ type Querier interface {
 	GetAccountsByWorkspaceAll(ctx context.Context, workspaceID int32) ([]Account, error)
 	GetActiveLoansWithStats(ctx context.Context, workspaceID int32) ([]GetActiveLoansWithStatsRow, error)
 	GetActiveRecurringTemplates(ctx context.Context, workspaceID int32) ([]RecurringTemplate, error)
+	// Get all active templates across all workspaces (for daily sync goroutine)
+	GetAllActiveTemplates(ctx context.Context) ([]RecurringTemplate, error)
 	GetAllBudgetCategories(ctx context.Context, workspaceID int32) ([]BudgetCategory, error)
 	GetAllMonths(ctx context.Context, workspaceID int32) ([]Month, error)
 	GetBestPriceForItem(ctx context.Context, arg GetBestPriceForItemParams) (string, error)
@@ -92,6 +96,7 @@ type Querier interface {
 	GetCategoryTransactions(ctx context.Context, arg GetCategoryTransactionsParams) ([]GetCategoryTransactionsRow, error)
 	GetCompletedLoansWithStats(ctx context.Context, workspaceID int32) ([]GetCompletedLoansWithStatsRow, error)
 	GetCurrentPricesByItem(ctx context.Context, arg GetCurrentPricesByItemParams) ([]GetCurrentPricesByItemRow, error)
+	GetExclusionsByTemplate(ctx context.Context, arg GetExclusionsByTemplateParams) ([]ProjectionExclusion, error)
 	GetFirstItemImage(ctx context.Context, arg GetFirstItemImageParams) (pgtype.Text, error)
 	GetLatestMonth(ctx context.Context, workspaceID int32) (Month, error)
 	GetLoanByID(ctx context.Context, arg GetLoanByIDParams) (Loan, error)
@@ -140,6 +145,7 @@ type Querier interface {
 	GetWorkspaceByUserAuth0ID(ctx context.Context, auth0ID string) (Workspace, error)
 	GetWorkspaceByUserID(ctx context.Context, userID pgtype.UUID) (Workspace, error)
 	HardDeleteAccount(ctx context.Context, arg HardDeleteAccountParams) error
+	IsMonthExcluded(ctx context.Context, arg IsMonthExcludedParams) (bool, error)
 	ListActiveLoans(ctx context.Context, arg ListActiveLoansParams) ([]Loan, error)
 	ListCompletedLoans(ctx context.Context, arg ListCompletedLoansParams) ([]Loan, error)
 	ListLoanProviders(ctx context.Context, workspaceID int32) ([]LoanProvider, error)

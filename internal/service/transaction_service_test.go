@@ -1856,3 +1856,174 @@ func TestGetRecentlyUsedCategories(t *testing.T) {
 		t.Errorf("Expected second category 'Transport', got '%s'", categories[1].Name)
 	}
 }
+
+// ==================== ON-ACCESS PROJECTION GENERATION TESTS ====================
+
+func TestGetTransactions_OnAccessProjectionGeneration(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	templateRepo := testutil.NewMockRecurringTemplateRepository()
+
+	transactionService := NewTransactionService(transactionRepo, accountRepo, categoryRepo)
+	transactionService.SetRecurringTemplateRepository(templateRepo)
+
+	workspaceID := int32(1)
+
+	// Add an active template
+	startDate := time.Now().AddDate(0, 1, 0) // Next month
+	templateRepo.AddTemplate(&domain.RecurringTemplate{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Description: "Monthly Bill",
+		Amount:      decimal.NewFromInt(100),
+		CategoryID:  1,
+		AccountID:   1,
+		Frequency:   "monthly",
+		StartDate:   startDate,
+	})
+
+	// Request transactions for a future month (beyond the 12-month default generation)
+	futureDate := time.Now().AddDate(0, 18, 0) // 18 months in the future
+	filters := &domain.TransactionFilters{
+		EndDate: &futureDate,
+	}
+
+	// This should trigger on-access projection generation
+	_, err := transactionService.GetTransactions(workspaceID, filters)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// Verify projections were created
+	projections, err := transactionRepo.GetProjectionsByTemplate(workspaceID, 1)
+	if err != nil {
+		t.Fatalf("Failed to get projections: %v", err)
+	}
+
+	// Should have projections created
+	if len(projections) == 0 {
+		t.Errorf("Expected projections to be created on-access, got 0")
+	}
+}
+
+func TestGetTransactions_NoProjectionsForPastDates(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	templateRepo := testutil.NewMockRecurringTemplateRepository()
+
+	transactionService := NewTransactionService(transactionRepo, accountRepo, categoryRepo)
+	transactionService.SetRecurringTemplateRepository(templateRepo)
+
+	workspaceID := int32(1)
+
+	// Add an active template
+	startDate := time.Now().AddDate(0, 1, 0)
+	templateRepo.AddTemplate(&domain.RecurringTemplate{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Description: "Monthly Bill",
+		Amount:      decimal.NewFromInt(100),
+		CategoryID:  1,
+		AccountID:   1,
+		Frequency:   "monthly",
+		StartDate:   startDate,
+	})
+
+	// Request transactions for a past month
+	pastDate := time.Now().AddDate(0, -2, 0)
+	filters := &domain.TransactionFilters{
+		EndDate: &pastDate,
+	}
+
+	// This should NOT trigger projection generation (past dates)
+	_, err := transactionService.GetTransactions(workspaceID, filters)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// Verify no projections were created
+	projections, err := transactionRepo.GetProjectionsByTemplate(workspaceID, 1)
+	if err != nil {
+		t.Fatalf("Failed to get projections: %v", err)
+	}
+
+	if len(projections) != 0 {
+		t.Errorf("Expected no projections for past dates, got %d", len(projections))
+	}
+}
+
+func TestGetTransactions_RespectsTemplateEndDate(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	templateRepo := testutil.NewMockRecurringTemplateRepository()
+
+	transactionService := NewTransactionService(transactionRepo, accountRepo, categoryRepo)
+	transactionService.SetRecurringTemplateRepository(templateRepo)
+
+	workspaceID := int32(1)
+
+	// Add a template with end_date 3 months from now
+	startDate := time.Now().AddDate(0, 1, 0)
+	endDate := startDate.AddDate(0, 2, 0)
+	templateRepo.AddTemplate(&domain.RecurringTemplate{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Description: "Short Term Bill",
+		Amount:      decimal.NewFromInt(100),
+		CategoryID:  1,
+		AccountID:   1,
+		Frequency:   "monthly",
+		StartDate:   startDate,
+		EndDate:     &endDate,
+	})
+
+	// Request transactions for a date beyond template end_date
+	futureDate := time.Now().AddDate(0, 12, 0)
+	filters := &domain.TransactionFilters{
+		EndDate: &futureDate,
+	}
+
+	_, err := transactionService.GetTransactions(workspaceID, filters)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// Verify projections don't go beyond end_date
+	projections, err := transactionRepo.GetProjectionsByTemplate(workspaceID, 1)
+	if err != nil {
+		t.Fatalf("Failed to get projections: %v", err)
+	}
+
+	for _, proj := range projections {
+		if proj.TransactionDate.After(endDate) {
+			t.Errorf("Projection date %v should not be after template end_date %v",
+				proj.TransactionDate, endDate)
+		}
+	}
+}
+
+func TestGetTransactions_WithoutTemplateRepo_NoError(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+
+	// Don't set template repo
+	transactionService := NewTransactionService(transactionRepo, accountRepo, categoryRepo)
+
+	workspaceID := int32(1)
+
+	// Request transactions for a future month
+	futureDate := time.Now().AddDate(0, 6, 0)
+	filters := &domain.TransactionFilters{
+		EndDate: &futureDate,
+	}
+
+	// Should not error even without template repo
+	_, err := transactionService.GetTransactions(workspaceID, filters)
+	if err != nil {
+		t.Errorf("Expected no error without template repo, got %v", err)
+	}
+}

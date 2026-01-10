@@ -16,6 +16,8 @@ type TransactionService struct {
 	transactionRepo domain.TransactionRepository
 	accountRepo     domain.AccountRepository
 	categoryRepo    domain.BudgetCategoryRepository
+	templateRepo    domain.RecurringTemplateRepository
+	exclusionRepo   domain.ProjectionExclusionRepository
 	eventPublisher  websocket.EventPublisher
 }
 
@@ -26,6 +28,16 @@ func NewTransactionService(transactionRepo domain.TransactionRepository, account
 		accountRepo:     accountRepo,
 		categoryRepo:    categoryRepo,
 	}
+}
+
+// SetRecurringTemplateRepository sets the template repository for on-access projection generation
+func (s *TransactionService) SetRecurringTemplateRepository(templateRepo domain.RecurringTemplateRepository) {
+	s.templateRepo = templateRepo
+}
+
+// SetExclusionRepository sets the exclusion repository for projection deletion tracking
+func (s *TransactionService) SetExclusionRepository(exclusionRepo domain.ProjectionExclusionRepository) {
+	s.exclusionRepo = exclusionRepo
 }
 
 // SetEventPublisher sets the event publisher for real-time updates
@@ -155,7 +167,17 @@ func (s *TransactionService) CreateTransaction(workspaceID int32, input CreateTr
 }
 
 // GetTransactions retrieves transactions for a workspace with optional filters and pagination
+// If requesting future dates, ensures projections exist (on-access projection generation)
 func (s *TransactionService) GetTransactions(workspaceID int32, filters *domain.TransactionFilters) (*domain.PaginatedTransactions, error) {
+	// Check if requesting future dates and ensure projections exist
+	if filters != nil && filters.EndDate != nil && s.templateRepo != nil {
+		now := time.Now()
+		if filters.EndDate.After(now) {
+			// Ensure projections exist for the requested date range
+			s.ensureProjectionsForDateRange(workspaceID, *filters.EndDate)
+		}
+	}
+
 	return s.transactionRepo.GetByWorkspace(workspaceID, filters)
 }
 
@@ -313,8 +335,9 @@ func (s *TransactionService) UpdateSettlementIntent(workspaceID int32, id int32,
 }
 
 // DeleteTransaction soft deletes a transaction (or both sides of a transfer)
+// For projected transactions, it also creates an exclusion record to prevent re-creation
 func (s *TransactionService) DeleteTransaction(workspaceID int32, id int32) error {
-	// Get transaction first to check if it's a transfer
+	// Get transaction first to check if it's a transfer or projected
 	tx, err := s.transactionRepo.GetByID(workspaceID, id)
 	if err != nil {
 		return err
@@ -327,8 +350,15 @@ func (s *TransactionService) DeleteTransaction(workspaceID int32, id int32) erro
 			return err
 		}
 		// Publish delete events for both transactions
-		s.publishEvent(workspaceID, websocket.TransactionDeleted(map[string]interface{}{"id": id, "transferPairId": tx.TransferPairID.String()}))
+		s.publishEvent(workspaceID, websocket.TransactionDeleted(map[string]any{"id": id, "transferPairId": tx.TransferPairID.String()}))
 		return nil
+	}
+
+	// If it's a projected transaction from a template, create an exclusion
+	if tx.IsProjected && tx.TemplateID != nil && s.exclusionRepo != nil {
+		monthStart := time.Date(tx.TransactionDate.Year(), tx.TransactionDate.Month(), 1, 0, 0, 0, 0, time.UTC)
+		// Ignore error - idempotent operation, exclusion might already exist
+		_ = s.exclusionRepo.Create(workspaceID, *tx.TemplateID, monthStart)
 	}
 
 	// Regular delete
@@ -338,7 +368,7 @@ func (s *TransactionService) DeleteTransaction(workspaceID int32, id int32) erro
 	}
 
 	// Publish event for real-time updates
-	s.publishEvent(workspaceID, websocket.TransactionDeleted(map[string]interface{}{"id": id}))
+	s.publishEvent(workspaceID, websocket.TransactionDeleted(map[string]any{"id": id}))
 
 	return nil
 }
@@ -427,4 +457,168 @@ func (s *TransactionService) CreateTransfer(workspaceID int32, input CreateTrans
 // GetRecentlyUsedCategories returns recently used categories for suggestions dropdown
 func (s *TransactionService) GetRecentlyUsedCategories(workspaceID int32) ([]*domain.RecentCategory, error) {
 	return s.transactionRepo.GetRecentlyUsedCategories(workspaceID)
+}
+
+// ensureProjectionsForDateRange ensures projections exist up to the target date (on-access generation)
+// This is transparent to the user - projections are generated within the same API call
+func (s *TransactionService) ensureProjectionsForDateRange(workspaceID int32, targetDate time.Time) {
+	if s.templateRepo == nil {
+		return
+	}
+
+	// Get all active templates for this workspace
+	templates, err := s.templateRepo.GetActive(workspaceID)
+	if err != nil {
+		// Log but don't fail the request
+		return
+	}
+
+	for _, template := range templates {
+		// Skip if template has ended before target date
+		if template.EndDate != nil && template.EndDate.Before(targetDate) {
+			continue
+		}
+
+		// Generate projections up to target date
+		s.generateProjectionsUpTo(workspaceID, template, targetDate)
+	}
+}
+
+// generateProjectionsUpTo creates missing projections for a template up to the target date
+func (s *TransactionService) generateProjectionsUpTo(workspaceID int32, template *domain.RecurringTemplate, targetDate time.Time) {
+	// Get existing projections to check what's missing
+	existingProjections, err := s.transactionRepo.GetProjectionsByTemplate(workspaceID, template.ID)
+	if err != nil {
+		return
+	}
+
+	// Build set of existing projection months
+	existingMonths := make(map[string]bool)
+	for _, proj := range existingProjections {
+		monthKey := proj.TransactionDate.Format("2006-01")
+		existingMonths[monthKey] = true
+	}
+
+	// Calculate start date for new projections
+	now := time.Now()
+	targetDay := template.StartDate.Day()
+
+	var startDate time.Time
+	if template.StartDate.After(now) {
+		startDate = template.StartDate
+	} else {
+		startDate = s.calculateActualDate(now.Year(), now.Month(), targetDay)
+		if startDate.Before(now) || startDate.Equal(now) {
+			nextMonth := now.AddDate(0, 1, 0)
+			startDate = s.calculateActualDate(nextMonth.Year(), nextMonth.Month(), targetDay)
+		}
+	}
+
+	// Calculate end of target month
+	endOfTargetMonth := time.Date(targetDate.Year(), targetDate.Month()+1, 0, 0, 0, 0, 0, time.UTC)
+
+	// Use template end_date if it's earlier
+	if template.EndDate != nil && template.EndDate.Before(endOfTargetMonth) {
+		endOfTargetMonth = *template.EndDate
+	}
+
+	// Generate projections month by month
+	current := startDate
+	for !current.After(endOfTargetMonth) {
+		actualDate := s.calculateActualDate(current.Year(), current.Month(), targetDay)
+		monthKey := actualDate.Format("2006-01")
+
+		// Skip if projection already exists
+		if existingMonths[monthKey] {
+			current = current.AddDate(0, 1, 0)
+			continue
+		}
+
+		// Check if this month is excluded (user explicitly deleted)
+		if s.exclusionRepo != nil {
+			monthStart := time.Date(current.Year(), current.Month(), 1, 0, 0, 0, 0, time.UTC)
+			excluded, err := s.exclusionRepo.IsExcluded(workspaceID, template.ID, monthStart)
+			if err == nil && excluded {
+				current = current.AddDate(0, 1, 0)
+				continue
+			}
+		}
+
+		// Create projection transaction
+		transaction := &domain.Transaction{
+			WorkspaceID:     workspaceID,
+			Name:            template.Description,
+			Amount:          template.Amount,
+			Type:            domain.TransactionTypeExpense,
+			CategoryID:      &template.CategoryID,
+			AccountID:       template.AccountID,
+			TransactionDate: actualDate,
+			Source:          "recurring",
+			TemplateID:      &template.ID,
+			IsProjected:     true,
+			IsPaid:          false,
+		}
+
+		_, _ = s.transactionRepo.Create(transaction)
+		current = current.AddDate(0, 1, 0)
+	}
+}
+
+// calculateActualDate returns the actual date for a target day in a given month
+// Handles months with fewer days (e.g., 31st in February -> 28th/29th)
+func (s *TransactionService) calculateActualDate(year int, month time.Month, targetDay int) time.Time {
+	lastDay := time.Date(year, month+1, 0, 0, 0, 0, 0, time.UTC).Day()
+	actualDay := targetDay
+	if actualDay > lastDay {
+		actualDay = lastDay
+	}
+	return time.Date(year, month, actualDay, 0, 0, 0, 0, time.UTC)
+}
+
+// EnrichWithModificationStatus checks if projected transactions differ from their templates
+// and sets the IsModified flag accordingly
+func (s *TransactionService) EnrichWithModificationStatus(workspaceID int32, transactions []*domain.Transaction) {
+	if s.templateRepo == nil {
+		return
+	}
+
+	// Collect unique template IDs from projected transactions
+	templateIDs := make(map[int32]bool)
+	for _, tx := range transactions {
+		if tx.IsProjected && tx.TemplateID != nil {
+			templateIDs[*tx.TemplateID] = true
+		}
+	}
+
+	if len(templateIDs) == 0 {
+		return
+	}
+
+	// Fetch templates and build a lookup map
+	templateMap := make(map[int32]*domain.RecurringTemplate)
+	for templateID := range templateIDs {
+		template, err := s.templateRepo.GetByID(workspaceID, templateID)
+		if err != nil {
+			continue
+		}
+		templateMap[templateID] = template
+	}
+
+	// Enrich transactions with modification status
+	for _, tx := range transactions {
+		if !tx.IsProjected || tx.TemplateID == nil {
+			continue
+		}
+
+		template, exists := templateMap[*tx.TemplateID]
+		if !exists {
+			continue
+		}
+
+		// Check if transaction differs from template
+		tx.IsModified = !tx.Amount.Equal(template.Amount) ||
+			(tx.CategoryID != nil && *tx.CategoryID != template.CategoryID) ||
+			(tx.CategoryID == nil && template.CategoryID != 0) ||
+			tx.Name != template.Description
+	}
 }

@@ -356,6 +356,7 @@ type MockTransactionRepository struct {
 	GetCCPayableBreakdownFn           func(workspaceID int32) ([]*domain.CCPayableTransaction, error)
 	GetProjectionsByTemplateFn        func(workspaceID int32, templateID int32) ([]*domain.Transaction, error)
 	DeleteProjectionsByTemplateFn     func(workspaceID int32, templateID int32) error
+	DeleteProjectionsBeyondDateFn     func(workspaceID int32, templateID int32, date time.Time) error
 	OrphanActualsByTemplateFn         func(workspaceID int32, templateID int32) error
 }
 
@@ -830,6 +831,25 @@ func (m *MockTransactionRepository) DeleteProjectionsByTemplate(workspaceID int3
 	var remaining []*domain.Transaction
 	for _, tx := range m.ByWorkspace[workspaceID] {
 		if tx.TemplateID != nil && *tx.TemplateID == templateID && tx.IsProjected {
+			delete(m.Transactions, tx.ID)
+			continue
+		}
+		remaining = append(remaining, tx)
+	}
+	m.ByWorkspace[workspaceID] = remaining
+	return nil
+}
+
+// DeleteProjectionsBeyondDate deletes projections beyond a specific date
+func (m *MockTransactionRepository) DeleteProjectionsBeyondDate(workspaceID int32, templateID int32, date time.Time) error {
+	if m.DeleteProjectionsBeyondDateFn != nil {
+		return m.DeleteProjectionsBeyondDateFn(workspaceID, templateID, date)
+	}
+
+	// Filter out projected transactions beyond the date
+	var remaining []*domain.Transaction
+	for _, tx := range m.ByWorkspace[workspaceID] {
+		if tx.TemplateID != nil && *tx.TemplateID == templateID && tx.IsProjected && tx.TransactionDate.After(date) {
 			delete(m.Transactions, tx.ID)
 			continue
 		}
@@ -1619,6 +1639,23 @@ func (m *MockRecurringTemplateRepository) GetActive(workspaceID int32) ([]*domai
 		return []*domain.RecurringTemplate{}, nil
 	}
 	return active, nil
+}
+
+// GetAllActive retrieves all active recurring templates across all workspaces (for daily sync)
+func (m *MockRecurringTemplateRepository) GetAllActive() ([]*domain.RecurringTemplate, error) {
+	now := time.Now()
+	var allActive []*domain.RecurringTemplate
+	for _, templates := range m.ByWorkspace {
+		for _, t := range templates {
+			if t.EndDate == nil || t.EndDate.After(now) || t.EndDate.Equal(now) {
+				allActive = append(allActive, t)
+			}
+		}
+	}
+	if allActive == nil {
+		return []*domain.RecurringTemplate{}, nil
+	}
+	return allActive, nil
 }
 
 // AddTemplate adds a template to the mock repository (helper for tests)

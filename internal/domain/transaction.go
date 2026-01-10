@@ -68,6 +68,7 @@ type Transaction struct {
 	Source      string `json:"source"`      // 'manual' | 'recurring'
 	TemplateID  *int32 `json:"templateId"`  // FK to recurring_templates, nullable
 	IsProjected bool   `json:"isProjected"` // true = future projection
+	IsModified  bool   `json:"isModified"`  // true if projected instance differs from template
 }
 
 // TransferResult represents the result of creating a transfer
@@ -212,5 +213,6 @@ type TransactionRepository interface {
 	// Projection management (v2)
 	GetProjectionsByTemplate(workspaceID int32, templateID int32) ([]*Transaction, error)
 	DeleteProjectionsByTemplate(workspaceID int32, templateID int32) error
+	DeleteProjectionsBeyondDate(workspaceID int32, templateID int32, date time.Time) error
 	OrphanActualsByTemplate(workspaceID int32, templateID int32) error
 }
