@@ -358,6 +358,7 @@ type MockTransactionRepository struct {
 	DeleteProjectionsByTemplateFn     func(workspaceID int32, templateID int32) error
 	DeleteProjectionsBeyondDateFn     func(workspaceID int32, templateID int32, date time.Time) error
 	OrphanActualsByTemplateFn         func(workspaceID int32, templateID int32) error
+	GetCCMetricsFn                    func(workspaceID int32, startDate, endDate time.Time) (*domain.CCMetrics, error)
 }
 
 // NewMockTransactionRepository creates a new MockTransactionRepository
@@ -871,6 +872,19 @@ func (m *MockTransactionRepository) OrphanActualsByTemplate(workspaceID int32, t
 		}
 	}
 	return nil
+}
+
+// GetCCMetrics returns CC metrics for a date range
+func (m *MockTransactionRepository) GetCCMetrics(workspaceID int32, startDate, endDate time.Time) (*domain.CCMetrics, error) {
+	if m.GetCCMetricsFn != nil {
+		return m.GetCCMetricsFn(workspaceID, startDate, endDate)
+	}
+	// Default: return zero metrics
+	return &domain.CCMetrics{
+		Pending:    decimal.Zero,
+		Billed:     decimal.Zero,
+		MonthTotal: decimal.Zero,
+	}, nil
 }
 
 // MockMonthRepository is a mock implementation of domain.MonthRepository

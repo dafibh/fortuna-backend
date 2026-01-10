@@ -2027,3 +2027,353 @@ func TestGetTransactions_WithoutTemplateRepo_NoError(t *testing.T) {
 		t.Errorf("Expected no error without template repo, got %v", err)
 	}
 }
+
+// ==================== CC LIFECYCLE TESTS (Story 4.1) ====================
+
+func TestCreateTransaction_CCAccount_DefaultsToPendingDeferred(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo, categoryRepo)
+
+	workspaceID := int32(1)
+	accountID := int32(1)
+
+	// Add credit card account
+	accountRepo.AddAccount(&domain.Account{
+		ID:          accountID,
+		WorkspaceID: workspaceID,
+		Name:        "Credit Card",
+		Template:    domain.TemplateCreditCard,
+	})
+
+	input := CreateTransactionInput{
+		AccountID: accountID,
+		Name:      "Online Purchase",
+		Amount:    decimal.NewFromFloat(250.00),
+		Type:      domain.TransactionTypeExpense,
+	}
+
+	transaction, err := transactionService.CreateTransaction(workspaceID, input)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// CC transaction should default to pending state
+	if transaction.CCState == nil {
+		t.Fatal("Expected CCState to be set for CC account")
+	}
+	if *transaction.CCState != domain.CCStatePending {
+		t.Errorf("Expected CCState 'pending', got %s", *transaction.CCState)
+	}
+
+	// CC transaction should default to deferred settlement intent
+	if transaction.SettlementIntent == nil {
+		t.Fatal("Expected SettlementIntent to be set for CC account")
+	}
+	if *transaction.SettlementIntent != domain.SettlementIntentDeferred {
+		t.Errorf("Expected SettlementIntent 'deferred', got %s", *transaction.SettlementIntent)
+	}
+
+	// BilledAt and SettledAt should be nil for pending transactions
+	if transaction.BilledAt != nil {
+		t.Errorf("Expected BilledAt to be nil for pending transaction, got %v", transaction.BilledAt)
+	}
+	if transaction.SettledAt != nil {
+		t.Errorf("Expected SettledAt to be nil for pending transaction, got %v", transaction.SettledAt)
+	}
+}
+
+func TestCreateTransaction_NonCCAccount_NullCCFields(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo, categoryRepo)
+
+	workspaceID := int32(1)
+	accountID := int32(1)
+
+	// Add bank account (non-CC)
+	accountRepo.AddAccount(&domain.Account{
+		ID:          accountID,
+		WorkspaceID: workspaceID,
+		Name:        "Checking Account",
+		Template:    domain.TemplateBank,
+	})
+
+	input := CreateTransactionInput{
+		AccountID: accountID,
+		Name:      "Bank Expense",
+		Amount:    decimal.NewFromFloat(100.00),
+		Type:      domain.TransactionTypeExpense,
+	}
+
+	transaction, err := transactionService.CreateTransaction(workspaceID, input)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// Non-CC transaction should have NULL for all CC lifecycle fields
+	if transaction.CCState != nil {
+		t.Errorf("Expected CCState to be nil for non-CC account, got %s", *transaction.CCState)
+	}
+	if transaction.SettlementIntent != nil {
+		t.Errorf("Expected SettlementIntent to be nil for non-CC account, got %s", *transaction.SettlementIntent)
+	}
+	if transaction.BilledAt != nil {
+		t.Errorf("Expected BilledAt to be nil for non-CC account, got %v", transaction.BilledAt)
+	}
+	if transaction.SettledAt != nil {
+		t.Errorf("Expected SettledAt to be nil for non-CC account, got %v", transaction.SettledAt)
+	}
+}
+
+func TestCreateTransaction_CCAccount_ImmediateIntent_SettledWithTimestamp(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo, categoryRepo)
+
+	workspaceID := int32(1)
+	accountID := int32(1)
+
+	// Add credit card account
+	accountRepo.AddAccount(&domain.Account{
+		ID:          accountID,
+		WorkspaceID: workspaceID,
+		Name:        "Credit Card",
+		Template:    domain.TemplateCreditCard,
+	})
+
+	immediateIntent := domain.SettlementIntentImmediate
+	input := CreateTransactionInput{
+		AccountID:        accountID,
+		Name:             "Immediate Settlement Purchase",
+		Amount:           decimal.NewFromFloat(50.00),
+		Type:             domain.TransactionTypeExpense,
+		SettlementIntent: &immediateIntent,
+	}
+
+	beforeCreate := time.Now()
+	transaction, err := transactionService.CreateTransaction(workspaceID, input)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	afterCreate := time.Now()
+
+	// CC with immediate intent should be settled
+	if transaction.CCState == nil {
+		t.Fatal("Expected CCState to be set")
+	}
+	if *transaction.CCState != domain.CCStateSettled {
+		t.Errorf("Expected CCState 'settled' for immediate intent, got %s", *transaction.CCState)
+	}
+
+	// SettlementIntent should be immediate
+	if transaction.SettlementIntent == nil {
+		t.Fatal("Expected SettlementIntent to be set")
+	}
+	if *transaction.SettlementIntent != domain.SettlementIntentImmediate {
+		t.Errorf("Expected SettlementIntent 'immediate', got %s", *transaction.SettlementIntent)
+	}
+
+	// SettledAt should be set with current timestamp
+	if transaction.SettledAt == nil {
+		t.Fatal("Expected SettledAt to be set for immediate settlement")
+	}
+	if transaction.SettledAt.Before(beforeCreate) || transaction.SettledAt.After(afterCreate) {
+		t.Errorf("Expected SettledAt to be between %v and %v, got %v", beforeCreate, afterCreate, transaction.SettledAt)
+	}
+
+	// BilledAt should be nil (skipped billed state)
+	if transaction.BilledAt != nil {
+		t.Errorf("Expected BilledAt to be nil for immediate settlement, got %v", transaction.BilledAt)
+	}
+}
+
+func TestToggleBilled_PendingToBilled(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo, categoryRepo)
+
+	workspaceID := int32(1)
+	transactionID := int32(1)
+
+	// Add pending CC transaction
+	pendingState := domain.CCStatePending
+	deferredIntent := domain.SettlementIntentDeferred
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:               transactionID,
+		WorkspaceID:      workspaceID,
+		AccountID:        1,
+		Name:             "CC Purchase",
+		Amount:           decimal.NewFromFloat(100.00),
+		Type:             domain.TransactionTypeExpense,
+		CCState:          &pendingState,
+		SettlementIntent: &deferredIntent,
+	})
+
+	beforeToggle := time.Now()
+	transaction, err := transactionService.ToggleBilled(workspaceID, transactionID)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	afterToggle := time.Now()
+
+	// Should be billed now
+	if transaction.CCState == nil {
+		t.Fatal("Expected CCState to be set")
+	}
+	if *transaction.CCState != domain.CCStateBilled {
+		t.Errorf("Expected CCState 'billed' after toggle, got %s", *transaction.CCState)
+	}
+
+	// BilledAt should be set
+	if transaction.BilledAt == nil {
+		t.Fatal("Expected BilledAt to be set")
+	}
+	if transaction.BilledAt.Before(beforeToggle) || transaction.BilledAt.After(afterToggle) {
+		t.Errorf("Expected BilledAt to be between %v and %v, got %v", beforeToggle, afterToggle, transaction.BilledAt)
+	}
+}
+
+func TestToggleBilled_BilledToPending(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo, categoryRepo)
+
+	workspaceID := int32(1)
+	transactionID := int32(1)
+
+	// Add billed CC transaction
+	billedState := domain.CCStateBilled
+	deferredIntent := domain.SettlementIntentDeferred
+	billedAt := time.Now().Add(-24 * time.Hour)
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:               transactionID,
+		WorkspaceID:      workspaceID,
+		AccountID:        1,
+		Name:             "CC Purchase",
+		Amount:           decimal.NewFromFloat(100.00),
+		Type:             domain.TransactionTypeExpense,
+		CCState:          &billedState,
+		SettlementIntent: &deferredIntent,
+		BilledAt:         &billedAt,
+	})
+
+	transaction, err := transactionService.ToggleBilled(workspaceID, transactionID)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// Should be pending now
+	if transaction.CCState == nil {
+		t.Fatal("Expected CCState to be set")
+	}
+	if *transaction.CCState != domain.CCStatePending {
+		t.Errorf("Expected CCState 'pending' after toggle back, got %s", *transaction.CCState)
+	}
+
+	// BilledAt should be cleared
+	if transaction.BilledAt != nil {
+		t.Errorf("Expected BilledAt to be nil after toggling back to pending, got %v", transaction.BilledAt)
+	}
+}
+
+func TestToggleBilled_NotCCTransaction_Error(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo, categoryRepo)
+
+	workspaceID := int32(1)
+	transactionID := int32(1)
+
+	// Add non-CC transaction (CCState is nil)
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:          transactionID,
+		WorkspaceID: workspaceID,
+		AccountID:   1,
+		Name:        "Bank Transaction",
+		Amount:      decimal.NewFromFloat(100.00),
+		Type:        domain.TransactionTypeExpense,
+		CCState:     nil, // Not a CC transaction
+	})
+
+	_, err := transactionService.ToggleBilled(workspaceID, transactionID)
+	if err != domain.ErrNotCCTransaction {
+		t.Errorf("Expected ErrNotCCTransaction, got %v", err)
+	}
+}
+
+func TestToggleBilled_SettledTransaction_Error(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo, categoryRepo)
+
+	workspaceID := int32(1)
+	transactionID := int32(1)
+
+	// Add settled CC transaction
+	settledState := domain.CCStateSettled
+	immediateIntent := domain.SettlementIntentImmediate
+	settledAt := time.Now().Add(-24 * time.Hour)
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:               transactionID,
+		WorkspaceID:      workspaceID,
+		AccountID:        1,
+		Name:             "Settled CC Purchase",
+		Amount:           decimal.NewFromFloat(100.00),
+		Type:             domain.TransactionTypeExpense,
+		CCState:          &settledState,
+		SettlementIntent: &immediateIntent,
+		SettledAt:        &settledAt,
+	})
+
+	_, err := transactionService.ToggleBilled(workspaceID, transactionID)
+	if err != domain.ErrInvalidCCStateTransition {
+		t.Errorf("Expected ErrInvalidCCStateTransition for settled transaction, got %v", err)
+	}
+}
+
+func TestToggleBilled_TransactionNotFound_Error(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo, categoryRepo)
+
+	workspaceID := int32(1)
+
+	_, err := transactionService.ToggleBilled(workspaceID, 999)
+	if err != domain.ErrTransactionNotFound {
+		t.Errorf("Expected ErrTransactionNotFound, got %v", err)
+	}
+}
+
+func TestToggleBilled_WrongWorkspace_Error(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo, categoryRepo)
+
+	// Transaction belongs to workspace 1
+	pendingState := domain.CCStatePending
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:          1,
+		WorkspaceID: 1,
+		AccountID:   1,
+		Name:        "CC Transaction",
+		Amount:      decimal.NewFromFloat(100.00),
+		Type:        domain.TransactionTypeExpense,
+		CCState:     &pendingState,
+	})
+
+	// Try to toggle from workspace 2
+	_, err := transactionService.ToggleBilled(2, 1)
+	if err != domain.ErrTransactionNotFound {
+		t.Errorf("Expected ErrTransactionNotFound for wrong workspace, got %v", err)
+	}
+}

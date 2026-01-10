@@ -936,3 +936,23 @@ func (r *TransactionRepository) DeleteProjectionsBeyondDate(workspaceID int32, t
 		TransactionDate: pgtype.Date{Time: date, Valid: true},
 	})
 }
+
+// GetCCMetrics returns CC metrics (pending, billed, month total) for a date range
+func (r *TransactionRepository) GetCCMetrics(workspaceID int32, startDate, endDate time.Time) (*domain.CCMetrics, error) {
+	ctx := context.Background()
+
+	row, err := r.queries.GetCCMetrics(ctx, sqlc.GetCCMetricsParams{
+		WorkspaceID:       workspaceID,
+		TransactionDate:   pgtype.Date{Time: startDate, Valid: true},
+		TransactionDate_2: pgtype.Date{Time: endDate, Valid: true},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &domain.CCMetrics{
+		Pending:    pgNumericToDecimal(row.PendingTotal),
+		Billed:     pgNumericToDecimal(row.BilledTotal),
+		MonthTotal: pgNumericToDecimal(row.MonthTotal),
+	}, nil
+}

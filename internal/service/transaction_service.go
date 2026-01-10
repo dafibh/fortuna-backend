@@ -65,6 +65,8 @@ type CreateTransactionInput struct {
 	CCSettlementIntent *domain.CCSettlementIntent
 	Notes              *string
 	CategoryID         *int32
+	// CC Lifecycle (v2)
+	SettlementIntent *domain.SettlementIntent
 }
 
 // CreateTransaction creates a new transaction with validation
@@ -118,7 +120,7 @@ func (s *TransactionService) CreateTransaction(workspaceID int32, input CreateTr
 		}
 	}
 
-	// Handle CC settlement intent based on account type
+	// Handle CC settlement intent based on account type (legacy v1 field)
 	var settlementIntent *domain.CCSettlementIntent
 	if account.Template == domain.TemplateCreditCard {
 		// For CC accounts: use provided intent or default to 'this_month'
@@ -135,6 +137,32 @@ func (s *TransactionService) CreateTransaction(workspaceID int32, input CreateTr
 		}
 	}
 	// For non-CC accounts, settlementIntent remains nil (ignores any provided value)
+
+	// Handle CC lifecycle fields (v2)
+	var ccState *domain.CCState
+	var v2SettlementIntent *domain.SettlementIntent
+	var settledAt *time.Time
+	if account.Template == domain.TemplateCreditCard {
+		// Determine settlement intent: use provided or default to deferred
+		intent := domain.SettlementIntentDeferred
+		if input.SettlementIntent != nil {
+			intent = *input.SettlementIntent
+		}
+		v2SettlementIntent = &intent
+
+		if intent == domain.SettlementIntentImmediate {
+			// Immediate settlement: mark as settled with timestamp
+			state := domain.CCStateSettled
+			ccState = &state
+			now := time.Now()
+			settledAt = &now
+		} else {
+			// Deferred: start as pending
+			state := domain.CCStatePending
+			ccState = &state
+		}
+	}
+	// For non-CC accounts, all CC lifecycle fields remain nil
 
 	// Validate category exists and belongs to workspace if provided
 	if input.CategoryID != nil {
@@ -155,6 +183,10 @@ func (s *TransactionService) CreateTransaction(workspaceID int32, input CreateTr
 		CCSettlementIntent: settlementIntent,
 		Notes:              notes,
 		CategoryID:         input.CategoryID,
+		// CC Lifecycle (v2)
+		CCState:          ccState,
+		SettlementIntent: v2SettlementIntent,
+		SettledAt:        settledAt,
 	}
 
 	created, err := s.transactionRepo.Create(transaction)
@@ -197,6 +229,60 @@ func (s *TransactionService) TogglePaidStatus(workspaceID int32, id int32) (*dom
 
 	// Publish event for real-time updates
 	s.publishEvent(workspaceID, websocket.TransactionUpdated(updated))
+
+	return updated, nil
+}
+
+// ToggleBilled toggles the billed state of a CC transaction between pending and billed
+func (s *TransactionService) ToggleBilled(workspaceID int32, id int32) (*domain.Transaction, error) {
+	txn, err := s.transactionRepo.GetByID(workspaceID, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Verify this is a CC transaction
+	if txn.CCState == nil {
+		return nil, domain.ErrNotCCTransaction
+	}
+
+	now := time.Now()
+
+	switch *txn.CCState {
+	case domain.CCStatePending:
+		// Toggle to billed
+		state := domain.CCStateBilled
+		txn.CCState = &state
+		txn.BilledAt = &now
+	case domain.CCStateBilled:
+		// Toggle back to pending
+		state := domain.CCStatePending
+		txn.CCState = &state
+		txn.BilledAt = nil
+	case domain.CCStateSettled:
+		// Cannot toggle settled transactions
+		return nil, domain.ErrInvalidCCStateTransition
+	}
+
+	// Update the transaction with new CC state
+	updated, err := s.transactionRepo.Update(workspaceID, id, &domain.UpdateTransactionData{
+		Name:             txn.Name,
+		Amount:           txn.Amount,
+		Type:             txn.Type,
+		TransactionDate:  txn.TransactionDate,
+		AccountID:        txn.AccountID,
+		Notes:            txn.Notes,
+		CategoryID:       txn.CategoryID,
+		CCState:          txn.CCState,
+		BilledAt:         txn.BilledAt,
+		SettledAt:        txn.SettledAt,
+		SettlementIntent: txn.SettlementIntent,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Publish event for real-time updates
+	s.publishEvent(workspaceID, websocket.TransactionBilled(updated))
 
 	return updated, nil
 }
@@ -633,4 +719,13 @@ func (s *TransactionService) EnrichWithModificationStatus(workspaceID int32, tra
 			(tx.CategoryID == nil && template.CategoryID != 0) ||
 			tx.Name != template.Description
 	}
+}
+
+// GetCCMetrics returns CC metrics (pending, billed, month total) for a workspace and month
+func (s *TransactionService) GetCCMetrics(workspaceID int32, month time.Time) (*domain.CCMetrics, error) {
+	// Calculate start and end of month
+	startOfMonth := time.Date(month.Year(), month.Month(), 1, 0, 0, 0, 0, time.UTC)
+	endOfMonth := startOfMonth.AddDate(0, 1, 0)
+
+	return s.transactionRepo.GetCCMetrics(workspaceID, startOfMonth, endOfMonth)
 }

@@ -65,6 +65,12 @@ type TransactionResponse struct {
 	TemplateID  *int32 `json:"templateId,omitempty"`  // ID of recurring template that generated this
 	IsProjected bool   `json:"isProjected"`           // true if this is a projected (not yet actual) transaction
 	IsModified  bool   `json:"isModified"`            // true if projected instance differs from template
+
+	// CC Lifecycle fields (v2)
+	CCState          *string `json:"ccState,omitempty"`          // "pending", "billed", or "settled"
+	BilledAt         *string `json:"billedAt,omitempty"`         // Timestamp when marked as billed
+	SettledAt        *string `json:"settledAt,omitempty"`        // Timestamp when settled
+	SettlementIntent *string `json:"settlementIntent,omitempty"` // "immediate" or "deferred"
 }
 
 // CreateTransferRequest represents the create transfer request body
@@ -405,6 +411,50 @@ func (h *TransactionHandler) TogglePaidStatus(c echo.Context) error {
 	}
 
 	log.Info().Int32("workspace_id", workspaceID).Int32("transaction_id", transaction.ID).Bool("is_paid", transaction.IsPaid).Msg("Transaction paid status toggled")
+	return c.JSON(http.StatusOK, toTransactionResponse(transaction))
+}
+
+// ToggleBilled godoc
+// @Summary Toggle CC transaction billed status
+// @Description Toggle the billed status of a CC transaction (pending <-> billed)
+// @Tags transactions
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Transaction ID"
+// @Success 200 {object} TransactionResponse
+// @Failure 400 {object} ProblemDetails
+// @Failure 401 {object} ProblemDetails
+// @Failure 404 {object} ProblemDetails
+// @Failure 409 {object} ProblemDetails
+// @Router /transactions/{id}/toggle-billed [patch]
+func (h *TransactionHandler) ToggleBilled(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return NewValidationError(c, "Invalid transaction ID", nil)
+	}
+
+	transaction, err := h.transactionService.ToggleBilled(workspaceID, int32(id))
+	if err != nil {
+		if errors.Is(err, domain.ErrTransactionNotFound) {
+			return NewNotFoundError(c, "Transaction not found")
+		}
+		if errors.Is(err, domain.ErrNotCCTransaction) {
+			return NewValidationError(c, "Transaction is not a credit card transaction", nil)
+		}
+		if errors.Is(err, domain.ErrInvalidCCStateTransition) {
+			return NewConflictError(c, "Cannot toggle billed status for settled transactions")
+		}
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("transaction_id", id).Msg("Failed to toggle billed status")
+		return NewInternalError(c, "Failed to toggle billed status")
+	}
+
+	log.Info().Int32("workspace_id", workspaceID).Int32("transaction_id", transaction.ID).Msg("Transaction billed status toggled")
 	return c.JSON(http.StatusOK, toTransactionResponse(transaction))
 }
 
@@ -809,5 +859,72 @@ func toTransactionResponse(transaction *domain.Transaction) TransactionResponse 
 	if transaction.RecurringTransactionID != nil {
 		resp.RecurringTransactionID = transaction.RecurringTransactionID
 	}
+	// CC Lifecycle fields (v2)
+	if transaction.CCState != nil {
+		ccState := string(*transaction.CCState)
+		resp.CCState = &ccState
+	}
+	if transaction.BilledAt != nil {
+		billedAt := transaction.BilledAt.Format(time.RFC3339)
+		resp.BilledAt = &billedAt
+	}
+	if transaction.SettledAt != nil {
+		settledAt := transaction.SettledAt.Format(time.RFC3339)
+		resp.SettledAt = &settledAt
+	}
+	if transaction.SettlementIntent != nil {
+		settlementIntent := string(*transaction.SettlementIntent)
+		resp.SettlementIntent = &settlementIntent
+	}
 	return resp
+}
+
+// CCMetricsResponse represents CC metrics in API responses
+type CCMetricsResponse struct {
+	Pending    string `json:"pending"`    // Sum of pending CC transactions
+	Billed     string `json:"billed"`     // Sum of billed CC transactions (deferred)
+	MonthTotal string `json:"monthTotal"` // Sum of pending + billed
+}
+
+// GetCCMetrics handles GET /api/v1/transactions/cc-metrics
+// @Summary Get CC metrics
+// @Description Get CC metrics (pending, billed, month total) for the current or specified month
+// @Tags transactions
+// @Produce json
+// @Security BearerAuth
+// @Param month query string false "Month in YYYY-MM format (defaults to current month)"
+// @Success 200 {object} CCMetricsResponse
+// @Failure 400 {object} ProblemDetails
+// @Failure 401 {object} ProblemDetails
+// @Router /transactions/cc-metrics [get]
+func (h *TransactionHandler) GetCCMetrics(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	// Parse month parameter, default to current month
+	monthStr := c.QueryParam("month")
+	var month time.Time
+	if monthStr != "" {
+		parsed, err := time.Parse("2006-01", monthStr)
+		if err != nil {
+			return NewValidationError(c, "Invalid month format. Use YYYY-MM", nil)
+		}
+		month = parsed
+	} else {
+		month = time.Now()
+	}
+
+	metrics, err := h.transactionService.GetCCMetrics(workspaceID, month)
+	if err != nil {
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Str("month", monthStr).Msg("Failed to get CC metrics")
+		return NewInternalError(c, "Failed to get CC metrics")
+	}
+
+	return c.JSON(http.StatusOK, CCMetricsResponse{
+		Pending:    metrics.Pending.StringFixed(2),
+		Billed:     metrics.Billed.StringFixed(2),
+		MonthTotal: metrics.MonthTotal.StringFixed(2),
+	})
 }

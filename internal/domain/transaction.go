@@ -191,6 +191,13 @@ type CCPaymentResponse struct {
 	SourceTransaction *Transaction `json:"sourceTransaction,omitempty"` // Only if source provided
 }
 
+// CCMetrics holds aggregated CC transaction metrics for dashboard display
+type CCMetrics struct {
+	Pending    decimal.Decimal `json:"pending"`    // Sum of pending CC transactions
+	Billed     decimal.Decimal `json:"billed"`     // Sum of billed CC transactions
+	MonthTotal decimal.Decimal `json:"monthTotal"` // Sum of pending + billed
+}
+
 type TransactionRepository interface {
 	Create(transaction *Transaction) (*Transaction, error)
 	GetByID(workspaceID int32, id int32) (*Transaction, error)
@@ -209,6 +216,7 @@ type TransactionRepository interface {
 	GetCCPayableSummary(workspaceID int32) ([]*CCPayableSummaryRow, error)
 	GetRecentlyUsedCategories(workspaceID int32) ([]*RecentCategory, error)
 	GetCCPayableBreakdown(workspaceID int32) ([]*CCPayableTransaction, error)
+	GetCCMetrics(workspaceID int32, startDate, endDate time.Time) (*CCMetrics, error)
 
 	// Projection management (v2)
 	GetProjectionsByTemplate(workspaceID int32, templateID int32) ([]*Transaction, error)

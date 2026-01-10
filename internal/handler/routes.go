@@ -41,9 +41,11 @@ func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateL
 	transactions.POST("", transactionHandler.CreateTransaction)
 	transactions.GET("", transactionHandler.GetTransactions)
 	transactions.GET("/categories/recent", transactionHandler.GetRecentlyUsedCategories)
+	transactions.GET("/cc-metrics", transactionHandler.GetCCMetrics)
 	transactions.PUT("/:id", transactionHandler.UpdateTransaction)
 	transactions.DELETE("/:id", transactionHandler.DeleteTransaction)
 	transactions.PATCH("/:id/toggle-paid", transactionHandler.TogglePaidStatus)
+	transactions.PATCH("/:id/toggle-billed", transactionHandler.ToggleBilled)
 	transactions.PATCH("/:id/settlement-intent", transactionHandler.UpdateSettlementIntent)
 	transactions.POST("/transfers", transactionHandler.CreateTransfer)
 

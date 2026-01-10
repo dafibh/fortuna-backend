@@ -38,6 +38,8 @@ var (
 	ErrInvalidDateRange             = errors.New("end date must be after start date")
 	ErrAPITokenNotFound             = errors.New("API token not found")
 	ErrTooManyAPITokens             = errors.New("maximum number of API tokens reached")
+	ErrNotCCTransaction             = errors.New("transaction is not a credit card transaction")
+	ErrInvalidCCStateTransition     = errors.New("invalid CC state transition")
 )
 
 // Validation constants

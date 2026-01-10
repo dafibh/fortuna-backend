@@ -13,6 +13,7 @@ const (
 	EventTypeCreated EventType = "created"
 	EventTypeUpdated EventType = "updated"
 	EventTypeDeleted EventType = "deleted"
+	EventTypeBilled  EventType = "billed"
 )
 
 // EntityType represents the type of entity the event is about
@@ -59,4 +60,9 @@ func TransactionUpdated(payload interface{}) Event {
 // TransactionDeleted creates a transaction.deleted event
 func TransactionDeleted(payload interface{}) Event {
 	return NewEvent(EventTypeDeleted, EntityTypeTransaction, payload)
+}
+
+// TransactionBilled creates a transaction.billed event
+func TransactionBilled(payload interface{}) Event {
+	return NewEvent(EventTypeBilled, EntityTypeTransaction, payload)
 }
