@@ -11,19 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const clearWorkspaceData = `-- name: ClearWorkspaceData :exec
-DELETE FROM wishlist_items WHERE wishlist_id IN (SELECT id FROM wishlists WHERE workspace_id = $1)
-`
-
-// Delete all data for a workspace (but keep the workspace itself)
-// Order matters due to foreign key constraints
-// Note: Some deletes will cascade automatically (e.g., wishlist_item_notes, wishlist_item_prices, loan_payments)
-// but we're explicit here for clarity and to handle all cases
-func (q *Queries) ClearWorkspaceData(ctx context.Context, workspaceID int32) error {
-	_, err := q.db.Exec(ctx, clearWorkspaceData, workspaceID)
-	return err
-}
-
 const createWorkspace = `-- name: CreateWorkspace :one
 INSERT INTO workspaces (user_id, name)
 VALUES ($1, $2)

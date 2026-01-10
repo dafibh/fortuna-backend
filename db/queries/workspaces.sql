@@ -26,6 +26,3 @@ DELETE FROM workspaces WHERE id = $1;
 -- name: GetAllWorkspaces :many
 -- Used by projection worker to sync all workspaces
 SELECT * FROM workspaces ORDER BY id;
-
--- Note: ClearWorkspaceData is implemented in Go repository using raw SQL
--- to handle multiple DELETE statements in a transaction
