@@ -1646,31 +1646,6 @@ func (q *Queries) SumPaidExpensesByDateRange(ctx context.Context, arg SumPaidExp
 	return total, err
 }
 
-const sumPaidIncomeByDateRange = `-- name: SumPaidIncomeByDateRange :one
-SELECT COALESCE(SUM(amount), 0)::NUMERIC(12,2) as total
-FROM transactions
-WHERE workspace_id = $1
-  AND transaction_date >= $2
-  AND transaction_date <= $3
-  AND type = 'income'
-  AND is_paid = true
-  AND deleted_at IS NULL
-`
-
-type SumPaidIncomeByDateRangeParams struct {
-	WorkspaceID       int32       `json:"workspace_id"`
-	TransactionDate   pgtype.Date `json:"transaction_date"`
-	TransactionDate_2 pgtype.Date `json:"transaction_date_2"`
-}
-
-// Sum paid income within a date range for in-hand balance calculation
-func (q *Queries) SumPaidIncomeByDateRange(ctx context.Context, arg SumPaidIncomeByDateRangeParams) (pgtype.Numeric, error) {
-	row := q.db.QueryRow(ctx, sumPaidIncomeByDateRange, arg.WorkspaceID, arg.TransactionDate, arg.TransactionDate_2)
-	var total pgtype.Numeric
-	err := row.Scan(&total)
-	return total, err
-}
-
 const sumTransactionsByTypeAndDateRange = `-- name: SumTransactionsByTypeAndDateRange :one
 SELECT COALESCE(SUM(amount), 0)::NUMERIC(12,2) as total
 FROM transactions

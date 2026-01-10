@@ -254,7 +254,6 @@ type TransactionRepository interface {
 	GetMonthlyTransactionSummaries(workspaceID int32) ([]*MonthlyTransactionSummary, error)
 	SumPaidExpensesByDateRange(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
 	SumUnpaidExpensesByDateRange(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
-	SumPaidIncomeByDateRange(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
 	GetCCPayableSummary(workspaceID int32) ([]*CCPayableSummaryRow, error)
 	GetRecentlyUsedCategories(workspaceID int32) ([]*RecentCategory, error)
 	GetCCPayableBreakdown(workspaceID int32) ([]*CCPayableTransaction, error)

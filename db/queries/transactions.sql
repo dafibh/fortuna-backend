@@ -129,17 +129,6 @@ WHERE workspace_id = $1
   AND is_paid = false
   AND deleted_at IS NULL;
 
--- name: SumPaidIncomeByDateRange :one
--- Sum paid income within a date range for in-hand balance calculation
-SELECT COALESCE(SUM(amount), 0)::NUMERIC(12,2) as total
-FROM transactions
-WHERE workspace_id = $1
-  AND transaction_date >= $2
-  AND transaction_date <= $3
-  AND type = 'income'
-  AND is_paid = true
-  AND deleted_at IS NULL;
-
 -- name: GetCCPayableSummary :many
 -- Get unpaid CC transaction totals grouped by settlement intent
 SELECT

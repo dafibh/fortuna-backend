@@ -80,20 +80,14 @@ func (s *DashboardService) getActualSummary(workspaceID int32, year, month int) 
 		return nil, err
 	}
 
-	// 3. Calculate in-hand balance (starting + paid income - paid expenses only)
-	paidIncome, err := s.transactionRepo.SumPaidIncomeByDateRange(
-		workspaceID, monthData.StartDate, monthData.EndDate)
-	if err != nil {
-		return nil, err
-	}
-
+	// 3. Calculate in-hand balance (starting + income - paid expenses only)
 	paidExpenses, err := s.transactionRepo.SumPaidExpensesByDateRange(
 		workspaceID, monthData.StartDate, monthData.EndDate)
 	if err != nil {
 		return nil, err
 	}
 
-	inHandBalance := monthData.StartingBalance.Add(paidIncome).Sub(paidExpenses)
+	inHandBalance := monthData.StartingBalance.Add(monthData.TotalIncome).Sub(paidExpenses)
 
 	// 4. Calculate unpaid expenses for disposable income
 	unpaidExpenses, err := s.transactionRepo.SumUnpaidExpensesByDateRange(

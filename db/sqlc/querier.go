@@ -19,6 +19,11 @@ type Querier interface {
 	CheckProjectionExists(ctx context.Context, arg CheckProjectionExistsParams) (int32, error)
 	// Check if a transaction already exists for a recurring template in a specific month
 	CheckRecurringTransactionExists(ctx context.Context, arg CheckRecurringTransactionExistsParams) (int32, error)
+	// Delete all data for a workspace (but keep the workspace itself)
+	// Order matters due to foreign key constraints
+	// Note: Some deletes will cascade automatically (e.g., wishlist_item_notes, wishlist_item_prices, loan_payments)
+	// but we're explicit here for clarity and to handle all cases
+	ClearWorkspaceData(ctx context.Context, workspaceID int32) error
 	// Copies all allocations from one month to another (atomic, skips deleted categories)
 	CopyAllocationsToMonth(ctx context.Context, arg CopyAllocationsToMonthParams) error
 	CountActiveLoansByProvider(ctx context.Context, arg CountActiveLoansByProviderParams) (int64, error)
@@ -185,8 +190,6 @@ type Querier interface {
 	SoftDeleteTransferPair(ctx context.Context, arg SoftDeleteTransferPairParams) (int64, error)
 	// Sum paid expenses within a date range for in-hand balance calculation
 	SumPaidExpensesByDateRange(ctx context.Context, arg SumPaidExpensesByDateRangeParams) (pgtype.Numeric, error)
-	// Sum paid income within a date range for in-hand balance calculation
-	SumPaidIncomeByDateRange(ctx context.Context, arg SumPaidIncomeByDateRangeParams) (pgtype.Numeric, error)
 	SumTransactionsByTypeAndDateRange(ctx context.Context, arg SumTransactionsByTypeAndDateRangeParams) (pgtype.Numeric, error)
 	// Sum unpaid expenses within a date range for disposable income calculation
 	SumUnpaidExpensesByDateRange(ctx context.Context, arg SumUnpaidExpensesByDateRangeParams) (pgtype.Numeric, error)

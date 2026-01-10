@@ -360,7 +360,6 @@ type MockTransactionRepository struct {
 	SumByTypeAndDateRangeFn           func(workspaceID int32, startDate, endDate time.Time, txType domain.TransactionType) (decimal.Decimal, error)
 	SumPaidExpensesByDateRangeFn      func(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
 	SumUnpaidExpensesByDateRangeFn    func(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
-	SumPaidIncomeByDateRangeFn        func(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
 	GetCCPayableSummaryFn             func(workspaceID int32) ([]*domain.CCPayableSummaryRow, error)
 	GetRecentlyUsedCategoriesFn       func(workspaceID int32) ([]*domain.RecentCategory, error)
 	GetCCPayableBreakdownFn           func(workspaceID int32) ([]*domain.CCPayableTransaction, error)
@@ -738,32 +737,6 @@ func (m *MockTransactionRepository) SumUnpaidExpensesByDateRange(workspaceID int
 			continue
 		}
 		if tx.IsPaid {
-			continue
-		}
-		// Check if transaction date is within range (inclusive)
-		if (tx.TransactionDate.Equal(startDate) || tx.TransactionDate.After(startDate)) &&
-			(tx.TransactionDate.Equal(endDate) || tx.TransactionDate.Before(endDate)) {
-			total = total.Add(tx.Amount)
-		}
-	}
-	return total, nil
-}
-
-// SumPaidIncomeByDateRange sums paid income within a date range
-func (m *MockTransactionRepository) SumPaidIncomeByDateRange(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error) {
-	if m.SumPaidIncomeByDateRangeFn != nil {
-		return m.SumPaidIncomeByDateRangeFn(workspaceID, startDate, endDate)
-	}
-
-	total := decimal.Zero
-	for _, tx := range m.ByWorkspace[workspaceID] {
-		if tx.DeletedAt != nil {
-			continue
-		}
-		if tx.Type != domain.TransactionTypeIncome {
-			continue
-		}
-		if !tx.IsPaid {
 			continue
 		}
 		// Check if transaction date is within range (inclusive)
