@@ -11,12 +11,6 @@ import (
 )
 
 type Querier interface {
-	// Settle multiple CC transactions at once (used in settlement flow)
-	BulkSettleTransactions(ctx context.Context, arg BulkSettleTransactionsParams) (int64, error)
-	// Check if any transaction exists for a template in a specific month
-	// This includes actual transactions (edited projections) and deleted ones
-	// to prevent recreating projections that users have modified or deleted
-	CheckProjectionExists(ctx context.Context, arg CheckProjectionExistsParams) (int32, error)
 	// Check if a transaction already exists for a recurring template in a specific month
 	CheckRecurringTransactionExists(ctx context.Context, arg CheckRecurringTransactionExistsParams) (int32, error)
 	// Copies all allocations from one month to another (atomic, skips deleted categories)
@@ -48,10 +42,6 @@ type Querier interface {
 	DeleteBudgetAllocation(ctx context.Context, arg DeleteBudgetAllocationParams) error
 	DeleteLoan(ctx context.Context, arg DeleteLoanParams) error
 	DeleteLoanProvider(ctx context.Context, arg DeleteLoanProviderParams) error
-	// Delete projected transactions beyond a specific date (used when end_date is set)
-	DeleteProjectionsBeyondDate(ctx context.Context, arg DeleteProjectionsBeyondDateParams) (int64, error)
-	// Delete all projected transactions for a template (used when template is deleted)
-	DeleteProjectionsByTemplateID(ctx context.Context, arg DeleteProjectionsByTemplateIDParams) (int64, error)
 	DeleteWishlist(ctx context.Context, arg DeleteWishlistParams) error
 	DeleteWishlistItem(ctx context.Context, arg DeleteWishlistItemParams) error
 	DeleteWishlistItemNote(ctx context.Context, arg DeleteWishlistItemNoteParams) error
@@ -66,28 +56,15 @@ type Querier interface {
 	GetAccountsByWorkspace(ctx context.Context, workspaceID int32) ([]Account, error)
 	GetAccountsByWorkspaceAll(ctx context.Context, workspaceID int32) ([]Account, error)
 	GetActiveLoansWithStats(ctx context.Context, workspaceID int32) ([]GetActiveLoansWithStatsRow, error)
-	// =====================================================
-	// V2 RECURRING TEMPLATE QUERIES
-	// =====================================================
-	// Get all active recurring templates (no end_date or end_date in future)
-	GetActiveTemplates(ctx context.Context, workspaceID int32) ([]RecurringTransaction, error)
 	GetAllBudgetCategories(ctx context.Context, workspaceID int32) ([]BudgetCategory, error)
 	GetAllMonths(ctx context.Context, workspaceID int32) ([]Month, error)
-	// Used by projection worker to sync all workspaces
-	GetAllWorkspaces(ctx context.Context) ([]Workspace, error)
 	GetBestPriceForItem(ctx context.Context, arg GetBestPriceForItemParams) (string, error)
-	// Get billed (unsettled, deferred) CC transactions for a specific month
-	GetBilledCCByMonth(ctx context.Context, arg GetBilledCCByMonthParams) ([]GetBilledCCByMonthRow, error)
 	GetBudgetAllocationByCategory(ctx context.Context, arg GetBudgetAllocationByCategoryParams) (BudgetAllocation, error)
 	GetBudgetAllocationsByMonth(ctx context.Context, arg GetBudgetAllocationsByMonthParams) ([]GetBudgetAllocationsByMonthRow, error)
 	GetBudgetCategoryByID(ctx context.Context, arg GetBudgetCategoryByIDParams) (BudgetCategory, error)
 	GetBudgetCategoryByName(ctx context.Context, arg GetBudgetCategoryByNameParams) (BudgetCategory, error)
-	// Get CC metrics for a specific month (purchases, outstanding, pending)
-	GetCCMetricsByMonth(ctx context.Context, arg GetCCMetricsByMonthParams) (GetCCMetricsByMonthRow, error)
 	// Get total outstanding balance across all CC accounts (sum of unpaid expenses)
 	GetCCOutstandingSummary(ctx context.Context, workspaceID int32) (GetCCOutstandingSummaryRow, error)
-	// Get total CC outstanding balance (all billed + deferred, not yet settled)
-	GetCCOutstandingTotal(ctx context.Context, workspaceID int32) (pgtype.Numeric, error)
 	// Get all unpaid CC transactions with settlement intent for payable breakdown
 	GetCCPayableBreakdown(ctx context.Context, workspaceID int32) ([]GetCCPayableBreakdownRow, error)
 	// Get unpaid CC transaction totals grouped by settlement intent
@@ -98,12 +75,6 @@ type Querier interface {
 	GetCategoryTransactions(ctx context.Context, arg GetCategoryTransactionsParams) ([]GetCategoryTransactionsRow, error)
 	GetCompletedLoansWithStats(ctx context.Context, workspaceID int32) ([]GetCompletedLoansWithStatsRow, error)
 	GetCurrentPricesByItem(ctx context.Context, arg GetCurrentPricesByItemParams) ([]GetCurrentPricesByItemRow, error)
-	// Get deferred CC transactions grouped by their origin month (for settlement view)
-	GetDeferredCCByMonth(ctx context.Context, workspaceID int32) ([]GetDeferredCCByMonthRow, error)
-	// Get deferred CC transactions from a specific origin month for settlement
-	GetDeferredCCByOriginMonth(ctx context.Context, arg GetDeferredCCByOriginMonthParams) ([]GetDeferredCCByOriginMonthRow, error)
-	// Get all expense transactions within a date range for future spending graph
-	GetExpensesByDateRange(ctx context.Context, arg GetExpensesByDateRangeParams) ([]GetExpensesByDateRangeRow, error)
 	GetFirstItemImage(ctx context.Context, arg GetFirstItemImageParams) (pgtype.Text, error)
 	GetLatestMonth(ctx context.Context, workspaceID int32) (Month, error)
 	GetLoanByID(ctx context.Context, arg GetLoanByIDParams) (Loan, error)
@@ -118,32 +89,15 @@ type Querier interface {
 	GetMonthByYearMonth(ctx context.Context, arg GetMonthByYearMonthParams) (Month, error)
 	// Batch query to get income/expense totals grouped by year/month for N+1 prevention
 	GetMonthlyTransactionSummaries(ctx context.Context, workspaceID int32) ([]GetMonthlyTransactionSummariesRow, error)
-	// Get CC transactions that are overdue (billed for 2+ months, still not settled)
-	GetOverdueCC(ctx context.Context, workspaceID int32) ([]GetOverdueCCRow, error)
-	// Get pending CC transactions for a specific month
-	GetPendingCCByMonth(ctx context.Context, arg GetPendingCCByMonthParams) ([]GetPendingCCByMonthRow, error)
 	// Get outstanding balance for each CC account
 	GetPerAccountOutstanding(ctx context.Context, workspaceID int32) ([]GetPerAccountOutstandingRow, error)
 	GetPriceHistoryByPlatform(ctx context.Context, arg GetPriceHistoryByPlatformParams) ([]WishlistItemPrice, error)
-	// Get all projected transactions for a specific template
-	GetProjectionsByTemplateID(ctx context.Context, arg GetProjectionsByTemplateIDParams) ([]Transaction, error)
 	// Returns recently used categories for suggestions dropdown
 	GetRecentlyUsedCategories(ctx context.Context, workspaceID int32) ([]GetRecentlyUsedCategoriesRow, error)
 	GetRecurringTransaction(ctx context.Context, arg GetRecurringTransactionParams) (RecurringTransaction, error)
 	// Returns total spending per category for a specific month
 	GetSpendingByCategory(ctx context.Context, arg GetSpendingByCategoryParams) ([]GetSpendingByCategoryRow, error)
-	// Get template with the date range of its projections
-	GetTemplateWithProjectionRange(ctx context.Context, arg GetTemplateWithProjectionRangeParams) (GetTemplateWithProjectionRangeRow, error)
-	// Get all recurring templates for a workspace (including inactive)
-	GetTemplatesByWorkspace(ctx context.Context, workspaceID int32) ([]RecurringTransaction, error)
 	GetTransactionByID(ctx context.Context, arg GetTransactionByIDParams) (Transaction, error)
-	// Get multiple transactions by IDs for validation (settlement, etc.)
-	GetTransactionsByIDs(ctx context.Context, arg GetTransactionsByIDsParams) ([]GetTransactionsByIDsRow, error)
-	// =====================================================
-	// V2 PROJECTION QUERIES
-	// =====================================================
-	// Get all transactions for a specific month (including projections)
-	GetTransactionsByMonth(ctx context.Context, arg GetTransactionsByMonthParams) ([]GetTransactionsByMonthRow, error)
 	GetTransactionsByWorkspace(ctx context.Context, arg GetTransactionsByWorkspaceParams) ([]Transaction, error)
 	// Returns transactions with category name joined for display
 	GetTransactionsWithCategory(ctx context.Context, arg GetTransactionsWithCategoryParams) ([]GetTransactionsWithCategoryRow, error)
@@ -171,16 +125,10 @@ type Querier interface {
 	ListWishlistItemsWithStats(ctx context.Context, arg ListWishlistItemsWithStatsParams) ([]ListWishlistItemsWithStatsRow, error)
 	ListWishlists(ctx context.Context, workspaceID int32) ([]Wishlist, error)
 	MoveWishlistItem(ctx context.Context, arg MoveWishlistItemParams) (WishlistItem, error)
-	// Remove template_id from actual transactions when template is deleted
-	OrphanActualsByTemplateID(ctx context.Context, arg OrphanActualsByTemplateIDParams) (int64, error)
 	RevokeAPIToken(ctx context.Context, arg RevokeAPITokenParams) (int64, error)
-	// Set or update the end_date for a recurring template
-	SetTemplateEndDate(ctx context.Context, arg SetTemplateEndDateParams) (RecurringTransaction, error)
 	SoftDeleteAccount(ctx context.Context, arg SoftDeleteAccountParams) (int64, error)
 	SoftDeleteBudgetCategory(ctx context.Context, arg SoftDeleteBudgetCategoryParams) error
 	SoftDeleteRecurringTransaction(ctx context.Context, arg SoftDeleteRecurringTransactionParams) (int64, error)
-	// When deleting any transaction (including projections), convert to actual first
-	// This ensures deleted projections aren't recreated by the projection generator
 	SoftDeleteTransaction(ctx context.Context, arg SoftDeleteTransactionParams) (int64, error)
 	SoftDeleteTransferPair(ctx context.Context, arg SoftDeleteTransferPairParams) (int64, error)
 	// Sum paid expenses within a date range for in-hand balance calculation
@@ -189,36 +137,19 @@ type Querier interface {
 	// Sum unpaid expenses within a date range for disposable income calculation
 	SumUnpaidExpensesByDateRange(ctx context.Context, arg SumUnpaidExpensesByDateRangeParams) (pgtype.Numeric, error)
 	SumUnpaidLoanPaymentsByMonth(ctx context.Context, arg SumUnpaidLoanPaymentsByMonthParams) (pgtype.Numeric, error)
-	// Toggle CC transaction between pending and billed states
-	ToggleCCBilled(ctx context.Context, arg ToggleCCBilledParams) (Transaction, error)
 	ToggleLoanPaymentPaid(ctx context.Context, arg ToggleLoanPaymentPaidParams) (LoanPayment, error)
-	// Toggle the is_active status of a template
-	ToggleTemplateActive(ctx context.Context, arg ToggleTemplateActiveParams) (RecurringTransaction, error)
-	// When toggling paid status, also convert projections to actuals
-	// Marking a projected transaction as paid acknowledges it as a real transaction
 	ToggleTransactionPaidStatus(ctx context.Context, arg ToggleTransactionPaidStatusParams) (Transaction, error)
 	UpdateAPITokenLastUsed(ctx context.Context, id pgtype.UUID) error
 	UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error)
 	UpdateBudgetCategory(ctx context.Context, arg UpdateBudgetCategoryParams) (BudgetCategory, error)
-	// =====================================================
-	// V2 CC LIFECYCLE QUERIES
-	// =====================================================
-	// Update CC transaction state (pending -> billed -> settled)
-	UpdateCCState(ctx context.Context, arg UpdateCCStateParams) (Transaction, error)
 	UpdateLoan(ctx context.Context, arg UpdateLoanParams) (Loan, error)
 	// Only updates editable fields (item_name, notes) - amount/months/dates are locked after creation
 	UpdateLoanPartial(ctx context.Context, arg UpdateLoanPartialParams) (Loan, error)
 	UpdateLoanPaymentAmount(ctx context.Context, arg UpdateLoanPaymentAmountParams) (LoanPayment, error)
 	UpdateLoanProvider(ctx context.Context, arg UpdateLoanProviderParams) (LoanProvider, error)
 	UpdateMonthStartingBalance(ctx context.Context, arg UpdateMonthStartingBalanceParams) error
-	// Update a projected transaction (instance-level override)
-	UpdateProjectedTransaction(ctx context.Context, arg UpdateProjectedTransactionParams) (Transaction, error)
 	UpdateRecurringTransaction(ctx context.Context, arg UpdateRecurringTransactionParams) (RecurringTransaction, error)
-	// When editing any transaction, set is_projected = false to convert projections to actuals
-	// The template_id is preserved so we know it originated from a recurring template
 	UpdateTransaction(ctx context.Context, arg UpdateTransactionParams) (Transaction, error)
-	// Update only the amount of a transaction (for overdue CC adjustments)
-	UpdateTransactionAmount(ctx context.Context, arg UpdateTransactionAmountParams) error
 	UpdateTransactionSettlementIntent(ctx context.Context, arg UpdateTransactionSettlementIntentParams) (Transaction, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
 	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) (User, error)

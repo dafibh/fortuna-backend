@@ -22,7 +22,3 @@ RETURNING *;
 
 -- name: DeleteWorkspace :exec
 DELETE FROM workspaces WHERE id = $1;
-
--- name: GetAllWorkspaces :many
--- Used by projection worker to sync all workspaces
-SELECT * FROM workspaces ORDER BY id;

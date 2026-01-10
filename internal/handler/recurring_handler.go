@@ -28,29 +28,25 @@ func NewRecurringHandler(recurringService *service.RecurringService) *RecurringH
 
 // CreateRecurringRequest represents the create recurring transaction request body
 type CreateRecurringRequest struct {
-	Name       string     `json:"name"`
-	Amount     string     `json:"amount"`
-	AccountID  int32      `json:"accountId"`
-	Type       string     `json:"type"`
-	CategoryID *int32     `json:"categoryId,omitempty"`
-	Frequency  string     `json:"frequency"`
-	DueDay     int32      `json:"dueDay"`
-	StartDate  *time.Time `json:"startDate,omitempty"` // V2: When recurring pattern starts (defaults to today)
-	EndDate    *time.Time `json:"endDate,omitempty"`   // V2: Optional end date
+	Name       string `json:"name"`
+	Amount     string `json:"amount"`
+	AccountID  int32  `json:"accountId"`
+	Type       string `json:"type"`
+	CategoryID *int32 `json:"categoryId,omitempty"`
+	Frequency  string `json:"frequency"`
+	DueDay     int32  `json:"dueDay"`
 }
 
 // UpdateRecurringRequest represents the update recurring transaction request body
 type UpdateRecurringRequest struct {
-	Name       string     `json:"name"`
-	Amount     string     `json:"amount"`
-	AccountID  int32      `json:"accountId"`
-	Type       string     `json:"type"`
-	CategoryID *int32     `json:"categoryId,omitempty"`
-	Frequency  string     `json:"frequency"`
-	DueDay     int32      `json:"dueDay"`
-	StartDate  *time.Time `json:"startDate,omitempty"` // V2: When recurring pattern starts
-	EndDate    *time.Time `json:"endDate,omitempty"`   // V2: Optional end date
-	IsActive   bool       `json:"isActive"`
+	Name       string `json:"name"`
+	Amount     string `json:"amount"`
+	AccountID  int32  `json:"accountId"`
+	Type       string `json:"type"`
+	CategoryID *int32 `json:"categoryId,omitempty"`
+	Frequency  string `json:"frequency"`
+	DueDay     int32  `json:"dueDay"`
+	IsActive   bool   `json:"isActive"`
 }
 
 // RecurringResponse represents a recurring transaction in API responses
@@ -64,8 +60,6 @@ type RecurringResponse struct {
 	CategoryID  *int32  `json:"categoryId,omitempty"`
 	Frequency   string  `json:"frequency"`
 	DueDay      int32   `json:"dueDay"`
-	StartDate   string  `json:"startDate"`            // V2: When recurring pattern starts
-	EndDate     *string `json:"endDate,omitempty"`    // V2: Optional end date
 	IsActive    bool    `json:"isActive"`
 	CreatedAt   string  `json:"createdAt"`
 	UpdatedAt   string  `json:"updatedAt"`
@@ -97,12 +91,6 @@ func (h *RecurringHandler) CreateRecurring(c echo.Context) error {
 		})
 	}
 
-	// Default start date to now if not provided
-	startDate := time.Now()
-	if req.StartDate != nil {
-		startDate = *req.StartDate
-	}
-
 	input := service.CreateRecurringInput{
 		Name:       req.Name,
 		Amount:     amount,
@@ -111,8 +99,6 @@ func (h *RecurringHandler) CreateRecurring(c echo.Context) error {
 		CategoryID: req.CategoryID,
 		Frequency:  domain.Frequency(req.Frequency),
 		DueDay:     req.DueDay,
-		StartDate:  startDate,
-		EndDate:    req.EndDate,
 	}
 
 	rt, err := h.recurringService.CreateRecurring(workspaceID, input)
@@ -177,12 +163,6 @@ func (h *RecurringHandler) GetRecurringTransaction(c echo.Context) error {
 	return c.JSON(http.StatusOK, toRecurringResponse(rt))
 }
 
-// UpdateRecurringResponse represents the response from updating a recurring template
-type UpdateRecurringResponse struct {
-	Template           RecurringResponse `json:"template"`
-	ProjectionsDeleted int64             `json:"projectionsDeleted"`
-}
-
 // UpdateRecurring handles PUT /api/v1/recurring-transactions/:id
 func (h *RecurringHandler) UpdateRecurring(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
@@ -208,12 +188,6 @@ func (h *RecurringHandler) UpdateRecurring(c echo.Context) error {
 		})
 	}
 
-	// Default start date to now if not provided
-	startDate := time.Now()
-	if req.StartDate != nil {
-		startDate = *req.StartDate
-	}
-
 	input := service.UpdateRecurringInput{
 		Name:       req.Name,
 		Amount:     amount,
@@ -222,29 +196,17 @@ func (h *RecurringHandler) UpdateRecurring(c echo.Context) error {
 		CategoryID: req.CategoryID,
 		Frequency:  domain.Frequency(req.Frequency),
 		DueDay:     req.DueDay,
-		StartDate:  startDate,
-		EndDate:    req.EndDate,
 		IsActive:   req.IsActive,
 	}
 
-	result, err := h.recurringService.UpdateRecurring(workspaceID, int32(id), input)
+	rt, err := h.recurringService.UpdateRecurring(workspaceID, int32(id), input)
 	if err != nil {
 		return h.handleServiceError(c, err, workspaceID, "update recurring transaction")
 	}
 
-	log.Info().Int32("workspace_id", workspaceID).Int32("recurring_id", result.Template.ID).Str("name", result.Template.Name).
-		Int64("projections_deleted", result.ProjectionsDeleted).Msg("Recurring transaction updated")
+	log.Info().Int32("workspace_id", workspaceID).Int32("recurring_id", rt.ID).Str("name", rt.Name).Msg("Recurring transaction updated")
 
-	return c.JSON(http.StatusOK, UpdateRecurringResponse{
-		Template:           toRecurringResponse(result.Template),
-		ProjectionsDeleted: result.ProjectionsDeleted,
-	})
-}
-
-// DeleteRecurringResponse represents the response from deleting a recurring template
-type DeleteRecurringResponse struct {
-	ProjectionsDeleted int64 `json:"projectionsDeleted"`
-	ActualsOrphaned    int64 `json:"actualsOrphaned"`
+	return c.JSON(http.StatusOK, toRecurringResponse(rt))
 }
 
 // DeleteRecurring handles DELETE /api/v1/recurring-transactions/:id
@@ -259,8 +221,7 @@ func (h *RecurringHandler) DeleteRecurring(c echo.Context) error {
 		return NewValidationError(c, "Invalid recurring transaction ID", nil)
 	}
 
-	result, err := h.recurringService.DeleteRecurring(workspaceID, int32(id))
-	if err != nil {
+	if err := h.recurringService.DeleteRecurring(workspaceID, int32(id)); err != nil {
 		if errors.Is(err, domain.ErrRecurringNotFound) {
 			return NewNotFoundError(c, "Recurring transaction not found")
 		}
@@ -268,15 +229,8 @@ func (h *RecurringHandler) DeleteRecurring(c echo.Context) error {
 		return NewInternalError(c, "Failed to delete recurring transaction")
 	}
 
-	log.Info().Int32("workspace_id", workspaceID).Int("recurring_id", id).
-		Int64("projections_deleted", result.ProjectionsDeleted).
-		Int64("actuals_orphaned", result.ActualsOrphaned).
-		Msg("Recurring transaction deleted (soft)")
-
-	return c.JSON(http.StatusOK, DeleteRecurringResponse{
-		ProjectionsDeleted: result.ProjectionsDeleted,
-		ActualsOrphaned:    result.ActualsOrphaned,
-	})
+	log.Info().Int32("workspace_id", workspaceID).Int("recurring_id", id).Msg("Recurring transaction deleted (soft)")
+	return c.NoContent(http.StatusNoContent)
 }
 
 // ToggleActive handles PATCH /api/v1/recurring-transactions/:id/toggle-active
@@ -352,11 +306,6 @@ func (h *RecurringHandler) handleServiceError(c echo.Context, err error, workspa
 	if errors.Is(err, domain.ErrBudgetCategoryNotFound) {
 		return NewValidationError(c, "Validation failed", []ValidationError{
 			{Field: "categoryId", Message: "Category not found"},
-		})
-	}
-	if errors.Is(err, domain.ErrInvalidInput) {
-		return NewValidationError(c, "Validation failed", []ValidationError{
-			{Field: "endDate", Message: "End date must be after start date"},
 		})
 	}
 	log.Error().Err(err).Int32("workspace_id", workspaceID).Str("operation", operation).Msg("Failed to " + operation)
@@ -437,14 +386,9 @@ func toRecurringResponse(rt *domain.RecurringTransaction) RecurringResponse {
 		CategoryID:  rt.CategoryID,
 		Frequency:   string(rt.Frequency),
 		DueDay:      rt.DueDay,
-		StartDate:   rt.StartDate.Format(time.RFC3339),
 		IsActive:    rt.IsActive,
 		CreatedAt:   rt.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:   rt.UpdatedAt.Format(time.RFC3339),
-	}
-	if rt.EndDate != nil {
-		endDate := rt.EndDate.Format(time.RFC3339)
-		resp.EndDate = &endDate
 	}
 	if rt.DeletedAt != nil {
 		deletedAt := rt.DeletedAt.Format(time.RFC3339)

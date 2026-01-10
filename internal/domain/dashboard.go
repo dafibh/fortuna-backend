@@ -35,30 +35,3 @@ type DashboardSummary struct {
 	Month                 *CalculatedMonth   `json:"month"`
 	Projection            *ProjectionDetails `json:"projection,omitempty"`
 }
-
-// FutureSpendingCategory represents spending by category for a month
-type FutureSpendingCategory struct {
-	ID     int32           `json:"id"`
-	Name   string          `json:"name"`
-	Amount decimal.Decimal `json:"amount"`
-}
-
-// FutureSpendingAccount represents spending by account for a month
-type FutureSpendingAccount struct {
-	ID     int32           `json:"id"`
-	Name   string          `json:"name"`
-	Amount decimal.Decimal `json:"amount"`
-}
-
-// FutureSpendingMonth represents spending data for a single month
-type FutureSpendingMonth struct {
-	Month      string                   `json:"month"` // YYYY-MM format
-	Total      decimal.Decimal          `json:"total"`
-	ByCategory []FutureSpendingCategory `json:"byCategory"`
-	ByAccount  []FutureSpendingAccount  `json:"byAccount"`
-}
-
-// FutureSpending represents aggregated future spending data
-type FutureSpending struct {
-	Months []FutureSpendingMonth `json:"months"`
-}

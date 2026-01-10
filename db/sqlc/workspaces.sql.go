@@ -44,37 +44,6 @@ func (q *Queries) DeleteWorkspace(ctx context.Context, id int32) error {
 	return err
 }
 
-const getAllWorkspaces = `-- name: GetAllWorkspaces :many
-SELECT id, user_id, name, created_at, updated_at FROM workspaces ORDER BY id
-`
-
-// Used by projection worker to sync all workspaces
-func (q *Queries) GetAllWorkspaces(ctx context.Context) ([]Workspace, error) {
-	rows, err := q.db.Query(ctx, getAllWorkspaces)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Workspace{}
-	for rows.Next() {
-		var i Workspace
-		if err := rows.Scan(
-			&i.ID,
-			&i.UserID,
-			&i.Name,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const getWorkspaceByID = `-- name: GetWorkspaceByID :one
 SELECT id, user_id, name, created_at, updated_at FROM workspaces WHERE id = $1
 `

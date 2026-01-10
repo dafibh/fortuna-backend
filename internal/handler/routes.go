@@ -45,7 +45,6 @@ func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateL
 	transactions.DELETE("/:id", transactionHandler.DeleteTransaction)
 	transactions.PATCH("/:id/toggle-paid", transactionHandler.TogglePaidStatus)
 	transactions.PATCH("/:id/settlement-intent", transactionHandler.UpdateSettlementIntent)
-	transactions.PATCH("/:id/toggle-billed", transactionHandler.ToggleCCBilled)
 	transactions.POST("/transfers", transactionHandler.CreateTransfer)
 
 	// Month routes (dual auth with rate limiting)
@@ -59,7 +58,6 @@ func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateL
 	dashboard := api.Group("/dashboard")
 	dashboard.Use(dualAuth.Authenticate(), middleware.RateLimitMiddleware(rateLimiter))
 	dashboard.GET("/summary", dashboardHandler.GetSummary)
-	dashboard.GET("/future-spending", dashboardHandler.GetFutureSpending)
 
 	// Budget Category routes (dual auth with rate limiting)
 	budgetCategories := api.Group("/budget-categories")
@@ -83,13 +81,6 @@ func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateL
 	cc.Use(dualAuth.Authenticate(), middleware.RateLimitMiddleware(rateLimiter))
 	cc.GET("/payable/breakdown", ccHandler.GetPayableBreakdown)
 	cc.POST("/payments", ccHandler.CreateCCPayment)
-	cc.GET("/pending", transactionHandler.GetPendingCCTransactions)
-	cc.GET("/billed", transactionHandler.GetBilledCCTransactions)
-	cc.GET("/metrics", transactionHandler.GetCCMetrics)
-	cc.GET("/deferred", ccHandler.GetDeferredGroups)
-	cc.GET("/overdue", ccHandler.GetOverdueSummary)
-	cc.PATCH("/overdue/:id/amount", ccHandler.UpdateOverdueAmount)
-	cc.POST("/settlements", ccHandler.SettleCCTransactions)
 
 	// Recurring Transactions routes (dual auth with rate limiting)
 	recurring := api.Group("/recurring-transactions")

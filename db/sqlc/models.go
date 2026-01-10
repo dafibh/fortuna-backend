@@ -120,22 +120,17 @@ type RecurringTransaction struct {
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 	DeletedAt   pgtype.Timestamptz `json:"deleted_at"`
-	// Date when recurring pattern starts. Day-of-month is used for monthly projections.
-	StartDate pgtype.Date `json:"start_date"`
-	// Optional end date. NULL means the recurring pattern runs forever.
-	EndDate pgtype.Date `json:"end_date"`
 }
 
 type Transaction struct {
-	ID              int32          `json:"id"`
-	WorkspaceID     int32          `json:"workspace_id"`
-	AccountID       int32          `json:"account_id"`
-	Name            string         `json:"name"`
-	Amount          pgtype.Numeric `json:"amount"`
-	Type            string         `json:"type"`
-	TransactionDate pgtype.Date    `json:"transaction_date"`
-	IsPaid          bool           `json:"is_paid"`
-	// Settlement intent: immediate (pay now) or deferred (pay later). NULL for non-CC transactions.
+	ID                 int32              `json:"id"`
+	WorkspaceID        int32              `json:"workspace_id"`
+	AccountID          int32              `json:"account_id"`
+	Name               string             `json:"name"`
+	Amount             pgtype.Numeric     `json:"amount"`
+	Type               string             `json:"type"`
+	TransactionDate    pgtype.Date        `json:"transaction_date"`
+	IsPaid             bool               `json:"is_paid"`
 	CcSettlementIntent pgtype.Text        `json:"cc_settlement_intent"`
 	Notes              pgtype.Text        `json:"notes"`
 	CreatedAt          pgtype.Timestamptz `json:"created_at"`
@@ -144,18 +139,8 @@ type Transaction struct {
 	TransferPairID     pgtype.UUID        `json:"transfer_pair_id"`
 	CategoryID         pgtype.Int4        `json:"category_id"`
 	IsCcPayment        bool               `json:"is_cc_payment"`
-	// Links transaction to recurring template if generated from recurring pattern.
-	TemplateID pgtype.Int4 `json:"template_id"`
-	// CC lifecycle state: pending (not yet billed), billed (in outstanding), settled (paid off). NULL for non-CC transactions.
-	CcState pgtype.Text `json:"cc_state"`
-	// Timestamp when CC transaction was marked as billed (appeared in banking app outstanding).
-	BilledAt pgtype.Timestamptz `json:"billed_at"`
-	// Timestamp when CC transaction was settled via payment.
-	SettledAt pgtype.Timestamptz `json:"settled_at"`
-	// Transaction source: manual (user created) or recurring (generated from template).
-	Source string `json:"source"`
-	// True for future projected transactions, false for actual transactions.
-	IsProjected bool `json:"is_projected"`
+	// Links transaction to recurring template if auto-generated
+	RecurringTransactionID pgtype.Int4 `json:"recurring_transaction_id"`
 }
 
 type User struct {

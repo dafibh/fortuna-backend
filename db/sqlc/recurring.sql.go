@@ -14,7 +14,7 @@ import (
 const checkRecurringTransactionExists = `-- name: CheckRecurringTransactionExists :one
 SELECT COUNT(*)::INTEGER as count
 FROM transactions
-WHERE template_id = $1::INTEGER
+WHERE recurring_transaction_id = $1::INTEGER
     AND workspace_id = $2::INTEGER
     AND EXTRACT(YEAR FROM transaction_date) = $3::INTEGER
     AND EXTRACT(MONTH FROM transaction_date) = $4::INTEGER
@@ -43,10 +43,10 @@ func (q *Queries) CheckRecurringTransactionExists(ctx context.Context, arg Check
 
 const createRecurringTransaction = `-- name: CreateRecurringTransaction :one
 INSERT INTO recurring_transactions (
-    workspace_id, name, amount, account_id, type, category_id, frequency, due_day, is_active, start_date, end_date
+    workspace_id, name, amount, account_id, type, category_id, frequency, due_day, is_active
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
-) RETURNING id, workspace_id, name, amount, account_id, type, category_id, frequency, due_day, is_active, created_at, updated_at, deleted_at, start_date, end_date
+    $1, $2, $3, $4, $5, $6, $7, $8, $9
+) RETURNING id, workspace_id, name, amount, account_id, type, category_id, frequency, due_day, is_active, created_at, updated_at, deleted_at
 `
 
 type CreateRecurringTransactionParams struct {
@@ -59,8 +59,6 @@ type CreateRecurringTransactionParams struct {
 	Frequency   string         `json:"frequency"`
 	DueDay      int32          `json:"due_day"`
 	IsActive    bool           `json:"is_active"`
-	StartDate   pgtype.Date    `json:"start_date"`
-	EndDate     pgtype.Date    `json:"end_date"`
 }
 
 func (q *Queries) CreateRecurringTransaction(ctx context.Context, arg CreateRecurringTransactionParams) (RecurringTransaction, error) {
@@ -74,8 +72,6 @@ func (q *Queries) CreateRecurringTransaction(ctx context.Context, arg CreateRecu
 		arg.Frequency,
 		arg.DueDay,
 		arg.IsActive,
-		arg.StartDate,
-		arg.EndDate,
 	)
 	var i RecurringTransaction
 	err := row.Scan(
@@ -92,64 +88,12 @@ func (q *Queries) CreateRecurringTransaction(ctx context.Context, arg CreateRecu
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
-		&i.StartDate,
-		&i.EndDate,
 	)
 	return i, err
 }
 
-const getActiveTemplates = `-- name: GetActiveTemplates :many
-
-SELECT id, workspace_id, name, amount, account_id, type, category_id, frequency, due_day, is_active, created_at, updated_at, deleted_at, start_date, end_date FROM recurring_transactions
-WHERE workspace_id = $1
-    AND deleted_at IS NULL
-    AND is_active = true
-    AND (end_date IS NULL OR end_date >= CURRENT_DATE)
-ORDER BY name ASC
-`
-
-// =====================================================
-// V2 RECURRING TEMPLATE QUERIES
-// =====================================================
-// Get all active recurring templates (no end_date or end_date in future)
-func (q *Queries) GetActiveTemplates(ctx context.Context, workspaceID int32) ([]RecurringTransaction, error) {
-	rows, err := q.db.Query(ctx, getActiveTemplates, workspaceID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []RecurringTransaction{}
-	for rows.Next() {
-		var i RecurringTransaction
-		if err := rows.Scan(
-			&i.ID,
-			&i.WorkspaceID,
-			&i.Name,
-			&i.Amount,
-			&i.AccountID,
-			&i.Type,
-			&i.CategoryID,
-			&i.Frequency,
-			&i.DueDay,
-			&i.IsActive,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.DeletedAt,
-			&i.StartDate,
-			&i.EndDate,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const getRecurringTransaction = `-- name: GetRecurringTransaction :one
-SELECT id, workspace_id, name, amount, account_id, type, category_id, frequency, due_day, is_active, created_at, updated_at, deleted_at, start_date, end_date FROM recurring_transactions
+SELECT id, workspace_id, name, amount, account_id, type, category_id, frequency, due_day, is_active, created_at, updated_at, deleted_at FROM recurring_transactions
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
 `
 
@@ -175,121 +119,12 @@ func (q *Queries) GetRecurringTransaction(ctx context.Context, arg GetRecurringT
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
-		&i.StartDate,
-		&i.EndDate,
 	)
 	return i, err
-}
-
-const getTemplateWithProjectionRange = `-- name: GetTemplateWithProjectionRange :one
-SELECT rt.id, rt.workspace_id, rt.name, rt.amount, rt.account_id, rt.type, rt.category_id, rt.frequency, rt.due_day, rt.is_active, rt.created_at, rt.updated_at, rt.deleted_at, rt.start_date, rt.end_date,
-    MIN(t.transaction_date) as first_projection_date,
-    MAX(t.transaction_date) as last_projection_date
-FROM recurring_transactions rt
-LEFT JOIN transactions t ON t.template_id = rt.id
-    AND t.is_projected = true
-    AND t.deleted_at IS NULL
-WHERE rt.workspace_id = $1 AND rt.id = $2 AND rt.deleted_at IS NULL
-GROUP BY rt.id
-`
-
-type GetTemplateWithProjectionRangeParams struct {
-	WorkspaceID int32 `json:"workspace_id"`
-	ID          int32 `json:"id"`
-}
-
-type GetTemplateWithProjectionRangeRow struct {
-	ID                  int32              `json:"id"`
-	WorkspaceID         int32              `json:"workspace_id"`
-	Name                string             `json:"name"`
-	Amount              pgtype.Numeric     `json:"amount"`
-	AccountID           int32              `json:"account_id"`
-	Type                string             `json:"type"`
-	CategoryID          pgtype.Int4        `json:"category_id"`
-	Frequency           string             `json:"frequency"`
-	DueDay              int32              `json:"due_day"`
-	IsActive            bool               `json:"is_active"`
-	CreatedAt           pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
-	DeletedAt           pgtype.Timestamptz `json:"deleted_at"`
-	StartDate           pgtype.Date        `json:"start_date"`
-	EndDate             pgtype.Date        `json:"end_date"`
-	FirstProjectionDate interface{}        `json:"first_projection_date"`
-	LastProjectionDate  interface{}        `json:"last_projection_date"`
-}
-
-// Get template with the date range of its projections
-func (q *Queries) GetTemplateWithProjectionRange(ctx context.Context, arg GetTemplateWithProjectionRangeParams) (GetTemplateWithProjectionRangeRow, error) {
-	row := q.db.QueryRow(ctx, getTemplateWithProjectionRange, arg.WorkspaceID, arg.ID)
-	var i GetTemplateWithProjectionRangeRow
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.Name,
-		&i.Amount,
-		&i.AccountID,
-		&i.Type,
-		&i.CategoryID,
-		&i.Frequency,
-		&i.DueDay,
-		&i.IsActive,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.DeletedAt,
-		&i.StartDate,
-		&i.EndDate,
-		&i.FirstProjectionDate,
-		&i.LastProjectionDate,
-	)
-	return i, err
-}
-
-const getTemplatesByWorkspace = `-- name: GetTemplatesByWorkspace :many
-SELECT id, workspace_id, name, amount, account_id, type, category_id, frequency, due_day, is_active, created_at, updated_at, deleted_at, start_date, end_date FROM recurring_transactions
-WHERE workspace_id = $1
-    AND deleted_at IS NULL
-ORDER BY is_active DESC, name ASC
-`
-
-// Get all recurring templates for a workspace (including inactive)
-func (q *Queries) GetTemplatesByWorkspace(ctx context.Context, workspaceID int32) ([]RecurringTransaction, error) {
-	rows, err := q.db.Query(ctx, getTemplatesByWorkspace, workspaceID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []RecurringTransaction{}
-	for rows.Next() {
-		var i RecurringTransaction
-		if err := rows.Scan(
-			&i.ID,
-			&i.WorkspaceID,
-			&i.Name,
-			&i.Amount,
-			&i.AccountID,
-			&i.Type,
-			&i.CategoryID,
-			&i.Frequency,
-			&i.DueDay,
-			&i.IsActive,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.DeletedAt,
-			&i.StartDate,
-			&i.EndDate,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const listRecurringTransactions = `-- name: ListRecurringTransactions :many
-SELECT id, workspace_id, name, amount, account_id, type, category_id, frequency, due_day, is_active, created_at, updated_at, deleted_at, start_date, end_date FROM recurring_transactions
+SELECT id, workspace_id, name, amount, account_id, type, category_id, frequency, due_day, is_active, created_at, updated_at, deleted_at FROM recurring_transactions
 WHERE workspace_id = $1 AND deleted_at IS NULL
     AND ($2::BOOLEAN IS NULL OR is_active = $2)
 ORDER BY name ASC
@@ -323,8 +158,6 @@ func (q *Queries) ListRecurringTransactions(ctx context.Context, arg ListRecurri
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
-			&i.StartDate,
-			&i.EndDate,
 		); err != nil {
 			return nil, err
 		}
@@ -334,43 +167,6 @@ func (q *Queries) ListRecurringTransactions(ctx context.Context, arg ListRecurri
 		return nil, err
 	}
 	return items, nil
-}
-
-const setTemplateEndDate = `-- name: SetTemplateEndDate :one
-UPDATE recurring_transactions
-SET end_date = $3, updated_at = NOW()
-WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
-RETURNING id, workspace_id, name, amount, account_id, type, category_id, frequency, due_day, is_active, created_at, updated_at, deleted_at, start_date, end_date
-`
-
-type SetTemplateEndDateParams struct {
-	WorkspaceID int32       `json:"workspace_id"`
-	ID          int32       `json:"id"`
-	EndDate     pgtype.Date `json:"end_date"`
-}
-
-// Set or update the end_date for a recurring template
-func (q *Queries) SetTemplateEndDate(ctx context.Context, arg SetTemplateEndDateParams) (RecurringTransaction, error) {
-	row := q.db.QueryRow(ctx, setTemplateEndDate, arg.WorkspaceID, arg.ID, arg.EndDate)
-	var i RecurringTransaction
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.Name,
-		&i.Amount,
-		&i.AccountID,
-		&i.Type,
-		&i.CategoryID,
-		&i.Frequency,
-		&i.DueDay,
-		&i.IsActive,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.DeletedAt,
-		&i.StartDate,
-		&i.EndDate,
-	)
-	return i, err
 }
 
 const softDeleteRecurringTransaction = `-- name: SoftDeleteRecurringTransaction :execrows
@@ -392,48 +188,12 @@ func (q *Queries) SoftDeleteRecurringTransaction(ctx context.Context, arg SoftDe
 	return result.RowsAffected(), nil
 }
 
-const toggleTemplateActive = `-- name: ToggleTemplateActive :one
-UPDATE recurring_transactions
-SET is_active = NOT is_active, updated_at = NOW()
-WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
-RETURNING id, workspace_id, name, amount, account_id, type, category_id, frequency, due_day, is_active, created_at, updated_at, deleted_at, start_date, end_date
-`
-
-type ToggleTemplateActiveParams struct {
-	WorkspaceID int32 `json:"workspace_id"`
-	ID          int32 `json:"id"`
-}
-
-// Toggle the is_active status of a template
-func (q *Queries) ToggleTemplateActive(ctx context.Context, arg ToggleTemplateActiveParams) (RecurringTransaction, error) {
-	row := q.db.QueryRow(ctx, toggleTemplateActive, arg.WorkspaceID, arg.ID)
-	var i RecurringTransaction
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.Name,
-		&i.Amount,
-		&i.AccountID,
-		&i.Type,
-		&i.CategoryID,
-		&i.Frequency,
-		&i.DueDay,
-		&i.IsActive,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.DeletedAt,
-		&i.StartDate,
-		&i.EndDate,
-	)
-	return i, err
-}
-
 const updateRecurringTransaction = `-- name: UpdateRecurringTransaction :one
 UPDATE recurring_transactions
 SET name = $3, amount = $4, account_id = $5, type = $6, category_id = $7,
-    frequency = $8, due_day = $9, is_active = $10, start_date = $11, end_date = $12, updated_at = NOW()
+    frequency = $8, due_day = $9, is_active = $10, updated_at = NOW()
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
-RETURNING id, workspace_id, name, amount, account_id, type, category_id, frequency, due_day, is_active, created_at, updated_at, deleted_at, start_date, end_date
+RETURNING id, workspace_id, name, amount, account_id, type, category_id, frequency, due_day, is_active, created_at, updated_at, deleted_at
 `
 
 type UpdateRecurringTransactionParams struct {
@@ -447,8 +207,6 @@ type UpdateRecurringTransactionParams struct {
 	Frequency   string         `json:"frequency"`
 	DueDay      int32          `json:"due_day"`
 	IsActive    bool           `json:"is_active"`
-	StartDate   pgtype.Date    `json:"start_date"`
-	EndDate     pgtype.Date    `json:"end_date"`
 }
 
 func (q *Queries) UpdateRecurringTransaction(ctx context.Context, arg UpdateRecurringTransactionParams) (RecurringTransaction, error) {
@@ -463,8 +221,6 @@ func (q *Queries) UpdateRecurringTransaction(ctx context.Context, arg UpdateRecu
 		arg.Frequency,
 		arg.DueDay,
 		arg.IsActive,
-		arg.StartDate,
-		arg.EndDate,
 	)
 	var i RecurringTransaction
 	err := row.Scan(
@@ -481,8 +237,6 @@ func (q *Queries) UpdateRecurringTransaction(ctx context.Context, arg UpdateRecu
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
-		&i.StartDate,
-		&i.EndDate,
 	)
 	return i, err
 }

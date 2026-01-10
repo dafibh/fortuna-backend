@@ -40,33 +40,6 @@ type ProjectionResponse struct {
 	Note              string `json:"note,omitempty"`
 }
 
-// FutureSpendingCategoryResponse represents spending by category for a month
-type FutureSpendingCategoryResponse struct {
-	ID     int32  `json:"id"`
-	Name   string `json:"name"`
-	Amount string `json:"amount"`
-}
-
-// FutureSpendingAccountResponse represents spending by account for a month
-type FutureSpendingAccountResponse struct {
-	ID     int32  `json:"id"`
-	Name   string `json:"name"`
-	Amount string `json:"amount"`
-}
-
-// FutureSpendingMonthResponse represents spending data for a single month
-type FutureSpendingMonthResponse struct {
-	Month      string                           `json:"month"` // YYYY-MM format
-	Total      string                           `json:"total"`
-	ByCategory []FutureSpendingCategoryResponse `json:"byCategory"`
-	ByAccount  []FutureSpendingAccountResponse  `json:"byAccount"`
-}
-
-// FutureSpendingResponse represents the full future spending API response
-type FutureSpendingResponse struct {
-	Months []FutureSpendingMonthResponse `json:"months"`
-}
-
 // DashboardSummaryResponse represents the dashboard summary API response
 type DashboardSummaryResponse struct {
 	IsProjection          bool                `json:"isProjection"`
@@ -175,77 +148,5 @@ func (h *DashboardHandler) GetSummary(c echo.Context) error {
 		CCPayable:             ccPayable,
 		Month:                 toMonthResponse(summary.Month),
 		Projection:            projection,
-	})
-}
-
-// GetFutureSpending godoc
-// @Summary Get future spending projections
-// @Description Get aggregated spending data for future months including category and account breakdowns
-// @Tags dashboard
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param months query int false "Number of months to project (default: 12, max: 12)"
-// @Success 200 {object} FutureSpendingResponse
-// @Failure 400 {object} ProblemDetails
-// @Failure 401 {object} ProblemDetails
-// @Failure 500 {object} ProblemDetails
-// @Router /dashboard/future-spending [get]
-func (h *DashboardHandler) GetFutureSpending(c echo.Context) error {
-	workspaceID := middleware.GetWorkspaceID(c)
-	if workspaceID == 0 {
-		return NewUnauthorizedError(c, "Workspace required")
-	}
-
-	// Parse optional months param (default to 12)
-	months := 12
-	if monthsStr := c.QueryParam("months"); monthsStr != "" {
-		parsedMonths, err := strconv.Atoi(monthsStr)
-		if err != nil {
-			return NewValidationError(c, "Invalid months format", []ValidationError{{Field: "months", Message: "Must be a valid integer"}})
-		}
-		if parsedMonths < 1 || parsedMonths > 12 {
-			return NewValidationError(c, "Months must be between 1 and 12", []ValidationError{{Field: "months", Message: "Must be between 1 and 12"}})
-		}
-		months = parsedMonths
-	}
-
-	futureSpending, err := h.dashboardService.GetFutureSpending(workspaceID, months)
-	if err != nil {
-		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("months", months).Msg("Failed to get future spending")
-		return NewInternalError(c, "Failed to get future spending")
-	}
-
-	// Convert to response format
-	responseMonths := make([]FutureSpendingMonthResponse, len(futureSpending.Months))
-	for i, month := range futureSpending.Months {
-		byCategory := make([]FutureSpendingCategoryResponse, len(month.ByCategory))
-		for j, cat := range month.ByCategory {
-			byCategory[j] = FutureSpendingCategoryResponse{
-				ID:     cat.ID,
-				Name:   cat.Name,
-				Amount: cat.Amount.StringFixed(2),
-			}
-		}
-
-		byAccount := make([]FutureSpendingAccountResponse, len(month.ByAccount))
-		for j, acc := range month.ByAccount {
-			byAccount[j] = FutureSpendingAccountResponse{
-				ID:     acc.ID,
-				Name:   acc.Name,
-				Amount: acc.Amount.StringFixed(2),
-			}
-		}
-
-		responseMonths[i] = FutureSpendingMonthResponse{
-			Month:      month.Month,
-			Total:      month.Total.StringFixed(2),
-			ByCategory: byCategory,
-			ByAccount:  byAccount,
-		}
-	}
-
-	return c.JSON(http.StatusOK, FutureSpendingResponse{
-		Months: responseMonths,
 	})
 }
