@@ -11,6 +11,69 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const batchToggleToBilled = `-- name: BatchToggleToBilled :many
+UPDATE transactions
+SET cc_state = 'billed',
+    billed_at = NOW(),
+    updated_at = NOW()
+WHERE id = ANY($1::int[])
+  AND workspace_id = $2
+  AND cc_state = 'pending'
+  AND deleted_at IS NULL
+RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, recurring_transaction_id, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected
+`
+
+type BatchToggleToBilledParams struct {
+	Column1     []int32 `json:"column_1"`
+	WorkspaceID int32   `json:"workspace_id"`
+}
+
+// Batch toggle multiple transactions from pending to billed
+func (q *Queries) BatchToggleToBilled(ctx context.Context, arg BatchToggleToBilledParams) ([]Transaction, error) {
+	rows, err := q.db.Query(ctx, batchToggleToBilled, arg.Column1, arg.WorkspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Transaction{}
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.AccountID,
+			&i.Name,
+			&i.Amount,
+			&i.Type,
+			&i.TransactionDate,
+			&i.IsPaid,
+			&i.CcSettlementIntent,
+			&i.Notes,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.TransferPairID,
+			&i.CategoryID,
+			&i.IsCcPayment,
+			&i.RecurringTransactionID,
+			&i.CcState,
+			&i.BilledAt,
+			&i.SettledAt,
+			&i.SettlementIntent,
+			&i.Source,
+			&i.TemplateID,
+			&i.IsProjected,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const bulkSettleTransactions = `-- name: BulkSettleTransactions :many
 UPDATE transactions
 SET cc_state = 'settled',
@@ -338,8 +401,8 @@ func (q *Queries) GetBilledCCByMonth(ctx context.Context, arg GetBilledCCByMonth
 const getCCMetrics = `-- name: GetCCMetrics :one
 SELECT
     COALESCE(SUM(CASE WHEN cc_state = 'pending' THEN amount ELSE 0 END), 0)::NUMERIC(12,2) as pending_total,
-    COALESCE(SUM(CASE WHEN cc_state = 'billed' AND settlement_intent = 'deferred' THEN amount ELSE 0 END), 0)::NUMERIC(12,2) as billed_total,
-    COALESCE(SUM(CASE WHEN cc_state IN ('pending', 'billed') THEN amount ELSE 0 END), 0)::NUMERIC(12,2) as month_total
+    COALESCE(SUM(CASE WHEN cc_state = 'billed' AND settlement_intent = 'deferred' THEN amount ELSE 0 END), 0)::NUMERIC(12,2) as outstanding_total,
+    COALESCE(SUM(CASE WHEN cc_state IN ('pending', 'billed', 'settled') THEN amount ELSE 0 END), 0)::NUMERIC(12,2) as purchases_total
 FROM transactions
 WHERE workspace_id = $1
   AND cc_state IS NOT NULL
@@ -354,17 +417,18 @@ type GetCCMetricsParams struct {
 }
 
 type GetCCMetricsRow struct {
-	PendingTotal pgtype.Numeric `json:"pending_total"`
-	BilledTotal  pgtype.Numeric `json:"billed_total"`
-	MonthTotal   pgtype.Numeric `json:"month_total"`
+	PendingTotal     pgtype.Numeric `json:"pending_total"`
+	OutstandingTotal pgtype.Numeric `json:"outstanding_total"`
+	PurchasesTotal   pgtype.Numeric `json:"purchases_total"`
 }
 
-// Get CC metrics (pending, billed, total) for a month range
-// month_total = pending + billed (excludes settled transactions)
+// Get CC metrics (pending, outstanding, purchases) for a month range
+// purchases = pending + billed + settled (all CC activity this month)
+// outstanding = billed transactions with deferred intent (balance to settle)
 func (q *Queries) GetCCMetrics(ctx context.Context, arg GetCCMetricsParams) (GetCCMetricsRow, error) {
 	row := q.db.QueryRow(ctx, getCCMetrics, arg.WorkspaceID, arg.TransactionDate, arg.TransactionDate_2)
 	var i GetCCMetricsRow
-	err := row.Scan(&i.PendingTotal, &i.BilledTotal, &i.MonthTotal)
+	err := row.Scan(&i.PendingTotal, &i.OutstandingTotal, &i.PurchasesTotal)
 	return i, err
 }
 

@@ -275,13 +275,26 @@ WHERE id = ANY($1::int[])
   AND deleted_at IS NULL
 RETURNING *;
 
+-- name: BatchToggleToBilled :many
+-- Batch toggle multiple transactions from pending to billed
+UPDATE transactions
+SET cc_state = 'billed',
+    billed_at = NOW(),
+    updated_at = NOW()
+WHERE id = ANY($1::int[])
+  AND workspace_id = $2
+  AND cc_state = 'pending'
+  AND deleted_at IS NULL
+RETURNING *;
+
 -- name: GetCCMetrics :one
--- Get CC metrics (pending, billed, total) for a month range
--- month_total = pending + billed (excludes settled transactions)
+-- Get CC metrics (pending, outstanding, purchases) for a month range
+-- purchases = pending + billed + settled (all CC activity this month)
+-- outstanding = billed transactions with deferred intent (balance to settle)
 SELECT
     COALESCE(SUM(CASE WHEN cc_state = 'pending' THEN amount ELSE 0 END), 0)::NUMERIC(12,2) as pending_total,
-    COALESCE(SUM(CASE WHEN cc_state = 'billed' AND settlement_intent = 'deferred' THEN amount ELSE 0 END), 0)::NUMERIC(12,2) as billed_total,
-    COALESCE(SUM(CASE WHEN cc_state IN ('pending', 'billed') THEN amount ELSE 0 END), 0)::NUMERIC(12,2) as month_total
+    COALESCE(SUM(CASE WHEN cc_state = 'billed' AND settlement_intent = 'deferred' THEN amount ELSE 0 END), 0)::NUMERIC(12,2) as outstanding_total,
+    COALESCE(SUM(CASE WHEN cc_state IN ('pending', 'billed', 'settled') THEN amount ELSE 0 END), 0)::NUMERIC(12,2) as purchases_total
 FROM transactions
 WHERE workspace_id = $1
   AND cc_state IS NOT NULL

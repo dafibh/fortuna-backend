@@ -881,9 +881,9 @@ func toTransactionResponse(transaction *domain.Transaction) TransactionResponse 
 
 // CCMetricsResponse represents CC metrics in API responses
 type CCMetricsResponse struct {
-	Pending    string `json:"pending"`    // Sum of pending CC transactions
-	Billed     string `json:"billed"`     // Sum of billed CC transactions (deferred)
-	MonthTotal string `json:"monthTotal"` // Sum of pending + billed
+	Pending     string `json:"pending"`     // Sum of pending CC transactions
+	Outstanding string `json:"outstanding"` // Sum of billed CC transactions with deferred intent (balance to settle)
+	Purchases   string `json:"purchases"`   // Sum of all CC transactions (pending + billed + settled)
 }
 
 // GetCCMetrics handles GET /api/v1/transactions/cc-metrics
@@ -923,8 +923,68 @@ func (h *TransactionHandler) GetCCMetrics(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, CCMetricsResponse{
-		Pending:    metrics.Pending.StringFixed(2),
-		Billed:     metrics.Billed.StringFixed(2),
-		MonthTotal: metrics.MonthTotal.StringFixed(2),
+		Pending:     metrics.Pending.StringFixed(2),
+		Outstanding: metrics.Outstanding.StringFixed(2),
+		Purchases:   metrics.Purchases.StringFixed(2),
 	})
+}
+
+// BatchToggleBilledRequest represents the request body for batch toggling billed status
+type BatchToggleBilledRequest struct {
+	IDs []int32 `json:"ids"`
+}
+
+// BatchToggleBilledResponse represents the response for batch toggle operation
+type BatchToggleBilledResponse struct {
+	Updated []TransactionResponse `json:"updated"`
+	Count   int                   `json:"count"`
+}
+
+// BatchToggleBilled godoc
+// @Summary Batch toggle CC transactions to billed status
+// @Description Toggle multiple CC transactions from pending to billed in a single request
+// @Tags transactions
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body BatchToggleBilledRequest true "Transaction IDs to toggle"
+// @Success 200 {object} BatchToggleBilledResponse
+// @Failure 400 {object} ProblemDetails
+// @Failure 401 {object} ProblemDetails
+// @Router /transactions/batch-toggle-billed [post]
+func (h *TransactionHandler) BatchToggleBilled(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	var req BatchToggleBilledRequest
+	if err := c.Bind(&req); err != nil {
+		return NewValidationError(c, "Invalid request body", nil)
+	}
+
+	if len(req.IDs) == 0 {
+		return NewValidationError(c, "At least one transaction ID is required", nil)
+	}
+
+	if len(req.IDs) > 100 {
+		return NewValidationError(c, "Maximum 100 transactions per batch", nil)
+	}
+
+	transactions, err := h.transactionService.BatchToggleToBilled(workspaceID, req.IDs)
+	if err != nil {
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("count", len(req.IDs)).Msg("Failed to batch toggle billed status")
+		return NewInternalError(c, "Failed to batch toggle billed status")
+	}
+
+	response := BatchToggleBilledResponse{
+		Updated: make([]TransactionResponse, len(transactions)),
+		Count:   len(transactions),
+	}
+	for i, tx := range transactions {
+		response.Updated[i] = toTransactionResponse(tx)
+	}
+
+	log.Info().Int32("workspace_id", workspaceID).Int("count", len(transactions)).Msg("Batch toggle billed completed")
+	return c.JSON(http.StatusOK, response)
 }

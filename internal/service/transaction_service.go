@@ -729,3 +729,22 @@ func (s *TransactionService) GetCCMetrics(workspaceID int32, month time.Time) (*
 
 	return s.transactionRepo.GetCCMetrics(workspaceID, startOfMonth, endOfMonth)
 }
+
+// BatchToggleToBilled toggles multiple pending transactions to billed state
+func (s *TransactionService) BatchToggleToBilled(workspaceID int32, ids []int32) ([]*domain.Transaction, error) {
+	if len(ids) == 0 {
+		return []*domain.Transaction{}, nil
+	}
+
+	transactions, err := s.transactionRepo.BatchToggleToBilled(workspaceID, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	// Publish events for each updated transaction
+	for _, tx := range transactions {
+		s.publishEvent(workspaceID, websocket.TransactionBilled(tx))
+	}
+
+	return transactions, nil
+}

@@ -359,6 +359,7 @@ type MockTransactionRepository struct {
 	DeleteProjectionsBeyondDateFn     func(workspaceID int32, templateID int32, date time.Time) error
 	OrphanActualsByTemplateFn         func(workspaceID int32, templateID int32) error
 	GetCCMetricsFn                    func(workspaceID int32, startDate, endDate time.Time) (*domain.CCMetrics, error)
+	BatchToggleToBilledFn             func(workspaceID int32, ids []int32) ([]*domain.Transaction, error)
 }
 
 // NewMockTransactionRepository creates a new MockTransactionRepository
@@ -881,10 +882,19 @@ func (m *MockTransactionRepository) GetCCMetrics(workspaceID int32, startDate, e
 	}
 	// Default: return zero metrics
 	return &domain.CCMetrics{
-		Pending:    decimal.Zero,
-		Billed:     decimal.Zero,
-		MonthTotal: decimal.Zero,
+		Pending:     decimal.Zero,
+		Outstanding: decimal.Zero,
+		Purchases:   decimal.Zero,
 	}, nil
+}
+
+// BatchToggleToBilled toggles multiple pending transactions to billed state
+func (m *MockTransactionRepository) BatchToggleToBilled(workspaceID int32, ids []int32) ([]*domain.Transaction, error) {
+	if m.BatchToggleToBilledFn != nil {
+		return m.BatchToggleToBilledFn(workspaceID, ids)
+	}
+	// Default: return empty slice
+	return []*domain.Transaction{}, nil
 }
 
 // MockMonthRepository is a mock implementation of domain.MonthRepository

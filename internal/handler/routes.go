@@ -48,6 +48,7 @@ func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateL
 	transactions.PATCH("/:id/toggle-billed", transactionHandler.ToggleBilled)
 	transactions.PATCH("/:id/settlement-intent", transactionHandler.UpdateSettlementIntent)
 	transactions.POST("/transfers", transactionHandler.CreateTransfer)
+	transactions.POST("/batch-toggle-billed", transactionHandler.BatchToggleBilled)
 
 	// Month routes (dual auth with rate limiting)
 	months := api.Group("/months")

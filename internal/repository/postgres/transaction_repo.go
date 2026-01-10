@@ -937,7 +937,7 @@ func (r *TransactionRepository) DeleteProjectionsBeyondDate(workspaceID int32, t
 	})
 }
 
-// GetCCMetrics returns CC metrics (pending, billed, month total) for a date range
+// GetCCMetrics returns CC metrics (pending, outstanding, purchases) for a date range
 func (r *TransactionRepository) GetCCMetrics(workspaceID int32, startDate, endDate time.Time) (*domain.CCMetrics, error) {
 	ctx := context.Background()
 
@@ -951,8 +951,27 @@ func (r *TransactionRepository) GetCCMetrics(workspaceID int32, startDate, endDa
 	}
 
 	return &domain.CCMetrics{
-		Pending:    pgNumericToDecimal(row.PendingTotal),
-		Billed:     pgNumericToDecimal(row.BilledTotal),
-		MonthTotal: pgNumericToDecimal(row.MonthTotal),
+		Pending:     pgNumericToDecimal(row.PendingTotal),
+		Outstanding: pgNumericToDecimal(row.OutstandingTotal),
+		Purchases:   pgNumericToDecimal(row.PurchasesTotal),
 	}, nil
+}
+
+// BatchToggleToBilled toggles multiple pending transactions to billed state
+func (r *TransactionRepository) BatchToggleToBilled(workspaceID int32, ids []int32) ([]*domain.Transaction, error) {
+	ctx := context.Background()
+
+	rows, err := r.queries.BatchToggleToBilled(ctx, sqlc.BatchToggleToBilledParams{
+		Column1:     ids,
+		WorkspaceID: workspaceID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	transactions := make([]*domain.Transaction, len(rows))
+	for i, row := range rows {
+		transactions[i] = sqlcTransactionToDomain(row)
+	}
+	return transactions, nil
 }

@@ -11,6 +11,8 @@ import (
 )
 
 type Querier interface {
+	// Batch toggle multiple transactions from pending to billed
+	BatchToggleToBilled(ctx context.Context, arg BatchToggleToBilledParams) ([]Transaction, error)
 	// Bulk update multiple transactions to settled state
 	BulkSettleTransactions(ctx context.Context, arg BulkSettleTransactionsParams) ([]Transaction, error)
 	// Check if a transaction already exists for a recurring template in a specific month
@@ -81,8 +83,9 @@ type Querier interface {
 	GetBudgetAllocationsByMonth(ctx context.Context, arg GetBudgetAllocationsByMonthParams) ([]GetBudgetAllocationsByMonthRow, error)
 	GetBudgetCategoryByID(ctx context.Context, arg GetBudgetCategoryByIDParams) (BudgetCategory, error)
 	GetBudgetCategoryByName(ctx context.Context, arg GetBudgetCategoryByNameParams) (BudgetCategory, error)
-	// Get CC metrics (pending, billed, total) for a month range
-	// month_total = pending + billed (excludes settled transactions)
+	// Get CC metrics (pending, outstanding, purchases) for a month range
+	// purchases = pending + billed + settled (all CC activity this month)
+	// outstanding = billed transactions with deferred intent (balance to settle)
 	GetCCMetrics(ctx context.Context, arg GetCCMetricsParams) (GetCCMetricsRow, error)
 	// Get total outstanding balance across all CC accounts (sum of unpaid expenses)
 	GetCCOutstandingSummary(ctx context.Context, workspaceID int32) (GetCCOutstandingSummaryRow, error)

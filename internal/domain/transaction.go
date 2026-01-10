@@ -193,9 +193,9 @@ type CCPaymentResponse struct {
 
 // CCMetrics holds aggregated CC transaction metrics for dashboard display
 type CCMetrics struct {
-	Pending    decimal.Decimal `json:"pending"`    // Sum of pending CC transactions
-	Billed     decimal.Decimal `json:"billed"`     // Sum of billed CC transactions
-	MonthTotal decimal.Decimal `json:"monthTotal"` // Sum of pending + billed
+	Pending     decimal.Decimal `json:"pending"`     // Sum of pending CC transactions
+	Outstanding decimal.Decimal `json:"outstanding"` // Sum of billed CC transactions with deferred intent (balance to settle)
+	Purchases   decimal.Decimal `json:"purchases"`   // Sum of all CC transactions (pending + billed + settled)
 }
 
 type TransactionRepository interface {
@@ -217,6 +217,7 @@ type TransactionRepository interface {
 	GetRecentlyUsedCategories(workspaceID int32) ([]*RecentCategory, error)
 	GetCCPayableBreakdown(workspaceID int32) ([]*CCPayableTransaction, error)
 	GetCCMetrics(workspaceID int32, startDate, endDate time.Time) (*CCMetrics, error)
+	BatchToggleToBilled(workspaceID int32, ids []int32) ([]*Transaction, error)
 
 	// Projection management (v2)
 	GetProjectionsByTemplate(workspaceID int32, templateID int32) ([]*Transaction, error)
