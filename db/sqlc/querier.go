@@ -11,6 +11,8 @@ import (
 )
 
 type Querier interface {
+	// Bulk update multiple transactions to settled state
+	BulkSettleTransactions(ctx context.Context, arg BulkSettleTransactionsParams) ([]Transaction, error)
 	// Check if a transaction already exists for a recurring template in a specific month
 	CheckRecurringTransactionExists(ctx context.Context, arg CheckRecurringTransactionExistsParams) (int32, error)
 	// Copies all allocations from one month to another (atomic, skips deleted categories)
@@ -31,6 +33,10 @@ type Querier interface {
 	CreateLoanProvider(ctx context.Context, arg CreateLoanProviderParams) (LoanProvider, error)
 	CreateMonth(ctx context.Context, arg CreateMonthParams) (Month, error)
 	CreateOrGetUserByAuth0ID(ctx context.Context, arg CreateOrGetUserByAuth0IDParams) (User, error)
+	// ========================================
+	// V2 Recurring Templates (recurring_templates table)
+	// ========================================
+	CreateRecurringTemplate(ctx context.Context, arg CreateRecurringTemplateParams) (RecurringTemplate, error)
 	CreateRecurringTransaction(ctx context.Context, arg CreateRecurringTransactionParams) (RecurringTransaction, error)
 	CreateTransaction(ctx context.Context, arg CreateTransactionParams) (Transaction, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
@@ -42,6 +48,11 @@ type Querier interface {
 	DeleteBudgetAllocation(ctx context.Context, arg DeleteBudgetAllocationParams) error
 	DeleteLoan(ctx context.Context, arg DeleteLoanParams) error
 	DeleteLoanProvider(ctx context.Context, arg DeleteLoanProviderParams) error
+	// Delete projections beyond a specific date (used when changing template end_date)
+	DeleteProjectionsBeyondDate(ctx context.Context, arg DeleteProjectionsBeyondDateParams) error
+	// Delete all projected transactions for a template (used when deleting template)
+	DeleteProjectionsByTemplate(ctx context.Context, arg DeleteProjectionsByTemplateParams) error
+	DeleteRecurringTemplate(ctx context.Context, arg DeleteRecurringTemplateParams) error
 	DeleteWishlist(ctx context.Context, arg DeleteWishlistParams) error
 	DeleteWishlistItem(ctx context.Context, arg DeleteWishlistItemParams) error
 	DeleteWishlistItemNote(ctx context.Context, arg DeleteWishlistItemNoteParams) error
@@ -56,13 +67,18 @@ type Querier interface {
 	GetAccountsByWorkspace(ctx context.Context, workspaceID int32) ([]Account, error)
 	GetAccountsByWorkspaceAll(ctx context.Context, workspaceID int32) ([]Account, error)
 	GetActiveLoansWithStats(ctx context.Context, workspaceID int32) ([]GetActiveLoansWithStatsRow, error)
+	GetActiveRecurringTemplates(ctx context.Context, workspaceID int32) ([]RecurringTemplate, error)
 	GetAllBudgetCategories(ctx context.Context, workspaceID int32) ([]BudgetCategory, error)
 	GetAllMonths(ctx context.Context, workspaceID int32) ([]Month, error)
 	GetBestPriceForItem(ctx context.Context, arg GetBestPriceForItemParams) (string, error)
+	// Get billed CC transactions with deferred settlement intent for a month range
+	GetBilledCCByMonth(ctx context.Context, arg GetBilledCCByMonthParams) ([]Transaction, error)
 	GetBudgetAllocationByCategory(ctx context.Context, arg GetBudgetAllocationByCategoryParams) (BudgetAllocation, error)
 	GetBudgetAllocationsByMonth(ctx context.Context, arg GetBudgetAllocationsByMonthParams) ([]GetBudgetAllocationsByMonthRow, error)
 	GetBudgetCategoryByID(ctx context.Context, arg GetBudgetCategoryByIDParams) (BudgetCategory, error)
 	GetBudgetCategoryByName(ctx context.Context, arg GetBudgetCategoryByNameParams) (BudgetCategory, error)
+	// Get CC metrics (pending, billed, total) for a month range
+	GetCCMetrics(ctx context.Context, arg GetCCMetricsParams) (GetCCMetricsRow, error)
 	// Get total outstanding balance across all CC accounts (sum of unpaid expenses)
 	GetCCOutstandingSummary(ctx context.Context, workspaceID int32) (GetCCOutstandingSummaryRow, error)
 	// Get all unpaid CC transactions with settlement intent for payable breakdown
@@ -89,11 +105,21 @@ type Querier interface {
 	GetMonthByYearMonth(ctx context.Context, arg GetMonthByYearMonthParams) (Month, error)
 	// Batch query to get income/expense totals grouped by year/month for N+1 prevention
 	GetMonthlyTransactionSummaries(ctx context.Context, workspaceID int32) ([]GetMonthlyTransactionSummariesRow, error)
+	// Get CC transactions that are billed but overdue (2+ months old)
+	GetOverdueCC(ctx context.Context, workspaceID int32) ([]Transaction, error)
+	// Get pending CC transactions for a specific month range
+	GetPendingCCByMonth(ctx context.Context, arg GetPendingCCByMonthParams) ([]Transaction, error)
 	// Get outstanding balance for each CC account
 	GetPerAccountOutstanding(ctx context.Context, workspaceID int32) ([]GetPerAccountOutstandingRow, error)
 	GetPriceHistoryByPlatform(ctx context.Context, arg GetPriceHistoryByPlatformParams) ([]WishlistItemPrice, error)
+	// ========================================
+	// Projection Management (v2)
+	// ========================================
+	// Get all projected transactions for a specific template
+	GetProjectionsByTemplate(ctx context.Context, arg GetProjectionsByTemplateParams) ([]Transaction, error)
 	// Returns recently used categories for suggestions dropdown
 	GetRecentlyUsedCategories(ctx context.Context, workspaceID int32) ([]GetRecentlyUsedCategoriesRow, error)
+	GetRecurringTemplateByID(ctx context.Context, arg GetRecurringTemplateByIDParams) (RecurringTemplate, error)
 	GetRecurringTransaction(ctx context.Context, arg GetRecurringTransactionParams) (RecurringTransaction, error)
 	// Returns total spending per category for a specific month
 	GetSpendingByCategory(ctx context.Context, arg GetSpendingByCategoryParams) ([]GetSpendingByCategoryRow, error)
@@ -120,11 +146,14 @@ type Querier interface {
 	ListNotesByItemAsc(ctx context.Context, arg ListNotesByItemAscParams) ([]WishlistItemNote, error)
 	ListNotesByItemDesc(ctx context.Context, arg ListNotesByItemDescParams) ([]WishlistItemNote, error)
 	ListPricesByItem(ctx context.Context, arg ListPricesByItemParams) ([]WishlistItemPrice, error)
+	ListRecurringTemplatesByWorkspace(ctx context.Context, workspaceID int32) ([]RecurringTemplate, error)
 	ListRecurringTransactions(ctx context.Context, arg ListRecurringTransactionsParams) ([]RecurringTransaction, error)
 	ListWishlistItems(ctx context.Context, arg ListWishlistItemsParams) ([]WishlistItem, error)
 	ListWishlistItemsWithStats(ctx context.Context, arg ListWishlistItemsWithStatsParams) ([]ListWishlistItemsWithStatsRow, error)
 	ListWishlists(ctx context.Context, workspaceID int32) ([]Wishlist, error)
 	MoveWishlistItem(ctx context.Context, arg MoveWishlistItemParams) (WishlistItem, error)
+	// Unlink actual transactions from template (keep them, clear template_id)
+	OrphanActualsByTemplate(ctx context.Context, arg OrphanActualsByTemplateParams) error
 	RevokeAPIToken(ctx context.Context, arg RevokeAPITokenParams) (int64, error)
 	SoftDeleteAccount(ctx context.Context, arg SoftDeleteAccountParams) (int64, error)
 	SoftDeleteBudgetCategory(ctx context.Context, arg SoftDeleteBudgetCategoryParams) error
@@ -142,12 +171,18 @@ type Querier interface {
 	UpdateAPITokenLastUsed(ctx context.Context, id pgtype.UUID) error
 	UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error)
 	UpdateBudgetCategory(ctx context.Context, arg UpdateBudgetCategoryParams) (BudgetCategory, error)
+	// ========================================
+	// CC Lifecycle Operations (v2)
+	// ========================================
+	// Update CC state and timestamps for a transaction
+	UpdateCCState(ctx context.Context, arg UpdateCCStateParams) (Transaction, error)
 	UpdateLoan(ctx context.Context, arg UpdateLoanParams) (Loan, error)
 	// Only updates editable fields (item_name, notes) - amount/months/dates are locked after creation
 	UpdateLoanPartial(ctx context.Context, arg UpdateLoanPartialParams) (Loan, error)
 	UpdateLoanPaymentAmount(ctx context.Context, arg UpdateLoanPaymentAmountParams) (LoanPayment, error)
 	UpdateLoanProvider(ctx context.Context, arg UpdateLoanProviderParams) (LoanProvider, error)
 	UpdateMonthStartingBalance(ctx context.Context, arg UpdateMonthStartingBalanceParams) error
+	UpdateRecurringTemplate(ctx context.Context, arg UpdateRecurringTemplateParams) (RecurringTemplate, error)
 	UpdateRecurringTransaction(ctx context.Context, arg UpdateRecurringTransactionParams) (RecurringTransaction, error)
 	UpdateTransaction(ctx context.Context, arg UpdateTransactionParams) (Transaction, error)
 	UpdateTransactionSettlementIntent(ctx context.Context, arg UpdateTransactionSettlementIntentParams) (Transaction, error)

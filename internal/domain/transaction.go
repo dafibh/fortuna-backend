@@ -21,6 +21,23 @@ const (
 	CCSettlementNextMonth CCSettlementIntent = "next_month"
 )
 
+// CCState represents the lifecycle state of a credit card transaction
+type CCState string
+
+const (
+	CCStatePending CCState = "pending"
+	CCStateBilled  CCState = "billed"
+	CCStateSettled CCState = "settled"
+)
+
+// SettlementIntent represents when a CC transaction should be settled
+type SettlementIntent string
+
+const (
+	SettlementIntentImmediate SettlementIntent = "immediate"
+	SettlementIntentDeferred  SettlementIntent = "deferred"
+)
+
 type Transaction struct {
 	ID                     int32               `json:"id"`
 	WorkspaceID            int32               `json:"workspaceId"`
@@ -40,6 +57,17 @@ type Transaction struct {
 	CreatedAt              time.Time           `json:"createdAt"`
 	UpdatedAt              time.Time           `json:"updatedAt"`
 	DeletedAt              *time.Time          `json:"deletedAt,omitempty"`
+
+	// CC Lifecycle (v2)
+	CCState          *CCState          `json:"ccState"`          // 'pending' | 'billed' | 'settled' | null
+	BilledAt         *time.Time        `json:"billedAt"`         // when marked as billed
+	SettledAt        *time.Time        `json:"settledAt"`        // when settlement completed
+	SettlementIntent *SettlementIntent `json:"settlementIntent"` // 'immediate' | 'deferred' | null
+
+	// Recurring/Projection (v2)
+	Source      string `json:"source"`      // 'manual' | 'recurring'
+	TemplateID  *int32 `json:"templateId"`  // FK to recurring_templates, nullable
+	IsProjected bool   `json:"isProjected"` // true = future projection
 }
 
 // TransferResult represents the result of creating a transfer
@@ -79,6 +107,15 @@ type UpdateTransactionData struct {
 	CCSettlementIntent *CCSettlementIntent
 	Notes              *string
 	CategoryID         *int32
+	// CC Lifecycle (v2)
+	CCState          *CCState
+	BilledAt         *time.Time
+	SettledAt        *time.Time
+	SettlementIntent *SettlementIntent
+	// Recurring/Projection (v2)
+	Source      string
+	TemplateID  *int32
+	IsProjected bool
 }
 
 // TransactionSummary holds aggregated transaction data for balance calculations

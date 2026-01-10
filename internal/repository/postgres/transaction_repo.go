@@ -71,6 +71,51 @@ func (r *TransactionRepository) Create(transaction *domain.Transaction) (*domain
 		recurringTransactionID.Valid = true
 	}
 
+	// CC Lifecycle (v2)
+	var ccState pgtype.Text
+	if transaction.CCState != nil {
+		ccState.String = string(*transaction.CCState)
+		ccState.Valid = true
+	}
+
+	var billedAt pgtype.Timestamptz
+	if transaction.BilledAt != nil {
+		billedAt.Time = *transaction.BilledAt
+		billedAt.Valid = true
+	}
+
+	var settledAt pgtype.Timestamptz
+	if transaction.SettledAt != nil {
+		settledAt.Time = *transaction.SettledAt
+		settledAt.Valid = true
+	}
+
+	var settlementIntent pgtype.Text
+	if transaction.SettlementIntent != nil {
+		settlementIntent.String = string(*transaction.SettlementIntent)
+		settlementIntent.Valid = true
+	}
+
+	// Recurring/Projection (v2)
+	var source pgtype.Text
+	if transaction.Source != "" {
+		source.String = transaction.Source
+		source.Valid = true
+	} else {
+		source.String = "manual"
+		source.Valid = true
+	}
+
+	var templateID pgtype.Int4
+	if transaction.TemplateID != nil {
+		templateID.Int32 = *transaction.TemplateID
+		templateID.Valid = true
+	}
+
+	var isProjected pgtype.Bool
+	isProjected.Bool = transaction.IsProjected
+	isProjected.Valid = true
+
 	created, err := r.queries.CreateTransaction(ctx, sqlc.CreateTransactionParams{
 		WorkspaceID:            transaction.WorkspaceID,
 		AccountID:              transaction.AccountID,
@@ -85,6 +130,13 @@ func (r *TransactionRepository) Create(transaction *domain.Transaction) (*domain
 		CategoryID:             categoryID,
 		IsCcPayment:            transaction.IsCCPayment,
 		RecurringTransactionID: recurringTransactionID,
+		CcState:                ccState,
+		BilledAt:               billedAt,
+		SettledAt:              settledAt,
+		SettlementIntent:       settlementIntent,
+		Source:                 source,
+		TemplateID:             templateID,
+		IsProjected:            isProjected,
 	})
 	if err != nil {
 		return nil, err
@@ -261,6 +313,51 @@ func (r *TransactionRepository) Update(workspaceID int32, id int32, data *domain
 		categoryID.Valid = true
 	}
 
+	// CC Lifecycle (v2)
+	var ccState pgtype.Text
+	if data.CCState != nil {
+		ccState.String = string(*data.CCState)
+		ccState.Valid = true
+	}
+
+	var billedAt pgtype.Timestamptz
+	if data.BilledAt != nil {
+		billedAt.Time = *data.BilledAt
+		billedAt.Valid = true
+	}
+
+	var settledAt pgtype.Timestamptz
+	if data.SettledAt != nil {
+		settledAt.Time = *data.SettledAt
+		settledAt.Valid = true
+	}
+
+	var settlementIntent pgtype.Text
+	if data.SettlementIntent != nil {
+		settlementIntent.String = string(*data.SettlementIntent)
+		settlementIntent.Valid = true
+	}
+
+	// Recurring/Projection (v2)
+	var source pgtype.Text
+	if data.Source != "" {
+		source.String = data.Source
+		source.Valid = true
+	} else {
+		source.String = "manual"
+		source.Valid = true
+	}
+
+	var templateID pgtype.Int4
+	if data.TemplateID != nil {
+		templateID.Int32 = *data.TemplateID
+		templateID.Valid = true
+	}
+
+	var isProjected pgtype.Bool
+	isProjected.Bool = data.IsProjected
+	isProjected.Valid = true
+
 	transaction, err := r.queries.UpdateTransaction(ctx, sqlc.UpdateTransactionParams{
 		WorkspaceID:        workspaceID,
 		ID:                 id,
@@ -272,6 +369,13 @@ func (r *TransactionRepository) Update(workspaceID int32, id int32, data *domain
 		CcSettlementIntent: ccSettlementIntent,
 		Notes:              notes,
 		CategoryID:         categoryID,
+		CcState:            ccState,
+		BilledAt:           billedAt,
+		SettledAt:          settledAt,
+		SettlementIntent:   settlementIntent,
+		Source:             source,
+		TemplateID:         templateID,
+		IsProjected:        isProjected,
 	})
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -368,19 +472,78 @@ func (r *TransactionRepository) createTransactionWithTx(ctx context.Context, qtx
 		categoryID.Valid = true
 	}
 
+	var recurringTransactionID pgtype.Int4
+	if transaction.RecurringTransactionID != nil {
+		recurringTransactionID.Int32 = *transaction.RecurringTransactionID
+		recurringTransactionID.Valid = true
+	}
+
+	// CC Lifecycle (v2)
+	var ccState pgtype.Text
+	if transaction.CCState != nil {
+		ccState.String = string(*transaction.CCState)
+		ccState.Valid = true
+	}
+
+	var billedAt pgtype.Timestamptz
+	if transaction.BilledAt != nil {
+		billedAt.Time = *transaction.BilledAt
+		billedAt.Valid = true
+	}
+
+	var settledAt pgtype.Timestamptz
+	if transaction.SettledAt != nil {
+		settledAt.Time = *transaction.SettledAt
+		settledAt.Valid = true
+	}
+
+	var settlementIntent pgtype.Text
+	if transaction.SettlementIntent != nil {
+		settlementIntent.String = string(*transaction.SettlementIntent)
+		settlementIntent.Valid = true
+	}
+
+	// Recurring/Projection (v2)
+	var source pgtype.Text
+	if transaction.Source != "" {
+		source.String = transaction.Source
+		source.Valid = true
+	} else {
+		source.String = "manual"
+		source.Valid = true
+	}
+
+	var templateID pgtype.Int4
+	if transaction.TemplateID != nil {
+		templateID.Int32 = *transaction.TemplateID
+		templateID.Valid = true
+	}
+
+	var isProjected pgtype.Bool
+	isProjected.Bool = transaction.IsProjected
+	isProjected.Valid = true
+
 	created, err := qtx.CreateTransaction(ctx, sqlc.CreateTransactionParams{
-		WorkspaceID:        transaction.WorkspaceID,
-		AccountID:          transaction.AccountID,
-		Name:               transaction.Name,
-		Amount:             amount,
-		Type:               string(transaction.Type),
-		TransactionDate:    transactionDate,
-		IsPaid:             transaction.IsPaid,
-		CcSettlementIntent: ccSettlementIntent,
-		Notes:              notes,
-		TransferPairID:     transferPairID,
-		CategoryID:         categoryID,
-		IsCcPayment:        transaction.IsCCPayment,
+		WorkspaceID:            transaction.WorkspaceID,
+		AccountID:              transaction.AccountID,
+		Name:                   transaction.Name,
+		Amount:                 amount,
+		Type:                   string(transaction.Type),
+		TransactionDate:        transactionDate,
+		IsPaid:                 transaction.IsPaid,
+		CcSettlementIntent:     ccSettlementIntent,
+		Notes:                  notes,
+		TransferPairID:         transferPairID,
+		CategoryID:             categoryID,
+		IsCcPayment:            transaction.IsCCPayment,
+		RecurringTransactionID: recurringTransactionID,
+		CcState:                ccState,
+		BilledAt:               billedAt,
+		SettledAt:              settledAt,
+		SettlementIntent:       settlementIntent,
+		Source:                 source,
+		TemplateID:             templateID,
+		IsProjected:            isProjected,
 	})
 	if err != nil {
 		return nil, err
@@ -631,6 +794,31 @@ func sqlcTransactionToDomain(t sqlc.Transaction) *domain.Transaction {
 	if t.RecurringTransactionID.Valid {
 		transaction.RecurringTransactionID = &t.RecurringTransactionID.Int32
 	}
+	// CC Lifecycle (v2)
+	if t.CcState.Valid {
+		state := domain.CCState(t.CcState.String)
+		transaction.CCState = &state
+	}
+	if t.BilledAt.Valid {
+		transaction.BilledAt = &t.BilledAt.Time
+	}
+	if t.SettledAt.Valid {
+		transaction.SettledAt = &t.SettledAt.Time
+	}
+	if t.SettlementIntent.Valid {
+		intent := domain.SettlementIntent(t.SettlementIntent.String)
+		transaction.SettlementIntent = &intent
+	}
+	// Recurring/Projection (v2)
+	if t.Source.Valid {
+		transaction.Source = t.Source.String
+	} else {
+		transaction.Source = "manual" // default
+	}
+	if t.TemplateID.Valid {
+		transaction.TemplateID = &t.TemplateID.Int32
+	}
+	transaction.IsProjected = t.IsProjected.Bool
 	return transaction
 }
 
@@ -671,5 +859,30 @@ func sqlcTransactionWithCategoryToDomain(t sqlc.GetTransactionsWithCategoryRow) 
 	if t.RecurringTransactionID.Valid {
 		transaction.RecurringTransactionID = &t.RecurringTransactionID.Int32
 	}
+	// CC Lifecycle (v2)
+	if t.CcState.Valid {
+		state := domain.CCState(t.CcState.String)
+		transaction.CCState = &state
+	}
+	if t.BilledAt.Valid {
+		transaction.BilledAt = &t.BilledAt.Time
+	}
+	if t.SettledAt.Valid {
+		transaction.SettledAt = &t.SettledAt.Time
+	}
+	if t.SettlementIntent.Valid {
+		intent := domain.SettlementIntent(t.SettlementIntent.String)
+		transaction.SettlementIntent = &intent
+	}
+	// Recurring/Projection (v2)
+	if t.Source.Valid {
+		transaction.Source = t.Source.String
+	} else {
+		transaction.Source = "manual" // default
+	}
+	if t.TemplateID.Valid {
+		transaction.TemplateID = &t.TemplateID.Int32
+	}
+	transaction.IsProjected = t.IsProjected.Bool
 	return transaction
 }

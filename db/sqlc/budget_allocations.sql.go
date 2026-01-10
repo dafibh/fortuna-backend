@@ -219,7 +219,7 @@ func (q *Queries) GetCategoriesWithAllocations(ctx context.Context, arg GetCateg
 }
 
 const getCategoryTransactions = `-- name: GetCategoryTransactions :many
-SELECT t.id, t.workspace_id, t.account_id, t.name, t.amount, t.type, t.transaction_date, t.is_paid, t.cc_settlement_intent, t.notes, t.created_at, t.updated_at, t.deleted_at, t.transfer_pair_id, t.category_id, t.is_cc_payment, t.recurring_transaction_id, a.name AS account_name
+SELECT t.id, t.workspace_id, t.account_id, t.name, t.amount, t.type, t.transaction_date, t.is_paid, t.cc_settlement_intent, t.notes, t.created_at, t.updated_at, t.deleted_at, t.transfer_pair_id, t.category_id, t.is_cc_payment, t.recurring_transaction_id, t.cc_state, t.billed_at, t.settled_at, t.settlement_intent, t.source, t.template_id, t.is_projected, a.name AS account_name
 FROM transactions t
 JOIN accounts a ON t.account_id = a.id
 WHERE t.workspace_id = $1
@@ -256,6 +256,13 @@ type GetCategoryTransactionsRow struct {
 	CategoryID             pgtype.Int4        `json:"category_id"`
 	IsCcPayment            bool               `json:"is_cc_payment"`
 	RecurringTransactionID pgtype.Int4        `json:"recurring_transaction_id"`
+	CcState                pgtype.Text        `json:"cc_state"`
+	BilledAt               pgtype.Timestamptz `json:"billed_at"`
+	SettledAt              pgtype.Timestamptz `json:"settled_at"`
+	SettlementIntent       pgtype.Text        `json:"settlement_intent"`
+	Source                 pgtype.Text        `json:"source"`
+	TemplateID             pgtype.Int4        `json:"template_id"`
+	IsProjected            pgtype.Bool        `json:"is_projected"`
 	AccountName            string             `json:"account_name"`
 }
 
@@ -292,6 +299,13 @@ func (q *Queries) GetCategoryTransactions(ctx context.Context, arg GetCategoryTr
 			&i.CategoryID,
 			&i.IsCcPayment,
 			&i.RecurringTransactionID,
+			&i.CcState,
+			&i.BilledAt,
+			&i.SettledAt,
+			&i.SettlementIntent,
+			&i.Source,
+			&i.TemplateID,
+			&i.IsProjected,
 			&i.AccountName,
 		); err != nil {
 			return nil, err

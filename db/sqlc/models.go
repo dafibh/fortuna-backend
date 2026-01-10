@@ -106,6 +106,20 @@ type Month struct {
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
+type RecurringTemplate struct {
+	ID          int32              `json:"id"`
+	WorkspaceID int32              `json:"workspace_id"`
+	Description string             `json:"description"`
+	Amount      pgtype.Numeric     `json:"amount"`
+	CategoryID  int32              `json:"category_id"`
+	AccountID   int32              `json:"account_id"`
+	Frequency   string             `json:"frequency"`
+	StartDate   pgtype.Date        `json:"start_date"`
+	EndDate     pgtype.Date        `json:"end_date"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
 type RecurringTransaction struct {
 	ID          int32              `json:"id"`
 	WorkspaceID int32              `json:"workspace_id"`
@@ -140,7 +154,14 @@ type Transaction struct {
 	CategoryID         pgtype.Int4        `json:"category_id"`
 	IsCcPayment        bool               `json:"is_cc_payment"`
 	// Links transaction to recurring template if auto-generated
-	RecurringTransactionID pgtype.Int4 `json:"recurring_transaction_id"`
+	RecurringTransactionID pgtype.Int4        `json:"recurring_transaction_id"`
+	CcState                pgtype.Text        `json:"cc_state"`
+	BilledAt               pgtype.Timestamptz `json:"billed_at"`
+	SettledAt              pgtype.Timestamptz `json:"settled_at"`
+	SettlementIntent       pgtype.Text        `json:"settlement_intent"`
+	Source                 pgtype.Text        `json:"source"`
+	TemplateID             pgtype.Int4        `json:"template_id"`
+	IsProjected            pgtype.Bool        `json:"is_projected"`
 }
 
 type User struct {

@@ -1,9 +1,11 @@
 -- name: CreateTransaction :one
 INSERT INTO transactions (
     workspace_id, account_id, name, amount, type,
-    transaction_date, is_paid, cc_settlement_intent, notes, transfer_pair_id, category_id, is_cc_payment, recurring_transaction_id
+    transaction_date, is_paid, cc_settlement_intent, notes, transfer_pair_id, category_id, is_cc_payment, recurring_transaction_id,
+    cc_state, billed_at, settled_at, settlement_intent,
+    source, template_id, is_projected
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
 ) RETURNING *;
 
 -- name: GetTransactionByID :one
@@ -53,6 +55,13 @@ SET
     cc_settlement_intent = $8,
     notes = $9,
     category_id = $10,
+    cc_state = $11,
+    billed_at = $12,
+    settled_at = $13,
+    settlement_intent = $14,
+    source = $15,
+    template_id = $16,
+    is_projected = $17,
     updated_at = NOW()
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
 RETURNING *;
@@ -157,6 +166,13 @@ SELECT
     t.created_at,
     t.updated_at,
     t.deleted_at,
+    t.cc_state,
+    t.billed_at,
+    t.settled_at,
+    t.settlement_intent,
+    t.source,
+    t.template_id,
+    t.is_projected,
     bc.name AS category_name
 FROM transactions t
 LEFT JOIN budget_categories bc ON t.category_id = bc.id AND bc.deleted_at IS NULL
@@ -203,3 +219,108 @@ WHERE t.workspace_id = $1
     AND t.deleted_at IS NULL
     AND a.deleted_at IS NULL
 ORDER BY t.cc_settlement_intent, a.name, t.transaction_date DESC;
+
+-- ========================================
+-- CC Lifecycle Operations (v2)
+-- ========================================
+
+-- name: UpdateCCState :one
+-- Update CC state and timestamps for a transaction
+UPDATE transactions
+SET cc_state = $3,
+    billed_at = $4,
+    settled_at = $5,
+    updated_at = NOW()
+WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL
+RETURNING *;
+
+-- name: GetPendingCCByMonth :many
+-- Get pending CC transactions for a specific month range
+SELECT * FROM transactions
+WHERE workspace_id = $1
+  AND cc_state = 'pending'
+  AND transaction_date >= $2 AND transaction_date < $3
+  AND deleted_at IS NULL
+ORDER BY transaction_date DESC;
+
+-- name: GetBilledCCByMonth :many
+-- Get billed CC transactions with deferred settlement intent for a month range
+SELECT * FROM transactions
+WHERE workspace_id = $1
+  AND cc_state = 'billed'
+  AND settlement_intent = 'deferred'
+  AND transaction_date >= $2 AND transaction_date < $3
+  AND deleted_at IS NULL
+ORDER BY transaction_date DESC;
+
+-- name: GetOverdueCC :many
+-- Get CC transactions that are billed but overdue (2+ months old)
+SELECT * FROM transactions
+WHERE workspace_id = $1
+  AND cc_state = 'billed'
+  AND settlement_intent = 'deferred'
+  AND billed_at < NOW() - INTERVAL '2 months'
+  AND deleted_at IS NULL
+ORDER BY billed_at ASC;
+
+-- name: BulkSettleTransactions :many
+-- Bulk update multiple transactions to settled state
+UPDATE transactions
+SET cc_state = 'settled',
+    settled_at = NOW(),
+    updated_at = NOW()
+WHERE id = ANY($1::int[])
+  AND workspace_id = $2
+  AND cc_state = 'billed'
+  AND deleted_at IS NULL
+RETURNING *;
+
+-- name: GetCCMetrics :one
+-- Get CC metrics (pending, billed, total) for a month range
+SELECT
+    COALESCE(SUM(CASE WHEN cc_state = 'pending' THEN amount ELSE 0 END), 0)::NUMERIC(12,2) as pending_total,
+    COALESCE(SUM(CASE WHEN cc_state = 'billed' AND settlement_intent = 'deferred' THEN amount ELSE 0 END), 0)::NUMERIC(12,2) as billed_total,
+    COALESCE(SUM(amount), 0)::NUMERIC(12,2) as month_total
+FROM transactions
+WHERE workspace_id = $1
+  AND cc_state IS NOT NULL
+  AND transaction_date >= $2 AND transaction_date < $3
+  AND deleted_at IS NULL;
+
+-- ========================================
+-- Projection Management (v2)
+-- ========================================
+
+-- name: GetProjectionsByTemplate :many
+-- Get all projected transactions for a specific template
+SELECT * FROM transactions
+WHERE workspace_id = $1
+  AND template_id = $2
+  AND is_projected = true
+  AND deleted_at IS NULL
+ORDER BY transaction_date;
+
+-- name: DeleteProjectionsByTemplate :exec
+-- Delete all projected transactions for a template (used when deleting template)
+DELETE FROM transactions
+WHERE workspace_id = $1
+  AND template_id = $2
+  AND is_projected = true;
+
+-- name: DeleteProjectionsBeyondDate :exec
+-- Delete projections beyond a specific date (used when changing template end_date)
+DELETE FROM transactions
+WHERE workspace_id = $1
+  AND template_id = $2
+  AND is_projected = true
+  AND transaction_date > $3;
+
+-- name: OrphanActualsByTemplate :exec
+-- Unlink actual transactions from template (keep them, clear template_id)
+UPDATE transactions
+SET template_id = NULL,
+    updated_at = NOW()
+WHERE workspace_id = $1
+  AND template_id = $2
+  AND is_projected = false
+  AND deleted_at IS NULL;
