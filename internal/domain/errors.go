@@ -35,6 +35,7 @@ var (
 	ErrRecurringTemplateNotFound    = errors.New("recurring template not found")
 	ErrInvalidFrequency             = errors.New("invalid frequency")
 	ErrInvalidDueDay                = errors.New("due day must be between 1 and 31")
+	ErrInvalidDateRange             = errors.New("end date must be after start date")
 	ErrAPITokenNotFound             = errors.New("API token not found")
 	ErrTooManyAPITokens             = errors.New("maximum number of API tokens reached")
 )

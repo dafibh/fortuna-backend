@@ -49,6 +49,14 @@ func (s *RecurringTemplateServiceImpl) CreateTemplate(workspaceID int32, input d
 		return nil, domain.ErrBudgetCategoryNotFound
 	}
 
+	// If linkTransactionID provided, validate transaction exists and belongs to workspace BEFORE creating template
+	if input.LinkTransactionID != nil {
+		_, err := s.transactionRepo.GetByID(workspaceID, *input.LinkTransactionID)
+		if err != nil {
+			return nil, domain.ErrTransactionNotFound
+		}
+	}
+
 	// Create the template
 	template := &domain.RecurringTemplate{
 		WorkspaceID: workspaceID,
@@ -68,11 +76,19 @@ func (s *RecurringTemplateServiceImpl) CreateTemplate(workspaceID int32, input d
 
 	// If linkTransactionID provided, link the existing transaction to this template
 	if input.LinkTransactionID != nil {
-		_ = s.linkTransactionToTemplate(workspaceID, *input.LinkTransactionID, created.ID)
+		if err := s.linkTransactionToTemplate(workspaceID, *input.LinkTransactionID, created.ID); err != nil {
+			// Transaction link failed - delete the template to maintain consistency
+			_ = s.templateRepo.Delete(workspaceID, created.ID)
+			return nil, err
+		}
 	}
 
-	// Generate projections for 12 months (errors logged but don't fail template creation)
-	_ = s.generateProjections(workspaceID, created)
+	// Generate projections for 12 months - fail template creation if projections fail
+	if err := s.generateProjections(workspaceID, created); err != nil {
+		// Projection generation failed - clean up template
+		_ = s.templateRepo.Delete(workspaceID, created.ID)
+		return nil, err
+	}
 
 	return created, nil
 }
@@ -137,7 +153,9 @@ func (s *RecurringTemplateServiceImpl) UpdateTemplate(workspaceID int32, id int3
 
 	// Recalculate projections: delete existing and regenerate
 	// Note: We preserve user-edited instances by checking if values differ from template
-	_ = s.recalculateProjections(workspaceID, existing, updated)
+	if err := s.recalculateProjections(workspaceID, existing, updated); err != nil {
+		return nil, err
+	}
 
 	return updated, nil
 }
@@ -194,6 +212,10 @@ func (s *RecurringTemplateServiceImpl) validateCreateInput(input domain.CreateRe
 	if input.Frequency != "monthly" {
 		return domain.ErrInvalidFrequency
 	}
+	// Validate end date is after start date if provided
+	if input.EndDate != nil && input.EndDate.Before(input.StartDate) {
+		return domain.ErrInvalidDateRange
+	}
 	return nil
 }
 
@@ -217,20 +239,45 @@ func (s *RecurringTemplateServiceImpl) validateUpdateInput(input domain.UpdateRe
 	if input.Frequency != "monthly" {
 		return domain.ErrInvalidFrequency
 	}
+	// Validate end date is after start date if provided
+	if input.EndDate != nil && input.EndDate.Before(input.StartDate) {
+		return domain.ErrInvalidDateRange
+	}
 	return nil
 }
 
 // generateProjections creates projected transactions for a template
 func (s *RecurringTemplateServiceImpl) generateProjections(workspaceID int32, template *domain.RecurringTemplate) error {
+	// Check for existing projections (idempotency check)
+	existingProjections, err := s.transactionRepo.GetProjectionsByTemplate(workspaceID, template.ID)
+	if err != nil {
+		return err
+	}
+
+	// Build a set of existing projection dates to avoid duplicates
+	existingDates := make(map[string]bool)
+	for _, proj := range existingProjections {
+		dateKey := proj.TransactionDate.Format("2006-01-02")
+		existingDates[dateKey] = true
+	}
+
 	// Calculate projection range
-	startDate := template.StartDate
 	now := time.Now()
-	if startDate.Before(now) {
-		// Start from beginning of current month if start date is in the past
-		startDate = time.Date(now.Year(), now.Month(), template.StartDate.Day(), 0, 0, 0, 0, time.UTC)
-		if startDate.Before(now) {
-			// If we've passed that day this month, start next month
-			startDate = startDate.AddDate(0, 1, 0)
+	targetDay := template.StartDate.Day()
+
+	// Calculate start date for projections
+	var startDate time.Time
+	if template.StartDate.After(now) {
+		// Template starts in the future - use template start date
+		startDate = template.StartDate
+	} else {
+		// Template starts in the past - find the next valid projection date
+		// Use calculateActualDate to properly handle month-end edge cases (e.g., 31st in Feb -> Feb 28/29)
+		startDate = s.calculateActualDate(now.Year(), now.Month(), targetDay)
+		if startDate.Before(now) || startDate.Equal(now) {
+			// If we've passed that day this month (or it's today), start next month
+			nextMonth := now.AddDate(0, 1, 0)
+			startDate = s.calculateActualDate(nextMonth.Year(), nextMonth.Month(), targetDay)
 		}
 	}
 
@@ -246,19 +293,26 @@ func (s *RecurringTemplateServiceImpl) generateProjections(workspaceID int32, te
 		// Calculate the actual day for this month (handle months with fewer days)
 		targetDay := template.StartDate.Day()
 		actualDate := s.calculateActualDate(current.Year(), current.Month(), targetDay)
+		dateKey := actualDate.Format("2006-01-02")
+
+		// Skip if projection already exists for this date (idempotency)
+		if existingDates[dateKey] {
+			current = current.AddDate(0, 1, 0)
+			continue
+		}
 
 		transaction := &domain.Transaction{
-			WorkspaceID: workspaceID,
-			Name:        template.Description,
-			Amount:      template.Amount,
-			Type:        domain.TransactionTypeExpense, // Default to expense
-			CategoryID:  &template.CategoryID,
-			AccountID:   template.AccountID,
+			WorkspaceID:     workspaceID,
+			Name:            template.Description,
+			Amount:          template.Amount,
+			Type:            domain.TransactionTypeExpense, // Default to expense
+			CategoryID:      &template.CategoryID,
+			AccountID:       template.AccountID,
 			TransactionDate: actualDate,
-			Source:      "recurring",
-			TemplateID:  &template.ID,
-			IsProjected: true,
-			IsPaid:      false,
+			Source:          "recurring",
+			TemplateID:      &template.ID,
+			IsProjected:     true,
+			IsPaid:          false,
 		}
 
 		if _, err := s.transactionRepo.Create(transaction); err != nil {
@@ -273,6 +327,10 @@ func (s *RecurringTemplateServiceImpl) generateProjections(workspaceID int32, te
 }
 
 // recalculateProjections deletes existing projections and regenerates them
+// NOTE: This operation is not fully atomic. There is a small window between checking for
+// user-edited projections and deleting/regenerating where a concurrent edit could be lost.
+// For MVP, this is acceptable as the window is milliseconds and the scenario is rare.
+// Future improvement: wrap in database transaction for full atomicity.
 func (s *RecurringTemplateServiceImpl) recalculateProjections(workspaceID int32, oldTemplate, newTemplate *domain.RecurringTemplate) error {
 	// Get existing projections to check for user edits
 	existingProjections, err := s.transactionRepo.GetProjectionsByTemplate(workspaceID, newTemplate.ID)
@@ -320,12 +378,22 @@ func (s *RecurringTemplateServiceImpl) isUserEdited(projection *domain.Transacti
 // generateProjectionsWithSkips creates projections but skips specified dates
 func (s *RecurringTemplateServiceImpl) generateProjectionsWithSkips(workspaceID int32, template *domain.RecurringTemplate, skipDates map[string]bool) error {
 	// Calculate projection range
-	startDate := template.StartDate
 	now := time.Now()
-	if startDate.Before(now) {
-		startDate = time.Date(now.Year(), now.Month(), template.StartDate.Day(), 0, 0, 0, 0, time.UTC)
-		if startDate.Before(now) {
-			startDate = startDate.AddDate(0, 1, 0)
+	targetDay := template.StartDate.Day()
+
+	// Calculate start date for projections
+	var startDate time.Time
+	if template.StartDate.After(now) {
+		// Template starts in the future - use template start date
+		startDate = template.StartDate
+	} else {
+		// Template starts in the past - find the next valid projection date
+		// Use calculateActualDate to properly handle month-end edge cases (e.g., 31st in Feb -> Feb 28/29)
+		startDate = s.calculateActualDate(now.Year(), now.Month(), targetDay)
+		if startDate.Before(now) || startDate.Equal(now) {
+			// If we've passed that day this month (or it's today), start next month
+			nextMonth := now.AddDate(0, 1, 0)
+			startDate = s.calculateActualDate(nextMonth.Year(), nextMonth.Month(), targetDay)
 		}
 	}
 

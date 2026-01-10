@@ -372,3 +372,327 @@ func TestUpdateTemplate_NotFound(t *testing.T) {
 	assert.Error(t, err)
 	assert.Equal(t, domain.ErrRecurringTemplateNotFound, err)
 }
+
+// ==================== PROJECTION EDGE CASE TESTS ====================
+
+func TestCreateTemplate_GeneratesProjections(t *testing.T) {
+	templateRepo := testutil.NewMockRecurringTemplateRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+
+	workspaceID := int32(1)
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Name:        "Checking",
+	})
+	_, _ = categoryRepo.Create(&domain.BudgetCategory{
+		WorkspaceID: workspaceID,
+		Name:        "Utilities",
+	})
+
+	service := NewRecurringTemplateService(templateRepo, transactionRepo, accountRepo, categoryRepo)
+
+	// Create template starting in the future
+	startDate := time.Now().AddDate(0, 1, 0) // Next month
+	input := domain.CreateRecurringTemplateInput{
+		WorkspaceID: workspaceID,
+		Description: "Monthly Bill",
+		Amount:      decimal.NewFromInt(100),
+		CategoryID:  1,
+		AccountID:   1,
+		Frequency:   "monthly",
+		StartDate:   startDate,
+	}
+
+	template, err := service.CreateTemplate(workspaceID, input)
+	require.NoError(t, err)
+
+	// Verify projections were created
+	projections, err := transactionRepo.GetProjectionsByTemplate(workspaceID, template.ID)
+	require.NoError(t, err)
+
+	// Should have 12 months of projections
+	assert.GreaterOrEqual(t, len(projections), 1)
+	assert.LessOrEqual(t, len(projections), 13) // At most 13 (12 months + 1)
+
+	// Verify projections have correct data
+	for _, proj := range projections {
+		assert.Equal(t, "Monthly Bill", proj.Name)
+		assert.True(t, proj.Amount.Equal(decimal.NewFromInt(100)))
+		assert.True(t, proj.IsProjected)
+		assert.Equal(t, "recurring", proj.Source)
+		assert.Equal(t, template.ID, *proj.TemplateID)
+	}
+}
+
+func TestCreateTemplate_MonthEndEdgeCase(t *testing.T) {
+	templateRepo := testutil.NewMockRecurringTemplateRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+
+	workspaceID := int32(1)
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: workspaceID,
+	})
+	_, _ = categoryRepo.Create(&domain.BudgetCategory{
+		WorkspaceID: workspaceID,
+		Name:        "Test",
+	})
+
+	service := NewRecurringTemplateService(templateRepo, transactionRepo, accountRepo, categoryRepo)
+
+	// Create template with start date on 31st
+	startDate := time.Date(2026, 1, 31, 0, 0, 0, 0, time.UTC)
+	input := domain.CreateRecurringTemplateInput{
+		WorkspaceID: workspaceID,
+		Description: "End of Month Bill",
+		Amount:      decimal.NewFromInt(100),
+		CategoryID:  1,
+		AccountID:   1,
+		Frequency:   "monthly",
+		StartDate:   startDate,
+	}
+
+	template, err := service.CreateTemplate(workspaceID, input)
+	require.NoError(t, err)
+
+	projections, err := transactionRepo.GetProjectionsByTemplate(workspaceID, template.ID)
+	require.NoError(t, err)
+	require.NotEmpty(t, projections)
+
+	// Check that February projection is on 28th or 29th (not March 3rd!)
+	for _, proj := range projections {
+		if proj.TransactionDate.Month() == time.February {
+			day := proj.TransactionDate.Day()
+			assert.True(t, day == 28 || day == 29, "February projection should be on 28th or 29th, got %d", day)
+		}
+	}
+}
+
+func TestCreateTemplate_EndDateLimitsProjections(t *testing.T) {
+	templateRepo := testutil.NewMockRecurringTemplateRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+
+	workspaceID := int32(1)
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: workspaceID,
+	})
+	_, _ = categoryRepo.Create(&domain.BudgetCategory{
+		WorkspaceID: workspaceID,
+		Name:        "Test",
+	})
+
+	service := NewRecurringTemplateService(templateRepo, transactionRepo, accountRepo, categoryRepo)
+
+	// Create template with end date 2 months from start
+	startDate := time.Now().AddDate(0, 1, 0)
+	endDate := startDate.AddDate(0, 2, 0)
+	input := domain.CreateRecurringTemplateInput{
+		WorkspaceID: workspaceID,
+		Description: "Short-term Bill",
+		Amount:      decimal.NewFromInt(100),
+		CategoryID:  1,
+		AccountID:   1,
+		Frequency:   "monthly",
+		StartDate:   startDate,
+		EndDate:     &endDate,
+	}
+
+	template, err := service.CreateTemplate(workspaceID, input)
+	require.NoError(t, err)
+
+	projections, err := transactionRepo.GetProjectionsByTemplate(workspaceID, template.ID)
+	require.NoError(t, err)
+
+	// Should have only 3 projections (months 0, 1, 2 from start)
+	assert.LessOrEqual(t, len(projections), 3)
+}
+
+func TestCreateTemplate_EndDateBeforeStartDate_Fails(t *testing.T) {
+	templateRepo := testutil.NewMockRecurringTemplateRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+
+	service := NewRecurringTemplateService(templateRepo, transactionRepo, accountRepo, categoryRepo)
+
+	startDate := time.Now().AddDate(0, 1, 0)
+	endDate := startDate.AddDate(0, -1, 0) // Before start date
+
+	input := domain.CreateRecurringTemplateInput{
+		Description: "Invalid Template",
+		Amount:      decimal.NewFromInt(100),
+		CategoryID:  1,
+		AccountID:   1,
+		Frequency:   "monthly",
+		StartDate:   startDate,
+		EndDate:     &endDate,
+	}
+
+	_, err := service.CreateTemplate(1, input)
+
+	assert.Error(t, err)
+	assert.Equal(t, domain.ErrInvalidDateRange, err)
+}
+
+func TestUpdateTemplate_EndDateBeforeStartDate_Fails(t *testing.T) {
+	templateRepo := testutil.NewMockRecurringTemplateRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+
+	workspaceID := int32(1)
+	templateRepo.AddTemplate(&domain.RecurringTemplate{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		Description: "Test",
+		Amount:      decimal.NewFromInt(100),
+		CategoryID:  1,
+		AccountID:   1,
+		Frequency:   "monthly",
+		StartDate:   time.Now(),
+	})
+
+	service := NewRecurringTemplateService(templateRepo, transactionRepo, accountRepo, categoryRepo)
+
+	startDate := time.Now().AddDate(0, 1, 0)
+	endDate := startDate.AddDate(0, -1, 0) // Before start date
+
+	input := domain.UpdateRecurringTemplateInput{
+		Description: "Test",
+		Amount:      decimal.NewFromInt(100),
+		CategoryID:  1,
+		AccountID:   1,
+		Frequency:   "monthly",
+		StartDate:   startDate,
+		EndDate:     &endDate,
+	}
+
+	_, err := service.UpdateTemplate(workspaceID, 1, input)
+
+	assert.Error(t, err)
+	assert.Equal(t, domain.ErrInvalidDateRange, err)
+}
+
+func TestCreateTemplate_LinkTransactionNotFound_Fails(t *testing.T) {
+	templateRepo := testutil.NewMockRecurringTemplateRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+
+	workspaceID := int32(1)
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: workspaceID,
+	})
+	_, _ = categoryRepo.Create(&domain.BudgetCategory{
+		WorkspaceID: workspaceID,
+		Name:        "Test",
+	})
+
+	service := NewRecurringTemplateService(templateRepo, transactionRepo, accountRepo, categoryRepo)
+
+	nonExistentTxID := int32(999)
+	input := domain.CreateRecurringTemplateInput{
+		WorkspaceID:       workspaceID,
+		Description:       "Test",
+		Amount:            decimal.NewFromInt(100),
+		CategoryID:        1,
+		AccountID:         1,
+		Frequency:         "monthly",
+		StartDate:         time.Now().AddDate(0, 1, 0),
+		LinkTransactionID: &nonExistentTxID,
+	}
+
+	_, err := service.CreateTemplate(workspaceID, input)
+
+	assert.Error(t, err)
+	assert.Equal(t, domain.ErrTransactionNotFound, err)
+}
+
+func TestCalculateActualDate(t *testing.T) {
+	templateRepo := testutil.NewMockRecurringTemplateRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+
+	service := NewRecurringTemplateService(templateRepo, transactionRepo, accountRepo, categoryRepo).(*RecurringTemplateServiceImpl)
+
+	tests := []struct {
+		name       string
+		year       int
+		month      time.Month
+		targetDay  int
+		expectedDay int
+	}{
+		{"January 31st", 2026, time.January, 31, 31},
+		{"February 31st (non-leap year)", 2026, time.February, 31, 28},
+		{"February 31st (leap year)", 2024, time.February, 31, 29},
+		{"April 31st", 2026, time.April, 31, 30},
+		{"Normal day", 2026, time.March, 15, 15},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := service.calculateActualDate(tt.year, tt.month, tt.targetDay)
+			assert.Equal(t, tt.expectedDay, result.Day())
+			assert.Equal(t, tt.month, result.Month())
+			assert.Equal(t, tt.year, result.Year())
+		})
+	}
+}
+
+func TestCreateTemplate_IdempotentProjections(t *testing.T) {
+	templateRepo := testutil.NewMockRecurringTemplateRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+
+	workspaceID := int32(1)
+	accountRepo.AddAccount(&domain.Account{
+		ID:          1,
+		WorkspaceID: workspaceID,
+	})
+	_, _ = categoryRepo.Create(&domain.BudgetCategory{
+		WorkspaceID: workspaceID,
+		Name:        "Test",
+	})
+
+	service := NewRecurringTemplateService(templateRepo, transactionRepo, accountRepo, categoryRepo)
+
+	startDate := time.Now().AddDate(0, 1, 0)
+	input := domain.CreateRecurringTemplateInput{
+		WorkspaceID: workspaceID,
+		Description: "Test Bill",
+		Amount:      decimal.NewFromInt(100),
+		CategoryID:  1,
+		AccountID:   1,
+		Frequency:   "monthly",
+		StartDate:   startDate,
+	}
+
+	template, err := service.CreateTemplate(workspaceID, input)
+	require.NoError(t, err)
+
+	// Get initial projection count
+	projections1, err := transactionRepo.GetProjectionsByTemplate(workspaceID, template.ID)
+	require.NoError(t, err)
+	initialCount := len(projections1)
+
+	// Manually call generateProjections again (simulating duplicate call)
+	serviceImpl := service.(*RecurringTemplateServiceImpl)
+	err = serviceImpl.generateProjections(workspaceID, template)
+	require.NoError(t, err)
+
+	// Verify no duplicate projections were created
+	projections2, err := transactionRepo.GetProjectionsByTemplate(workspaceID, template.ID)
+	require.NoError(t, err)
+	assert.Equal(t, initialCount, len(projections2), "Idempotency check failed - duplicate projections created")
+}
