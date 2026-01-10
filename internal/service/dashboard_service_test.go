@@ -239,6 +239,77 @@ func TestDashboardService_GetSummary(t *testing.T) {
 			wantErr:              false,
 		},
 		{
+			name:        "excludes unpaid income from in-hand balance",
+			workspaceID: 1,
+			setupAccounts: func(m *testutil.MockAccountRepository) {
+				m.AddAccount(&domain.Account{
+					ID:             1,
+					WorkspaceID:    1,
+					Name:           "Bank",
+					AccountType:    domain.AccountTypeAsset,
+					Template:       domain.TemplateBank,
+					InitialBalance: decimal.NewFromInt(10000),
+				})
+			},
+			setupTransactions: func(m *testutil.MockTransactionRepository) {
+				// Paid income (should be included)
+				m.AddTransaction(&domain.Transaction{
+					ID:              1,
+					WorkspaceID:     1,
+					AccountID:       1,
+					Name:            "Salary",
+					Amount:          decimal.NewFromInt(5000),
+					Type:            domain.TransactionTypeIncome,
+					TransactionDate: txDate,
+					IsPaid:          true,
+				})
+				// Unpaid income (should NOT be included in in-hand)
+				m.AddTransaction(&domain.Transaction{
+					ID:              2,
+					WorkspaceID:     1,
+					AccountID:       1,
+					Name:            "Freelance (unpaid)",
+					Amount:          decimal.NewFromInt(2000),
+					Type:            domain.TransactionTypeIncome,
+					TransactionDate: txDate,
+					IsPaid:          false,
+				})
+				// Paid expense
+				m.AddTransaction(&domain.Transaction{
+					ID:              3,
+					WorkspaceID:     1,
+					AccountID:       1,
+					Name:            "Groceries",
+					Amount:          decimal.NewFromInt(1000),
+					Type:            domain.TransactionTypeExpense,
+					TransactionDate: txDate,
+					IsPaid:          true,
+				})
+			},
+			setupMonth: func(m *testutil.MockMonthRepository) {
+				m.AddMonth(&domain.Month{
+					ID:              1,
+					WorkspaceID:     1,
+					Year:            testYear,
+					Month:           testMonth,
+					StartDate:       startDate,
+					EndDate:         endDate,
+					StartingBalance: decimal.NewFromInt(10000),
+					CreatedAt:       startDate,
+					UpdatedAt:       startDate,
+				})
+			},
+			// Total balance calculated from account balances (includes all transactions)
+			// Account: 10000 initial + 5000 (paid income) + 2000 (unpaid income) - 1000 (paid expense) = 16000
+			wantTotalBalance: "16000.00",
+			// In-hand = starting + paid income only - paid expenses = 10000 + 5000 - 1000 = 14000
+			// CRITICAL: Unpaid income (2000) must NOT be included in in-hand balance
+			wantInHandBalance: "14000.00",
+			// Disposable = In-hand - unpaid expenses = 14000 - 0 = 14000
+			wantDisposableIncome: "14000.00",
+			wantErr:              false,
+		},
+		{
 			name:        "handles only liabilities (negative total)",
 			workspaceID: 1,
 			setupAccounts: func(m *testutil.MockAccountRepository) {

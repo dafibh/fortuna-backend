@@ -531,6 +531,21 @@ func (r *TransactionRepository) SumUnpaidExpensesByDateRange(workspaceID int32, 
 	return pgNumericToDecimal(total), nil
 }
 
+// SumPaidIncomeByDateRange sums paid income within a date range
+func (r *TransactionRepository) SumPaidIncomeByDateRange(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error) {
+	ctx := context.Background()
+
+	total, err := r.queries.SumPaidIncomeByDateRange(ctx, sqlc.SumPaidIncomeByDateRangeParams{
+		WorkspaceID:       workspaceID,
+		TransactionDate:   pgtype.Date{Time: startDate, Valid: true},
+		TransactionDate_2: pgtype.Date{Time: endDate, Valid: true},
+	})
+	if err != nil {
+		return decimal.Zero, err
+	}
+	return pgNumericToDecimal(total), nil
+}
+
 // GetCCPayableSummary returns unpaid CC transaction totals grouped by settlement intent
 func (r *TransactionRepository) GetCCPayableSummary(workspaceID int32) ([]*domain.CCPayableSummaryRow, error) {
 	ctx := context.Background()
