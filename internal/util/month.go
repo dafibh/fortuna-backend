@@ -24,3 +24,17 @@ func IsHistoricalMonth(year, month int) bool {
 	}
 	return false
 }
+
+// CalculateActualDate returns the actual date for a target day in a given month,
+// handling months with fewer days (e.g., day 31 in February returns Feb 28/29)
+func CalculateActualDate(year int, month time.Month, targetDay int) time.Time {
+	// Get last day of month by going to day 0 of next month
+	lastDay := time.Date(year, month+1, 0, 0, 0, 0, 0, time.UTC).Day()
+
+	actualDay := targetDay
+	if actualDay > lastDay {
+		actualDay = lastDay
+	}
+
+	return time.Date(year, month, actualDay, 0, 0, 0, 0, time.UTC)
+}

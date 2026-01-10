@@ -102,8 +102,9 @@ func TestSyncAllActive_DeletesProjectionsBeyondEndDate(t *testing.T) {
 	workspaceID := int32(1)
 	templateID := int32(1)
 
-	// Add template with end_date 1 month from now
-	startDate := time.Now().AddDate(0, 1, 0)
+	// Add template with end_date 1 month from now (use UTC midnight for consistent comparison)
+	now := time.Now().UTC()
+	startDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 1, 0)
 	endDate := startDate.AddDate(0, 1, 0)
 	templateRepo.AddTemplate(&domain.RecurringTemplate{
 		ID:          templateID,

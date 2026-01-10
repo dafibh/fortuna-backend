@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/dafibh/fortuna/fortuna-backend/internal/domain"
+	"github.com/dafibh/fortuna/fortuna-backend/internal/util"
 	"github.com/rs/zerolog/log"
 )
 
@@ -12,6 +13,7 @@ import (
 type ProjectionSyncService struct {
 	templateRepo    domain.RecurringTemplateRepository
 	transactionRepo domain.TransactionRepository
+	exclusionRepo   domain.ProjectionExclusionRepository
 }
 
 // NewProjectionSyncService creates a new ProjectionSyncService
@@ -23,6 +25,11 @@ func NewProjectionSyncService(
 		templateRepo:    templateRepo,
 		transactionRepo: transactionRepo,
 	}
+}
+
+// SetExclusionRepository sets the exclusion repository for projection exclusion tracking
+func (s *ProjectionSyncService) SetExclusionRepository(exclusionRepo domain.ProjectionExclusionRepository) {
+	s.exclusionRepo = exclusionRepo
 }
 
 // SyncAllActive synchronizes projections for all active templates across all workspaces
@@ -94,11 +101,11 @@ func (s *ProjectionSyncService) generateUpToMonth(template *domain.RecurringTemp
 		return fmt.Errorf("failed to get existing projections: %w", err)
 	}
 
-	// Build set of existing projection dates
-	existingDates := make(map[string]bool)
+	// Build set of existing projection months
+	existingMonths := make(map[string]bool)
 	for _, proj := range existingProjections {
-		dateKey := proj.TransactionDate.Format("2006-01")
-		existingDates[dateKey] = true
+		monthKey := proj.TransactionDate.Format("2006-01")
+		existingMonths[monthKey] = true
 	}
 
 	// Calculate start date for new projections
@@ -122,12 +129,22 @@ func (s *ProjectionSyncService) generateUpToMonth(template *domain.RecurringTemp
 
 	for !current.After(targetEnd) {
 		actualDate := s.calculateActualDate(current.Year(), current.Month(), targetDay)
-		dateKey := actualDate.Format("2006-01")
+		monthKey := actualDate.Format("2006-01")
 
 		// Skip if projection already exists
-		if existingDates[dateKey] {
+		if existingMonths[monthKey] {
 			current = current.AddDate(0, 1, 0)
 			continue
+		}
+
+		// Check if this month is excluded (user explicitly deleted a projection)
+		if s.exclusionRepo != nil {
+			monthStart := time.Date(current.Year(), current.Month(), 1, 0, 0, 0, 0, time.UTC)
+			excluded, err := s.exclusionRepo.IsExcluded(template.WorkspaceID, template.ID, monthStart)
+			if err == nil && excluded {
+				current = current.AddDate(0, 1, 0)
+				continue
+			}
 		}
 
 		// Create projection transaction
@@ -146,7 +163,7 @@ func (s *ProjectionSyncService) generateUpToMonth(template *domain.RecurringTemp
 		}
 
 		if _, err := s.transactionRepo.Create(transaction); err != nil {
-			return fmt.Errorf("failed to create projection for %s: %w", dateKey, err)
+			return fmt.Errorf("failed to create projection for %s: %w", monthKey, err)
 		}
 
 		created++
@@ -165,10 +182,5 @@ func (s *ProjectionSyncService) generateUpToMonth(template *domain.RecurringTemp
 
 // calculateActualDate returns the actual date for a target day in a given month
 func (s *ProjectionSyncService) calculateActualDate(year int, month time.Month, targetDay int) time.Time {
-	lastDay := time.Date(year, month+1, 0, 0, 0, 0, 0, time.UTC).Day()
-	actualDay := targetDay
-	if actualDay > lastDay {
-		actualDay = lastDay
-	}
-	return time.Date(year, month, actualDay, 0, 0, 0, 0, time.UTC)
+	return util.CalculateActualDate(year, month, targetDay)
 }

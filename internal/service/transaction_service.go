@@ -6,8 +6,10 @@ import (
 	"time"
 
 	"github.com/dafibh/fortuna/fortuna-backend/internal/domain"
+	"github.com/dafibh/fortuna/fortuna-backend/internal/util"
 	"github.com/dafibh/fortuna/fortuna-backend/internal/websocket"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 	"github.com/shopspring/decimal"
 )
 
@@ -469,7 +471,10 @@ func (s *TransactionService) ensureProjectionsForDateRange(workspaceID int32, ta
 	// Get all active templates for this workspace
 	templates, err := s.templateRepo.GetActive(workspaceID)
 	if err != nil {
-		// Log but don't fail the request
+		log.Error().
+			Err(err).
+			Int32("workspaceID", workspaceID).
+			Msg("Failed to get active templates for on-access projection generation")
 		return
 	}
 
@@ -489,6 +494,11 @@ func (s *TransactionService) generateProjectionsUpTo(workspaceID int32, template
 	// Get existing projections to check what's missing
 	existingProjections, err := s.transactionRepo.GetProjectionsByTemplate(workspaceID, template.ID)
 	if err != nil {
+		log.Error().
+			Err(err).
+			Int32("workspaceID", workspaceID).
+			Int32("templateID", template.ID).
+			Msg("Failed to get existing projections for on-access generation")
 		return
 	}
 
@@ -559,7 +569,14 @@ func (s *TransactionService) generateProjectionsUpTo(workspaceID int32, template
 			IsPaid:          false,
 		}
 
-		_, _ = s.transactionRepo.Create(transaction)
+		if _, err := s.transactionRepo.Create(transaction); err != nil {
+			log.Error().
+				Err(err).
+				Int32("workspaceID", workspaceID).
+				Int32("templateID", template.ID).
+				Str("month", monthKey).
+				Msg("Failed to create projection during on-access generation")
+		}
 		current = current.AddDate(0, 1, 0)
 	}
 }
@@ -567,12 +584,7 @@ func (s *TransactionService) generateProjectionsUpTo(workspaceID int32, template
 // calculateActualDate returns the actual date for a target day in a given month
 // Handles months with fewer days (e.g., 31st in February -> 28th/29th)
 func (s *TransactionService) calculateActualDate(year int, month time.Month, targetDay int) time.Time {
-	lastDay := time.Date(year, month+1, 0, 0, 0, 0, 0, time.UTC).Day()
-	actualDay := targetDay
-	if actualDay > lastDay {
-		actualDay = lastDay
-	}
-	return time.Date(year, month, actualDay, 0, 0, 0, 0, time.UTC)
+	return util.CalculateActualDate(year, month, targetDay)
 }
 
 // EnrichWithModificationStatus checks if projected transactions differ from their templates

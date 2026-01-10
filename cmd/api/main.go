@@ -122,8 +122,11 @@ func main() {
 	// Link template repository to transaction service for on-access projection generation
 	transactionService.SetRecurringTemplateRepository(recurringTemplateRepo)
 
-	// Link exclusion repository to transaction service for projection deletion tracking
+	// Create exclusion repository and link to all services that need it
 	exclusionRepo := postgres.NewExclusionRepository(pool)
+
+	// Link exclusion repository to recurring template service for projection exclusion tracking
+	recurringTemplateService.SetExclusionRepository(exclusionRepo)
 	transactionService.SetExclusionRepository(exclusionRepo)
 
 	loanProviderService := service.NewLoanProviderService(loanProviderRepo)
@@ -193,6 +196,7 @@ func main() {
 
 	// Initialize projection sync service for daily background sync
 	projectionSyncService := service.NewProjectionSyncService(recurringTemplateRepo, transactionRepo)
+	projectionSyncService.SetExclusionRepository(exclusionRepo)
 
 	// Start projection sync goroutine with context for graceful shutdown
 	projectionCtx, projectionCancel := context.WithCancel(context.Background())

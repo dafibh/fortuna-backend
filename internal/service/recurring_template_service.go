@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/dafibh/fortuna/fortuna-backend/internal/domain"
+	"github.com/dafibh/fortuna/fortuna-backend/internal/util"
 	"github.com/shopspring/decimal"
 )
 
@@ -13,6 +14,7 @@ type RecurringTemplateServiceImpl struct {
 	transactionRepo domain.TransactionRepository
 	accountRepo     domain.AccountRepository
 	categoryRepo    domain.BudgetCategoryRepository
+	exclusionRepo   domain.ProjectionExclusionRepository
 }
 
 // NewRecurringTemplateService creates a new RecurringTemplateService
@@ -21,13 +23,18 @@ func NewRecurringTemplateService(
 	transactionRepo domain.TransactionRepository,
 	accountRepo domain.AccountRepository,
 	categoryRepo domain.BudgetCategoryRepository,
-) domain.RecurringTemplateService {
+) *RecurringTemplateServiceImpl {
 	return &RecurringTemplateServiceImpl{
 		templateRepo:    templateRepo,
 		transactionRepo: transactionRepo,
 		accountRepo:     accountRepo,
 		categoryRepo:    categoryRepo,
 	}
+}
+
+// SetExclusionRepository sets the exclusion repository for projection exclusion tracking
+func (s *RecurringTemplateServiceImpl) SetExclusionRepository(exclusionRepo domain.ProjectionExclusionRepository) {
+	s.exclusionRepo = exclusionRepo
 }
 
 // CreateTemplate creates a new recurring template and generates projections
@@ -254,11 +261,11 @@ func (s *RecurringTemplateServiceImpl) generateProjections(workspaceID int32, te
 		return err
 	}
 
-	// Build a set of existing projection dates to avoid duplicates
-	existingDates := make(map[string]bool)
+	// Build a set of existing projection months to avoid duplicates (month precision)
+	existingMonths := make(map[string]bool)
 	for _, proj := range existingProjections {
-		dateKey := proj.TransactionDate.Format("2006-01-02")
-		existingDates[dateKey] = true
+		monthKey := proj.TransactionDate.Format("2006-01")
+		existingMonths[monthKey] = true
 	}
 
 	// Calculate projection range
@@ -293,12 +300,22 @@ func (s *RecurringTemplateServiceImpl) generateProjections(workspaceID int32, te
 		// Calculate the actual day for this month (handle months with fewer days)
 		targetDay := template.StartDate.Day()
 		actualDate := s.calculateActualDate(current.Year(), current.Month(), targetDay)
-		dateKey := actualDate.Format("2006-01-02")
+		monthKey := actualDate.Format("2006-01")
 
-		// Skip if projection already exists for this date (idempotency)
-		if existingDates[dateKey] {
+		// Skip if projection already exists for this month (idempotency)
+		if existingMonths[monthKey] {
 			current = current.AddDate(0, 1, 0)
 			continue
+		}
+
+		// Check if this month is excluded (user explicitly deleted a projection)
+		if s.exclusionRepo != nil {
+			monthStart := time.Date(current.Year(), current.Month(), 1, 0, 0, 0, 0, time.UTC)
+			excluded, err := s.exclusionRepo.IsExcluded(workspaceID, template.ID, monthStart)
+			if err == nil && excluded {
+				current = current.AddDate(0, 1, 0)
+				continue
+			}
 		}
 
 		transaction := &domain.Transaction{
@@ -335,11 +352,11 @@ func (s *RecurringTemplateServiceImpl) recalculateProjections(workspaceID int32,
 		return err
 	}
 
-	// Build map of existing projections by date
-	existingByDate := make(map[string]*domain.Transaction)
+	// Build map of existing projections by month (month precision for consistency)
+	existingByMonth := make(map[string]*domain.Transaction)
 	for _, proj := range existingProjections {
-		dateKey := proj.TransactionDate.Format("2006-01-02")
-		existingByDate[dateKey] = proj
+		monthKey := proj.TransactionDate.Format("2006-01")
+		existingByMonth[monthKey] = proj
 	}
 
 	// Process each existing projection
@@ -366,12 +383,12 @@ func (s *RecurringTemplateServiceImpl) recalculateProjections(workspaceID int32,
 		}
 	}
 
-	// Generate any new projections for dates that don't exist yet
-	editedDates := make(map[string]bool)
-	for dateKey := range existingByDate {
-		editedDates[dateKey] = true // Skip all existing dates (both edited and just-updated)
+	// Generate any new projections for months that don't exist yet
+	existingMonths := make(map[string]bool)
+	for monthKey := range existingByMonth {
+		existingMonths[monthKey] = true // Skip all existing months (both edited and just-updated)
 	}
-	return s.generateProjectionsWithSkips(workspaceID, newTemplate, editedDates)
+	return s.generateProjectionsWithSkips(workspaceID, newTemplate, existingMonths)
 }
 
 // isUserEdited checks if a projection has been modified from the template values
@@ -392,8 +409,21 @@ func (s *RecurringTemplateServiceImpl) isUserEdited(projection *domain.Transacti
 	return false
 }
 
-// generateProjectionsWithSkips creates projections but skips specified dates
-func (s *RecurringTemplateServiceImpl) generateProjectionsWithSkips(workspaceID int32, template *domain.RecurringTemplate, skipDates map[string]bool) error {
+// generateProjectionsWithSkips creates projections but skips specified months
+func (s *RecurringTemplateServiceImpl) generateProjectionsWithSkips(workspaceID int32, template *domain.RecurringTemplate, skipMonths map[string]bool) error {
+	// Get existing projections for idempotency check
+	existingProjections, err := s.transactionRepo.GetProjectionsByTemplate(workspaceID, template.ID)
+	if err != nil {
+		return err
+	}
+
+	// Build set of existing projection months
+	existingMonths := make(map[string]bool)
+	for _, proj := range existingProjections {
+		monthKey := proj.TransactionDate.Format("2006-01")
+		existingMonths[monthKey] = true
+	}
+
 	// Calculate projection range
 	now := time.Now()
 	targetDay := template.StartDate.Day()
@@ -423,12 +453,28 @@ func (s *RecurringTemplateServiceImpl) generateProjectionsWithSkips(workspaceID 
 	for !current.After(endDate) {
 		targetDay := template.StartDate.Day()
 		actualDate := s.calculateActualDate(current.Year(), current.Month(), targetDay)
-		dateKey := actualDate.Format("2006-01-02")
+		monthKey := actualDate.Format("2006-01")
 
-		// Skip if this date was user-edited
-		if skipDates[dateKey] {
+		// Skip if this month was passed in (user-edited or existing)
+		if skipMonths[monthKey] {
 			current = current.AddDate(0, 1, 0)
 			continue
+		}
+
+		// Idempotency check: skip if projection already exists in database
+		if existingMonths[monthKey] {
+			current = current.AddDate(0, 1, 0)
+			continue
+		}
+
+		// Check if this month is excluded (user explicitly deleted a projection)
+		if s.exclusionRepo != nil {
+			monthStart := time.Date(current.Year(), current.Month(), 1, 0, 0, 0, 0, time.UTC)
+			excluded, err := s.exclusionRepo.IsExcluded(workspaceID, template.ID, monthStart)
+			if err == nil && excluded {
+				current = current.AddDate(0, 1, 0)
+				continue
+			}
 		}
 
 		transaction := &domain.Transaction{
@@ -458,13 +504,5 @@ func (s *RecurringTemplateServiceImpl) generateProjectionsWithSkips(workspaceID 
 // calculateActualDate returns the actual date for a target day in a given month,
 // handling months with fewer days (e.g., day 31 in February returns Feb 28/29)
 func (s *RecurringTemplateServiceImpl) calculateActualDate(year int, month time.Month, targetDay int) time.Time {
-	// Get last day of month by going to day 0 of next month
-	lastDay := time.Date(year, month+1, 0, 0, 0, 0, 0, time.UTC).Day()
-
-	actualDay := targetDay
-	if actualDay > lastDay {
-		actualDay = lastDay
-	}
-
-	return time.Date(year, month, actualDay, 0, 0, 0, 0, time.UTC)
+	return util.CalculateActualDate(year, month, targetDay)
 }

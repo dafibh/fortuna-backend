@@ -623,7 +623,7 @@ func TestCalculateActualDate(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 
-	service := NewRecurringTemplateService(templateRepo, transactionRepo, accountRepo, categoryRepo).(*RecurringTemplateServiceImpl)
+	service := NewRecurringTemplateService(templateRepo, transactionRepo, accountRepo, categoryRepo)
 
 	tests := []struct {
 		name       string
@@ -687,8 +687,7 @@ func TestCreateTemplate_IdempotentProjections(t *testing.T) {
 	initialCount := len(projections1)
 
 	// Manually call generateProjections again (simulating duplicate call)
-	serviceImpl := service.(*RecurringTemplateServiceImpl)
-	err = serviceImpl.generateProjections(workspaceID, template)
+	err = service.generateProjections(workspaceID, template)
 	require.NoError(t, err)
 
 	// Verify no duplicate projections were created
