@@ -809,14 +809,14 @@ func TestUpdateSettlementIntent_Success(t *testing.T) {
 		CCSettlementIntent: &thisMonth,
 	})
 
-	// Update to next_month
-	transaction, err := transactionService.UpdateSettlementIntent(workspaceID, transactionID, domain.CCSettlementNextMonth)
+	// Update to deferred (V2, replaces next_month)
+	transaction, err := transactionService.UpdateSettlementIntent(workspaceID, transactionID, domain.CCSettlementDeferred)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
 
-	if transaction.CCSettlementIntent == nil || *transaction.CCSettlementIntent != domain.CCSettlementNextMonth {
-		t.Errorf("Expected settlement intent 'next_month', got %v", transaction.CCSettlementIntent)
+	if transaction.CCSettlementIntent == nil || *transaction.CCSettlementIntent != domain.CCSettlementDeferred {
+		t.Errorf("Expected settlement intent 'deferred', got %v", transaction.CCSettlementIntent)
 	}
 }
 
@@ -987,8 +987,9 @@ func TestCreateTransaction_CCAccountDefaultsToThisMonth(t *testing.T) {
 		t.Fatal("Expected CCSettlementIntent to be set for CC account")
 	}
 
-	if *transaction.CCSettlementIntent != domain.CCSettlementThisMonth {
-		t.Errorf("Expected settlement intent 'this_month', got %s", *transaction.CCSettlementIntent)
+	// V2: Default is now 'deferred' (replaces 'this_month')
+	if *transaction.CCSettlementIntent != domain.CCSettlementDeferred {
+		t.Errorf("Expected settlement intent 'deferred', got %s", *transaction.CCSettlementIntent)
 	}
 }
 
@@ -1009,13 +1010,14 @@ func TestCreateTransaction_CCAccountWithExplicitIntent(t *testing.T) {
 		Template:    domain.TemplateCreditCard,
 	})
 
-	nextMonth := domain.CCSettlementNextMonth
+	// V2: Using 'immediate' intent (replaces 'this_month')
+	immediate := domain.CCSettlementImmediate
 	input := CreateTransactionInput{
 		AccountID:          accountID,
 		Name:               "Online Purchase",
 		Amount:             decimal.NewFromFloat(250.00),
 		Type:               domain.TransactionTypeExpense,
-		CCSettlementIntent: &nextMonth,
+		CCSettlementIntent: &immediate,
 	}
 
 	transaction, err := transactionService.CreateTransaction(workspaceID, input)
@@ -1027,8 +1029,8 @@ func TestCreateTransaction_CCAccountWithExplicitIntent(t *testing.T) {
 		t.Fatal("Expected CCSettlementIntent to be set for CC account")
 	}
 
-	if *transaction.CCSettlementIntent != domain.CCSettlementNextMonth {
-		t.Errorf("Expected settlement intent 'next_month', got %s", *transaction.CCSettlementIntent)
+	if *transaction.CCSettlementIntent != domain.CCSettlementImmediate {
+		t.Errorf("Expected settlement intent 'immediate', got %s", *transaction.CCSettlementIntent)
 	}
 }
 

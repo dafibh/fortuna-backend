@@ -23,4 +23,5 @@ type WorkspaceRepository interface {
 	Create(workspace *Workspace) (*Workspace, error)
 	Update(workspace *Workspace) (*Workspace, error)
 	Delete(id int32) error
+	GetAllWorkspaces() ([]*Workspace, error) // For projection sync
 }

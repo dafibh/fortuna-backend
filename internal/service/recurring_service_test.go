@@ -607,21 +607,21 @@ func TestUpdateRecurring_Success(t *testing.T) {
 		IsActive:  false,
 	}
 
-	rt, err := service.UpdateRecurring(workspaceID, 1, input)
+	result, err := service.UpdateRecurring(workspaceID, 1, input)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
 
-	if rt.Name != "New Name" {
-		t.Errorf("Expected name 'New Name', got %s", rt.Name)
+	if result.Template.Name != "New Name" {
+		t.Errorf("Expected name 'New Name', got %s", result.Template.Name)
 	}
-	if !rt.Amount.Equal(decimal.NewFromFloat(200.00)) {
-		t.Errorf("Expected amount 200.00, got %s", rt.Amount.String())
+	if !result.Template.Amount.Equal(decimal.NewFromFloat(200.00)) {
+		t.Errorf("Expected amount 200.00, got %s", result.Template.Amount.String())
 	}
-	if rt.DueDay != 15 {
-		t.Errorf("Expected due day 15, got %d", rt.DueDay)
+	if result.Template.DueDay != 15 {
+		t.Errorf("Expected due day 15, got %d", result.Template.DueDay)
 	}
-	if rt.IsActive {
+	if result.Template.IsActive {
 		t.Error("Expected IsActive to be false")
 	}
 }
@@ -701,9 +701,12 @@ func TestDeleteRecurring_Success(t *testing.T) {
 		Name:        "Test",
 	})
 
-	err := service.DeleteRecurring(workspaceID, 1)
+	result, err := service.DeleteRecurring(workspaceID, 1)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
+	}
+	if result == nil {
+		t.Fatal("Expected result, got nil")
 	}
 
 	// Verify deleted
@@ -716,7 +719,7 @@ func TestDeleteRecurring_Success(t *testing.T) {
 func TestDeleteRecurring_NotFound(t *testing.T) {
 	service, _, _, _, _ := setupRecurringServiceTest()
 
-	err := service.DeleteRecurring(1, 999)
+	_, err := service.DeleteRecurring(1, 999)
 	if err != domain.ErrRecurringNotFound {
 		t.Errorf("Expected ErrRecurringNotFound, got %v", err)
 	}
@@ -731,7 +734,7 @@ func TestDeleteRecurring_WrongWorkspace(t *testing.T) {
 		Name:        "Test",
 	})
 
-	err := service.DeleteRecurring(2, 1)
+	_, err := service.DeleteRecurring(2, 1)
 	if err != domain.ErrRecurringNotFound {
 		t.Errorf("Expected ErrRecurringNotFound, got %v", err)
 	}
@@ -749,13 +752,13 @@ func TestDeleteRecurring_AlreadyDeleted(t *testing.T) {
 	})
 
 	// First delete
-	err := service.DeleteRecurring(workspaceID, 1)
+	_, err := service.DeleteRecurring(workspaceID, 1)
 	if err != nil {
 		t.Fatalf("First delete failed: %v", err)
 	}
 
 	// Second delete
-	err = service.DeleteRecurring(workspaceID, 1)
+	_, err = service.DeleteRecurring(workspaceID, 1)
 	if err != domain.ErrRecurringNotFound {
 		t.Errorf("Expected ErrRecurringNotFound for already deleted, got %v", err)
 	}
@@ -1083,14 +1086,14 @@ func TestGenerateRecurringTransactions_DueDayAdjustment(t *testing.T) {
 	}
 }
 
-func TestGenerateRecurringTransactions_SetsRecurringTransactionID(t *testing.T) {
+func TestGenerateRecurringTransactions_SetsTemplateID(t *testing.T) {
 	service, recurringRepo, _, _, _ := setupRecurringServiceTest()
 
 	workspaceID := int32(1)
-	recurringID := int32(42)
+	templateID := int32(42)
 
 	recurringRepo.AddRecurring(&domain.RecurringTransaction{
-		ID:          recurringID,
+		ID:          templateID,
 		WorkspaceID: workspaceID,
 		Name:        "Test",
 		Amount:      decimal.NewFromFloat(100.00),
@@ -1110,11 +1113,16 @@ func TestGenerateRecurringTransactions_SetsRecurringTransactionID(t *testing.T) 
 		t.Fatalf("Expected 1 generated, got %d", len(result.Generated))
 	}
 
-	// Verify recurring_transaction_id is set
-	if result.Generated[0].RecurringTransactionID == nil {
-		t.Error("Expected RecurringTransactionID to be set")
-	} else if *result.Generated[0].RecurringTransactionID != recurringID {
-		t.Errorf("Expected RecurringTransactionID %d, got %d", recurringID, *result.Generated[0].RecurringTransactionID)
+	// Verify template_id is set
+	if result.Generated[0].TemplateID == nil {
+		t.Error("Expected TemplateID to be set")
+	} else if *result.Generated[0].TemplateID != templateID {
+		t.Errorf("Expected TemplateID %d, got %d", templateID, *result.Generated[0].TemplateID)
+	}
+
+	// Verify source is set to recurring
+	if result.Generated[0].Source != domain.TransactionSourceRecurring {
+		t.Errorf("Expected Source 'recurring', got %s", result.Generated[0].Source)
 	}
 }
 

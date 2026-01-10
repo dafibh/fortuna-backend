@@ -18,13 +18,15 @@ import (
 type TransactionHandler struct {
 	transactionService *service.TransactionService
 	recurringService   *service.RecurringService
+	projectionService  *service.ProjectionService
 }
 
 // NewTransactionHandler creates a new TransactionHandler
-func NewTransactionHandler(transactionService *service.TransactionService, recurringService *service.RecurringService) *TransactionHandler {
+func NewTransactionHandler(transactionService *service.TransactionService, recurringService *service.RecurringService, projectionService *service.ProjectionService) *TransactionHandler {
 	return &TransactionHandler{
 		transactionService: transactionService,
 		recurringService:   recurringService,
+		projectionService:  projectionService,
 	}
 }
 
@@ -47,18 +49,27 @@ type TransactionResponse struct {
 	WorkspaceID            int32   `json:"workspaceId"`
 	AccountID              int32   `json:"accountId"`
 	Name                   string  `json:"name"`
-	Amount                 string  `json:"amount"`
-	Type                   string  `json:"type"`
-	TransactionDate        string  `json:"transactionDate"`
-	IsPaid                 bool    `json:"isPaid"`
-	CCSettlementIntent     *string `json:"ccSettlementIntent,omitempty"`
-	Notes                  *string `json:"notes,omitempty"`
-	TransferPairID         *string `json:"transferPairId,omitempty"`
-	CategoryID             *int32  `json:"categoryId,omitempty"`
-	CategoryName           *string `json:"categoryName,omitempty"`
-	RecurringTransactionID *int32  `json:"recurringTransactionId,omitempty"`
-	CreatedAt              string  `json:"createdAt"`
-	UpdatedAt              string  `json:"updatedAt"`
+	Amount             string  `json:"amount"`
+	Type               string  `json:"type"`
+	TransactionDate    string  `json:"transactionDate"`
+	IsPaid             bool    `json:"isPaid"`
+	CCSettlementIntent *string `json:"ccSettlementIntent,omitempty"`
+	Notes              *string `json:"notes,omitempty"`
+	TransferPairID     *string `json:"transferPairId,omitempty"`
+	CategoryID         *int32  `json:"categoryId,omitempty"`
+	CategoryName       *string `json:"categoryName,omitempty"`
+
+	// V2 Fields
+	TemplateID  *int32  `json:"templateId,omitempty"`
+	Source      string  `json:"source,omitempty"`
+	IsProjected bool    `json:"isProjected"`
+	CCState     *string `json:"ccState,omitempty"`
+	BilledAt    *string `json:"billedAt,omitempty"`
+	SettledAt   *string `json:"settledAt,omitempty"`
+	AccountName *string `json:"accountName,omitempty"`
+
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
 }
 
 // CreateTransferRequest represents the create transfer request body
@@ -292,37 +303,62 @@ func (h *TransactionHandler) GetTransactions(c echo.Context) error {
 		filters.PageSize = pageSize
 	}
 
-	// Lazy generation: if date range includes current month, generate recurring transactions.
-	// Performance note: This adds minimal overhead because:
-	// 1. Idempotency check is a fast indexed query (recurring_transaction_id + year/month)
-	// 2. After first call each month, all templates are skipped (already exist)
-	// 3. Only runs when viewing current month's transactions
-	// For high-volume usage, consider migrating to a cron job (Task 6.2 in story).
-	if h.recurringService != nil {
-		now := time.Now()
-		currentYear, currentMonth := now.Year(), now.Month()
-		includesCurrentMonth := true
+	// On-access projection generation:
+	// When user navigates to a specific month, generate projections if needed.
+	// This ensures projections exist before fetching transactions.
+	now := time.Now()
+	currentYear, currentMonth, _ := now.Date()
 
-		if filters.StartDate != nil {
-			// If start date is after current month end, exclude
+	// Determine which months are being requested
+	if filters.StartDate != nil && filters.EndDate != nil {
+		// Generate projections for each month in the date range (if in future)
+		if h.projectionService != nil {
+			startY, startM, _ := filters.StartDate.Date()
+			endY, endM, _ := filters.EndDate.Date()
+
+			// Iterate through each month in the range
+			for y, m := startY, startM; y < endY || (y == endY && m <= endM); {
+				// Only generate for future months (projections)
+				isFuture := y > currentYear || (y == currentYear && m > currentMonth)
+				if isFuture {
+					if _, err := h.projectionService.GenerateProjectionsForMonth(workspaceID, y, m); err != nil {
+						log.Warn().Err(err).
+							Int32("workspace_id", workspaceID).
+							Int("year", y).
+							Int("month", int(m)).
+							Msg("Failed to generate projections for month")
+					}
+				}
+
+				// Move to next month
+				m++
+				if m > 12 {
+					m = 1
+					y++
+				}
+			}
+		}
+
+		// For current month, use the legacy recurring generation (creates actual transactions)
+		if h.recurringService != nil {
+			includesCurrentMonth := true
 			endOfCurrentMonth := time.Date(currentYear, currentMonth+1, 0, 23, 59, 59, 0, time.UTC)
-			if filters.StartDate.After(endOfCurrentMonth) {
-				includesCurrentMonth = false
-			}
-		}
-		if filters.EndDate != nil {
-			// If end date is before current month start, exclude
 			startOfCurrentMonth := time.Date(currentYear, currentMonth, 1, 0, 0, 0, 0, time.UTC)
-			if filters.EndDate.Before(startOfCurrentMonth) {
+
+			if filters.StartDate.After(endOfCurrentMonth) || filters.EndDate.Before(startOfCurrentMonth) {
 				includesCurrentMonth = false
 			}
-		}
 
-		if includesCurrentMonth {
-			if _, err := h.recurringService.GenerateRecurringTransactions(workspaceID, currentYear, currentMonth); err != nil {
-				// Log but don't fail - recurring generation is non-critical
-				log.Warn().Err(err).Int32("workspace_id", workspaceID).Msg("Failed to generate recurring transactions")
+			if includesCurrentMonth {
+				if _, err := h.recurringService.GenerateRecurringTransactions(workspaceID, currentYear, currentMonth); err != nil {
+					log.Warn().Err(err).Int32("workspace_id", workspaceID).Msg("Failed to generate recurring transactions")
+				}
 			}
+		}
+	} else if h.recurringService != nil {
+		// No date filters - generate for current month only (legacy behavior)
+		if _, err := h.recurringService.GenerateRecurringTransactions(workspaceID, currentYear, currentMonth); err != nil {
+			log.Warn().Err(err).Int32("workspace_id", workspaceID).Msg("Failed to generate recurring transactions")
 		}
 	}
 
@@ -738,6 +774,205 @@ func parseIntParam(s string, out *int32) (bool, error) {
 	return true, nil
 }
 
+// =====================================================
+// V2 CC LIFECYCLE HANDLERS
+// =====================================================
+
+// CCTransactionResponse represents a CC transaction with account info in API responses
+type CCTransactionResponse struct {
+	ID              int32   `json:"id"`
+	WorkspaceID     int32   `json:"workspaceId"`
+	AccountID       int32   `json:"accountId"`
+	AccountName     string  `json:"accountName"`
+	Name            string  `json:"name"`
+	Amount          string  `json:"amount"`
+	TransactionDate string  `json:"transactionDate"`
+	CCState         string  `json:"ccState"`
+	BilledAt        *string `json:"billedAt,omitempty"`
+	SettledAt       *string `json:"settledAt,omitempty"`
+	Source          string  `json:"source"`
+	IsProjected     bool    `json:"isProjected"`
+}
+
+// CCMetricsResponse represents CC metrics in API responses
+type CCMetricsResponse struct {
+	TotalPurchases string `json:"totalPurchases"` // All CC transactions
+	Outstanding    string `json:"outstanding"`    // Billed + deferred, not yet settled
+	Pending        string `json:"pending"`        // Not yet billed
+}
+
+// ToggleCCBilled handles PATCH /api/v1/transactions/:id/toggle-billed
+func (h *TransactionHandler) ToggleCCBilled(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return NewValidationError(c, "Invalid transaction ID", nil)
+	}
+
+	transaction, err := h.transactionService.ToggleCCBilled(workspaceID, int32(id))
+	if err != nil {
+		if errors.Is(err, domain.ErrTransactionNotFound) {
+			return NewNotFoundError(c, "Transaction not found")
+		}
+		if errors.Is(err, domain.ErrNotCCTransaction) {
+			return NewValidationError(c, "This operation only applies to credit card transactions", nil)
+		}
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("transaction_id", id).Msg("Failed to toggle CC billed status")
+		return NewInternalError(c, "Failed to toggle billed status")
+	}
+
+	log.Info().Int32("workspace_id", workspaceID).Int32("transaction_id", transaction.ID).Str("cc_state", string(*transaction.CCState)).Msg("CC transaction billed status toggled")
+	return c.JSON(http.StatusOK, toTransactionResponse(transaction))
+}
+
+// GetPendingCCTransactions handles GET /api/v1/cc/pending
+func (h *TransactionHandler) GetPendingCCTransactions(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	yearStr := c.QueryParam("year")
+	monthStr := c.QueryParam("month")
+
+	if yearStr == "" || monthStr == "" {
+		return NewValidationError(c, "year and month query parameters are required", nil)
+	}
+
+	year, err := strconv.Atoi(yearStr)
+	if err != nil {
+		return NewValidationError(c, "Invalid year", nil)
+	}
+
+	month, err := strconv.Atoi(monthStr)
+	if err != nil || month < 1 || month > 12 {
+		return NewValidationError(c, "Invalid month (must be 1-12)", nil)
+	}
+
+	transactions, err := h.transactionService.GetPendingCCByMonth(workspaceID, year, month)
+	if err != nil {
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("year", year).Int("month", month).Msg("Failed to get pending CC transactions")
+		return NewInternalError(c, "Failed to get pending CC transactions")
+	}
+
+	response := make([]CCTransactionResponse, len(transactions))
+	for i, tx := range transactions {
+		response[i] = toCCTransactionResponse(tx)
+	}
+
+	return c.JSON(http.StatusOK, response)
+}
+
+// GetBilledCCTransactions handles GET /api/v1/cc/billed
+func (h *TransactionHandler) GetBilledCCTransactions(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	yearStr := c.QueryParam("year")
+	monthStr := c.QueryParam("month")
+
+	if yearStr == "" || monthStr == "" {
+		return NewValidationError(c, "year and month query parameters are required", nil)
+	}
+
+	year, err := strconv.Atoi(yearStr)
+	if err != nil {
+		return NewValidationError(c, "Invalid year", nil)
+	}
+
+	month, err := strconv.Atoi(monthStr)
+	if err != nil || month < 1 || month > 12 {
+		return NewValidationError(c, "Invalid month (must be 1-12)", nil)
+	}
+
+	transactions, err := h.transactionService.GetBilledCCByMonth(workspaceID, year, month)
+	if err != nil {
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("year", year).Int("month", month).Msg("Failed to get billed CC transactions")
+		return NewInternalError(c, "Failed to get billed CC transactions")
+	}
+
+	response := make([]CCTransactionResponse, len(transactions))
+	for i, tx := range transactions {
+		response[i] = toCCTransactionResponse(tx)
+	}
+
+	return c.JSON(http.StatusOK, response)
+}
+
+// GetCCMetrics handles GET /api/v1/cc/metrics
+func (h *TransactionHandler) GetCCMetrics(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	yearStr := c.QueryParam("year")
+	monthStr := c.QueryParam("month")
+
+	if yearStr == "" || monthStr == "" {
+		return NewValidationError(c, "year and month query parameters are required", nil)
+	}
+
+	year, err := strconv.Atoi(yearStr)
+	if err != nil {
+		return NewValidationError(c, "Invalid year", nil)
+	}
+
+	month, err := strconv.Atoi(monthStr)
+	if err != nil || month < 1 || month > 12 {
+		return NewValidationError(c, "Invalid month (must be 1-12)", nil)
+	}
+
+	metrics, err := h.transactionService.GetCCMetricsByMonth(workspaceID, year, month)
+	if err != nil {
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("year", year).Int("month", month).Msg("Failed to get CC metrics")
+		return NewInternalError(c, "Failed to get CC metrics")
+	}
+
+	response := CCMetricsResponse{
+		TotalPurchases: metrics.TotalPurchases.StringFixed(2),
+		Outstanding:    metrics.Outstanding.StringFixed(2),
+		Pending:        metrics.Pending.StringFixed(2),
+	}
+
+	return c.JSON(http.StatusOK, response)
+}
+
+// Helper function to convert domain.CCTransactionWithAccount to CCTransactionResponse
+func toCCTransactionResponse(tx *domain.CCTransactionWithAccount) CCTransactionResponse {
+	resp := CCTransactionResponse{
+		ID:              tx.ID,
+		WorkspaceID:     tx.WorkspaceID,
+		AccountID:       tx.AccountID,
+		Name:            tx.Name,
+		Amount:          tx.Amount.StringFixed(2),
+		TransactionDate: tx.TransactionDate.Format("2006-01-02"),
+		Source:          string(tx.Source),
+		IsProjected:     tx.IsProjected,
+	}
+	if tx.AccountName != nil {
+		resp.AccountName = *tx.AccountName
+	}
+	if tx.CCState != nil {
+		resp.CCState = string(*tx.CCState)
+	}
+	if tx.BilledAt != nil {
+		billedAt := tx.BilledAt.Format(time.RFC3339)
+		resp.BilledAt = &billedAt
+	}
+	if tx.SettledAt != nil {
+		settledAt := tx.SettledAt.Format(time.RFC3339)
+		resp.SettledAt = &settledAt
+	}
+	return resp
+}
+
 // Helper function to convert domain.Transaction to TransactionResponse
 func toTransactionResponse(transaction *domain.Transaction) TransactionResponse {
 	resp := TransactionResponse{
@@ -769,8 +1004,26 @@ func toTransactionResponse(transaction *domain.Transaction) TransactionResponse 
 	if transaction.CategoryName != nil {
 		resp.CategoryName = transaction.CategoryName
 	}
-	if transaction.RecurringTransactionID != nil {
-		resp.RecurringTransactionID = transaction.RecurringTransactionID
+	// V2 fields
+	if transaction.TemplateID != nil {
+		resp.TemplateID = transaction.TemplateID
+	}
+	resp.Source = string(transaction.Source)
+	resp.IsProjected = transaction.IsProjected
+	if transaction.CCState != nil {
+		state := string(*transaction.CCState)
+		resp.CCState = &state
+	}
+	if transaction.BilledAt != nil {
+		billedAt := transaction.BilledAt.Format(time.RFC3339)
+		resp.BilledAt = &billedAt
+	}
+	if transaction.SettledAt != nil {
+		settledAt := transaction.SettledAt.Format(time.RFC3339)
+		resp.SettledAt = &settledAt
+	}
+	if transaction.AccountName != nil {
+		resp.AccountName = transaction.AccountName
 	}
 	return resp
 }

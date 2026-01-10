@@ -298,3 +298,131 @@ func (s *DashboardService) GetCCPayable(workspaceID int32) (*domain.CCPayableSum
 	summary.Total = summary.ThisMonth.Add(summary.NextMonth)
 	return summary, nil
 }
+
+// GetFutureSpending returns aggregated spending data for future months
+func (s *DashboardService) GetFutureSpending(workspaceID int32, months int) (*domain.FutureSpending, error) {
+	now := time.Now()
+	currentMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local)
+
+	result := &domain.FutureSpending{
+		Months: make([]domain.FutureSpendingMonth, months),
+	}
+
+	// Get all expense transactions for the date range (current month + future months)
+	endDate := currentMonth.AddDate(0, months, 0)
+	startDate := currentMonth
+
+	// Get all expense transactions in the date range
+	transactions, err := s.transactionRepo.GetExpensesByDateRange(workspaceID, startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get account names for mapping
+	accounts, err := s.accountRepo.GetAllByWorkspace(workspaceID, false)
+	if err != nil {
+		return nil, err
+	}
+	accountNames := make(map[int32]string)
+	for _, acc := range accounts {
+		accountNames[acc.ID] = acc.Name
+	}
+
+	// Get category names for mapping
+	categoryNames, err := s.getCategoryNames(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Group transactions by month
+	monthData := make(map[string]*monthAggregation)
+
+	// Initialize all months
+	for i := 0; i < months; i++ {
+		monthDate := currentMonth.AddDate(0, i, 0)
+		monthKey := monthDate.Format("2006-01")
+		monthData[monthKey] = &monthAggregation{
+			total:      decimal.Zero,
+			byCategory: make(map[int32]decimal.Decimal),
+			byAccount:  make(map[int32]decimal.Decimal),
+		}
+	}
+
+	// Aggregate transactions
+	for _, tx := range transactions {
+		monthKey := tx.TransactionDate.Format("2006-01")
+		if agg, ok := monthData[monthKey]; ok {
+			agg.total = agg.total.Add(tx.Amount)
+
+			// By category
+			catID := int32(0)
+			if tx.CategoryID != nil {
+				catID = *tx.CategoryID
+			}
+			agg.byCategory[catID] = agg.byCategory[catID].Add(tx.Amount)
+
+			// By account
+			agg.byAccount[tx.AccountID] = agg.byAccount[tx.AccountID].Add(tx.Amount)
+		}
+	}
+
+	// Build result
+	for i := 0; i < months; i++ {
+		monthDate := currentMonth.AddDate(0, i, 0)
+		monthKey := monthDate.Format("2006-01")
+		agg := monthData[monthKey]
+
+		// Convert category map to slice
+		byCategory := make([]domain.FutureSpendingCategory, 0, len(agg.byCategory))
+		for catID, amount := range agg.byCategory {
+			catName := "Uncategorized"
+			if catID > 0 {
+				if name, ok := categoryNames[catID]; ok {
+					catName = name
+				}
+			}
+			byCategory = append(byCategory, domain.FutureSpendingCategory{
+				ID:     catID,
+				Name:   catName,
+				Amount: amount,
+			})
+		}
+
+		// Convert account map to slice
+		byAccount := make([]domain.FutureSpendingAccount, 0, len(agg.byAccount))
+		for accID, amount := range agg.byAccount {
+			accName := "Unknown"
+			if name, ok := accountNames[accID]; ok {
+				accName = name
+			}
+			byAccount = append(byAccount, domain.FutureSpendingAccount{
+				ID:     accID,
+				Name:   accName,
+				Amount: amount,
+			})
+		}
+
+		result.Months[i] = domain.FutureSpendingMonth{
+			Month:      monthKey,
+			Total:      agg.total,
+			ByCategory: byCategory,
+			ByAccount:  byAccount,
+		}
+	}
+
+	return result, nil
+}
+
+// monthAggregation holds aggregated data for a single month
+type monthAggregation struct {
+	total      decimal.Decimal
+	byCategory map[int32]decimal.Decimal
+	byAccount  map[int32]decimal.Decimal
+}
+
+// getCategoryNames returns a map of category ID to name
+func (s *DashboardService) getCategoryNames(workspaceID int32) (map[int32]string, error) {
+	// This is a simple placeholder - in production you'd have a category repository
+	// For now, return empty map and let the handler handle unknown categories
+	return make(map[int32]string), nil
+}

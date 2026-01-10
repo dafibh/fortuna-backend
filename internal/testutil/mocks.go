@@ -180,6 +180,15 @@ func (m *MockWorkspaceRepository) AddWorkspace(workspace *domain.Workspace, auth
 	}
 }
 
+// GetAllWorkspaces retrieves all workspaces (for projection sync)
+func (m *MockWorkspaceRepository) GetAllWorkspaces() ([]*domain.Workspace, error) {
+	result := make([]*domain.Workspace, 0, len(m.Workspaces))
+	for _, ws := range m.Workspaces {
+		result = append(result, ws)
+	}
+	return result, nil
+}
+
 // MockAccountRepository is a mock implementation of domain.AccountRepository
 type MockAccountRepository struct {
 	Accounts                   map[int32]*domain.Account
@@ -797,6 +806,219 @@ func (m *MockTransactionRepository) GetCCPayableBreakdown(workspaceID int32) ([]
 	}
 	// Default: return empty list
 	return []*domain.CCPayableTransaction{}, nil
+}
+
+// DeleteProjectionsByTemplateID deletes all projected transactions for a template
+func (m *MockTransactionRepository) DeleteProjectionsByTemplateID(workspaceID int32, templateID int32) (int64, error) {
+	// Default: return 0 deleted
+	return 0, nil
+}
+
+// OrphanActualsByTemplateID removes template_id from actual transactions
+func (m *MockTransactionRepository) OrphanActualsByTemplateID(workspaceID int32, templateID int32) (int64, error) {
+	// Default: return 0 orphaned
+	return 0, nil
+}
+
+// CheckProjectionExists checks if a projection already exists for a template in a specific month
+func (m *MockTransactionRepository) CheckProjectionExists(workspaceID int32, templateID int32, year int, month int) (bool, error) {
+	// Default: return false (no projection exists)
+	return false, nil
+}
+
+// DeleteProjectionsBeyondDate soft-deletes projections beyond a specific date
+func (m *MockTransactionRepository) DeleteProjectionsBeyondDate(workspaceID int32, templateID int32, endDate time.Time) (int64, error) {
+	// Default: return 0 deleted
+	return 0, nil
+}
+
+// GetProjectionsByTemplateID retrieves all projected transactions for a template
+func (m *MockTransactionRepository) GetProjectionsByTemplateID(workspaceID int32, templateID int32) ([]*domain.Transaction, error) {
+	var result []*domain.Transaction
+	for _, tx := range m.Transactions {
+		if tx.WorkspaceID == workspaceID && tx.TemplateID != nil && *tx.TemplateID == templateID && tx.IsProjected {
+			result = append(result, tx)
+		}
+	}
+	return result, nil
+}
+
+// ToggleCCBilled toggles a CC transaction between pending and billed states
+func (m *MockTransactionRepository) ToggleCCBilled(workspaceID int32, id int32) (*domain.Transaction, error) {
+	tx, ok := m.Transactions[id]
+	if !ok || tx.WorkspaceID != workspaceID {
+		return nil, domain.ErrTransactionNotFound
+	}
+	if tx.CCState == nil {
+		return nil, domain.ErrTransactionNotFound
+	}
+	if *tx.CCState == domain.CCStatePending {
+		newState := domain.CCStateBilled
+		tx.CCState = &newState
+		now := time.Now()
+		tx.BilledAt = &now
+	} else if *tx.CCState == domain.CCStateBilled {
+		newState := domain.CCStatePending
+		tx.CCState = &newState
+		tx.BilledAt = nil
+	}
+	return tx, nil
+}
+
+// UpdateCCState updates the CC state of a transaction
+func (m *MockTransactionRepository) UpdateCCState(workspaceID int32, id int32, state domain.CCState) (*domain.Transaction, error) {
+	tx, ok := m.Transactions[id]
+	if !ok || tx.WorkspaceID != workspaceID {
+		return nil, domain.ErrTransactionNotFound
+	}
+	tx.CCState = &state
+	now := time.Now()
+	if state == domain.CCStateBilled {
+		tx.BilledAt = &now
+	} else if state == domain.CCStateSettled {
+		tx.SettledAt = &now
+	}
+	return tx, nil
+}
+
+// GetPendingCCByMonth retrieves pending CC transactions for a specific month
+func (m *MockTransactionRepository) GetPendingCCByMonth(workspaceID int32, year int, month int) ([]*domain.CCTransactionWithAccount, error) {
+	var result []*domain.CCTransactionWithAccount
+	for _, tx := range m.Transactions {
+		if tx.WorkspaceID == workspaceID && tx.CCState != nil && *tx.CCState == domain.CCStatePending {
+			if tx.TransactionDate.Year() == year && int(tx.TransactionDate.Month()) == month {
+				result = append(result, &domain.CCTransactionWithAccount{Transaction: *tx})
+			}
+		}
+	}
+	return result, nil
+}
+
+// GetBilledCCByMonth retrieves billed CC transactions for a specific month
+func (m *MockTransactionRepository) GetBilledCCByMonth(workspaceID int32, year int, month int) ([]*domain.CCTransactionWithAccount, error) {
+	var result []*domain.CCTransactionWithAccount
+	for _, tx := range m.Transactions {
+		if tx.WorkspaceID == workspaceID && tx.CCState != nil && *tx.CCState == domain.CCStateBilled {
+			if tx.TransactionDate.Year() == year && int(tx.TransactionDate.Month()) == month {
+				result = append(result, &domain.CCTransactionWithAccount{Transaction: *tx})
+			}
+		}
+	}
+	return result, nil
+}
+
+// GetCCMetricsByMonth retrieves CC metrics for a specific month
+func (m *MockTransactionRepository) GetCCMetricsByMonth(workspaceID int32, year int, month int) (*domain.CCMetrics, error) {
+	metrics := &domain.CCMetrics{
+		TotalPurchases: decimal.Zero,
+		Outstanding:    decimal.Zero,
+		Pending:        decimal.Zero,
+	}
+	for _, tx := range m.Transactions {
+		if tx.WorkspaceID == workspaceID && tx.CCState != nil {
+			if tx.TransactionDate.Year() == year && int(tx.TransactionDate.Month()) == month {
+				metrics.TotalPurchases = metrics.TotalPurchases.Add(tx.Amount)
+				if *tx.CCState == domain.CCStatePending {
+					metrics.Pending = metrics.Pending.Add(tx.Amount)
+				} else if *tx.CCState == domain.CCStateBilled {
+					metrics.Outstanding = metrics.Outstanding.Add(tx.Amount)
+				}
+			}
+		}
+	}
+	return metrics, nil
+}
+
+// BulkSettleTransactions settles multiple CC transactions at once
+func (m *MockTransactionRepository) BulkSettleTransactions(workspaceID int32, ids []int32) (int64, error) {
+	var count int64
+	now := time.Now()
+	for _, id := range ids {
+		tx, ok := m.Transactions[id]
+		if ok && tx.WorkspaceID == workspaceID && tx.CCState != nil && *tx.CCState == domain.CCStateBilled {
+			newState := domain.CCStateSettled
+			tx.CCState = &newState
+			tx.SettledAt = &now
+			count++
+		}
+	}
+	return count, nil
+}
+
+// GetTransactionsByIDs retrieves multiple transactions by their IDs
+func (m *MockTransactionRepository) GetTransactionsByIDs(workspaceID int32, ids []int32) ([]*domain.Transaction, error) {
+	result := make([]*domain.Transaction, 0, len(ids))
+	for _, id := range ids {
+		tx, ok := m.Transactions[id]
+		if ok && tx.WorkspaceID == workspaceID && tx.DeletedAt == nil {
+			result = append(result, tx)
+		}
+	}
+	return result, nil
+}
+
+// GetDeferredCCByMonth retrieves deferred CC transactions (billed, not yet settled)
+func (m *MockTransactionRepository) GetDeferredCCByMonth(workspaceID int32) ([]*domain.CCTransactionWithAccount, error) {
+	result := []*domain.CCTransactionWithAccount{}
+	for _, tx := range m.Transactions {
+		if tx.WorkspaceID == workspaceID && tx.DeletedAt == nil &&
+			tx.CCState != nil && *tx.CCState == domain.CCStateBilled &&
+			tx.CCSettlementIntent != nil &&
+			(*tx.CCSettlementIntent == domain.CCSettlementDeferred || *tx.CCSettlementIntent == domain.CCSettlementNextMonth) {
+			ccTx := &domain.CCTransactionWithAccount{
+				Transaction: *tx,
+				OriginYear:  tx.TransactionDate.Year(),
+				OriginMonth: int(tx.TransactionDate.Month()),
+			}
+			result = append(result, ccTx)
+		}
+	}
+	return result, nil
+}
+
+// GetOverdueCC retrieves CC transactions that are overdue (billed 2+ months ago, not yet settled)
+func (m *MockTransactionRepository) GetOverdueCC(workspaceID int32) ([]*domain.CCTransactionWithAccount, error) {
+	result := []*domain.CCTransactionWithAccount{}
+	twoMonthsAgo := time.Now().AddDate(0, -2, 0)
+	for _, tx := range m.Transactions {
+		if tx.WorkspaceID == workspaceID && tx.DeletedAt == nil &&
+			tx.CCState != nil && *tx.CCState == domain.CCStateBilled &&
+			tx.CCSettlementIntent != nil &&
+			(*tx.CCSettlementIntent == domain.CCSettlementDeferred || *tx.CCSettlementIntent == domain.CCSettlementNextMonth) &&
+			tx.BilledAt != nil && tx.BilledAt.Before(twoMonthsAgo) {
+			ccTx := &domain.CCTransactionWithAccount{
+				Transaction: *tx,
+				OriginYear:  tx.TransactionDate.Year(),
+				OriginMonth: int(tx.TransactionDate.Month()),
+			}
+			result = append(result, ccTx)
+		}
+	}
+	return result, nil
+}
+
+// UpdateAmount updates the amount of a transaction
+func (m *MockTransactionRepository) UpdateAmount(workspaceID int32, id int32, amount decimal.Decimal) error {
+	tx, ok := m.Transactions[id]
+	if !ok || tx.WorkspaceID != workspaceID || tx.DeletedAt != nil {
+		return domain.ErrTransactionNotFound
+	}
+	tx.Amount = amount
+	tx.UpdatedAt = time.Now()
+	return nil
+}
+
+// GetExpensesByDateRange retrieves all expense transactions within a date range
+func (m *MockTransactionRepository) GetExpensesByDateRange(workspaceID int32, startDate, endDate time.Time) ([]*domain.Transaction, error) {
+	var result []*domain.Transaction
+	for _, tx := range m.Transactions {
+		if tx.WorkspaceID == workspaceID && tx.DeletedAt == nil &&
+			tx.Type == domain.TransactionTypeExpense &&
+			!tx.TransactionDate.Before(startDate) && tx.TransactionDate.Before(endDate) {
+			result = append(result, tx)
+		}
+	}
+	return result, nil
 }
 
 // MockMonthRepository is a mock implementation of domain.MonthRepository

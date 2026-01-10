@@ -40,6 +40,8 @@ type CreateRecurringInput struct {
 	CategoryID *int32
 	Frequency  domain.Frequency
 	DueDay     int32
+	StartDate  time.Time  // V2: When recurring pattern starts
+	EndDate    *time.Time // V2: Optional end date (nil = runs forever)
 }
 
 // CreateRecurring creates a new recurring transaction template
@@ -91,6 +93,17 @@ func (s *RecurringService) CreateRecurring(workspaceID int32, input CreateRecurr
 		}
 	}
 
+	// Validate start date - must not be zero
+	startDate := input.StartDate
+	if startDate.IsZero() {
+		startDate = time.Now() // Default to today
+	}
+
+	// Validate end date - must be after start date if provided
+	if input.EndDate != nil && !input.EndDate.After(startDate) {
+		return nil, domain.ErrInvalidInput
+	}
+
 	rt := &domain.RecurringTransaction{
 		WorkspaceID: workspaceID,
 		Name:        name,
@@ -100,6 +113,8 @@ func (s *RecurringService) CreateRecurring(workspaceID int32, input CreateRecurr
 		CategoryID:  input.CategoryID,
 		Frequency:   input.Frequency,
 		DueDay:      dueDay,
+		StartDate:   startDate,
+		EndDate:     input.EndDate,
 		IsActive:    true,
 	}
 
@@ -125,11 +140,23 @@ type UpdateRecurringInput struct {
 	CategoryID *int32
 	Frequency  domain.Frequency
 	DueDay     int32
+	StartDate  time.Time  // V2: When recurring pattern starts
+	EndDate    *time.Time // V2: Optional end date (nil = runs forever)
 	IsActive   bool
 }
 
+// UpdateRecurringResult holds the result of updating a recurring template
+type UpdateRecurringResult struct {
+	Template           *domain.RecurringTransaction `json:"template"`
+	ProjectionsDeleted int64                        `json:"projectionsDeleted"`
+}
+
 // UpdateRecurring updates an existing recurring transaction
-func (s *RecurringService) UpdateRecurring(workspaceID int32, id int32, input UpdateRecurringInput) (*domain.RecurringTransaction, error) {
+// When updated, existing PROJECTIONS are deleted so they regenerate with new values.
+// Actual transactions (edited projections) are preserved.
+func (s *RecurringService) UpdateRecurring(workspaceID int32, id int32, input UpdateRecurringInput) (*UpdateRecurringResult, error) {
+	result := &UpdateRecurringResult{}
+
 	// Validate name
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
@@ -173,11 +200,30 @@ func (s *RecurringService) UpdateRecurring(workspaceID int32, id int32, input Up
 		}
 	}
 
+	// Validate start date - must not be zero
+	startDate := input.StartDate
+	if startDate.IsZero() {
+		startDate = time.Now() // Default to today
+	}
+
+	// Validate end date - must be after start date if provided
+	if input.EndDate != nil && !input.EndDate.After(startDate) {
+		return nil, domain.ErrInvalidInput
+	}
+
 	// Check existing record
 	existing, err := s.recurringRepo.GetByID(workspaceID, id)
 	if err != nil {
 		return nil, err
 	}
+
+	// Delete existing projections so they regenerate with new template values
+	// This only deletes is_projected=true transactions, preserving edited actuals
+	projectionsDeleted, err := s.transactionRepo.DeleteProjectionsByTemplateID(workspaceID, id)
+	if err != nil {
+		return nil, err
+	}
+	result.ProjectionsDeleted = projectionsDeleted
 
 	// Update fields
 	existing.Name = name
@@ -187,14 +233,57 @@ func (s *RecurringService) UpdateRecurring(workspaceID int32, id int32, input Up
 	existing.CategoryID = input.CategoryID
 	existing.Frequency = input.Frequency
 	existing.DueDay = input.DueDay
+	existing.StartDate = startDate
+	existing.EndDate = input.EndDate
 	existing.IsActive = input.IsActive
 
-	return s.recurringRepo.Update(existing)
+	updated, err := s.recurringRepo.Update(existing)
+	if err != nil {
+		return nil, err
+	}
+	result.Template = updated
+
+	return result, nil
 }
 
-// DeleteRecurring soft-deletes a recurring transaction
-func (s *RecurringService) DeleteRecurring(workspaceID int32, id int32) error {
-	return s.recurringRepo.Delete(workspaceID, id)
+// DeleteRecurringResult holds the result of deleting a recurring template
+type DeleteRecurringResult struct {
+	ProjectionsDeleted int64 `json:"projectionsDeleted"`
+	ActualsOrphaned    int64 `json:"actualsOrphaned"`
+}
+
+// DeleteRecurring soft-deletes a recurring transaction and handles related transactions
+// - Deletes all future projections linked to this template
+// - Orphans actual transactions (removes template_id but keeps the transaction)
+func (s *RecurringService) DeleteRecurring(workspaceID int32, id int32) (*DeleteRecurringResult, error) {
+	result := &DeleteRecurringResult{}
+
+	// First verify the template exists
+	_, err := s.recurringRepo.GetByID(workspaceID, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Delete all projections for this template
+	projectionsDeleted, err := s.transactionRepo.DeleteProjectionsByTemplateID(workspaceID, id)
+	if err != nil {
+		return nil, err
+	}
+	result.ProjectionsDeleted = projectionsDeleted
+
+	// Orphan actual transactions (remove template_id reference)
+	actualsOrphaned, err := s.transactionRepo.OrphanActualsByTemplateID(workspaceID, id)
+	if err != nil {
+		return nil, err
+	}
+	result.ActualsOrphaned = actualsOrphaned
+
+	// Finally soft-delete the template itself
+	if err := s.recurringRepo.Delete(workspaceID, id); err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }
 
 // ToggleActive toggles the is_active status of a recurring transaction
@@ -279,15 +368,16 @@ func (s *RecurringService) GenerateRecurringTransactions(workspaceID int32, year
 
 		// Create the transaction
 		tx := &domain.Transaction{
-			WorkspaceID:            workspaceID,
-			AccountID:              rt.AccountID,
-			Name:                   rt.Name,
-			Amount:                 rt.Amount,
-			Type:                   rt.Type,
-			TransactionDate:        dueDate,
-			IsPaid:                 false,
-			CategoryID:             rt.CategoryID,
-			RecurringTransactionID: &rt.ID,
+			WorkspaceID:     workspaceID,
+			AccountID:       rt.AccountID,
+			Name:            rt.Name,
+			Amount:          rt.Amount,
+			Type:            rt.Type,
+			TransactionDate: dueDate,
+			IsPaid:          false,
+			CategoryID:      rt.CategoryID,
+			TemplateID:      &rt.ID,
+			Source:          domain.TransactionSourceRecurring,
 		}
 
 		created, err := s.transactionRepo.Create(tx)

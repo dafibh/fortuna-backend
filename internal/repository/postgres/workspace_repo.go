@@ -95,6 +95,20 @@ func (r *WorkspaceRepository) Delete(id int32) error {
 	return r.queries.DeleteWorkspace(context.Background(), id)
 }
 
+// GetAllWorkspaces retrieves all workspaces (for projection sync)
+func (r *WorkspaceRepository) GetAllWorkspaces() ([]*domain.Workspace, error) {
+	workspaces, err := r.queries.GetAllWorkspaces(context.Background())
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*domain.Workspace, len(workspaces))
+	for i, w := range workspaces {
+		result[i] = sqlcWorkspaceToDomain(w)
+	}
+	return result, nil
+}
+
 // Helper functions
 
 func sqlcWorkspaceToDomain(w sqlc.Workspace) *domain.Workspace {

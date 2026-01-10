@@ -104,23 +104,38 @@ func (s *TransactionService) CreateTransaction(workspaceID int32, input CreateTr
 		}
 	}
 
-	// Handle CC settlement intent based on account type
+	// Handle CC settlement intent and CC state based on account type
 	var settlementIntent *domain.CCSettlementIntent
+	var ccState *domain.CCState
 	if account.Template == domain.TemplateCreditCard {
-		// For CC accounts: use provided intent or default to 'this_month'
+		// For CC accounts: use provided intent or default to 'deferred' (V2)
 		if input.CCSettlementIntent != nil {
-			// Validate the provided intent
-			if *input.CCSettlementIntent != domain.CCSettlementThisMonth && *input.CCSettlementIntent != domain.CCSettlementNextMonth {
+			// Validate the provided intent (support both V1 and V2 values)
+			switch *input.CCSettlementIntent {
+			case domain.CCSettlementImmediate, domain.CCSettlementThisMonth:
+				// Immediate settlement - mark as settled immediately
+				immediateIntent := domain.CCSettlementImmediate
+				settlementIntent = &immediateIntent
+				settledState := domain.CCStateSettled
+				ccState = &settledState
+			case domain.CCSettlementDeferred, domain.CCSettlementNextMonth:
+				// Deferred settlement - mark as pending
+				deferredIntent := domain.CCSettlementDeferred
+				settlementIntent = &deferredIntent
+				pendingState := domain.CCStatePending
+				ccState = &pendingState
+			default:
 				return nil, domain.ErrInvalidSettlementIntent
 			}
-			settlementIntent = input.CCSettlementIntent
 		} else {
-			// Default to 'this_month'
-			defaultIntent := domain.CCSettlementThisMonth
+			// Default to 'deferred' with 'pending' state (V2 behavior)
+			defaultIntent := domain.CCSettlementDeferred
 			settlementIntent = &defaultIntent
+			pendingState := domain.CCStatePending
+			ccState = &pendingState
 		}
 	}
-	// For non-CC accounts, settlementIntent remains nil (ignores any provided value)
+	// For non-CC accounts, settlementIntent and ccState remain nil
 
 	// Validate category exists and belongs to workspace if provided
 	if input.CategoryID != nil {
@@ -139,6 +154,7 @@ func (s *TransactionService) CreateTransaction(workspaceID int32, input CreateTr
 		TransactionDate:    transactionDate,
 		IsPaid:             isPaid,
 		CCSettlementIntent: settlementIntent,
+		CCState:            ccState,
 		Notes:              notes,
 		CategoryID:         input.CategoryID,
 	}
@@ -217,18 +233,25 @@ func (s *TransactionService) UpdateTransaction(workspaceID int32, id int32, inpu
 	}
 
 	// Handle CC settlement intent based on account type
+	// Note: CC state is managed separately through dedicated APIs
 	var settlementIntent *domain.CCSettlementIntent
 	if account.Template == domain.TemplateCreditCard {
-		// For CC accounts: use provided intent or default to 'this_month'
+		// For CC accounts: use provided intent or default to 'deferred' (V2)
 		if input.CCSettlementIntent != nil {
-			// Validate the provided intent
-			if *input.CCSettlementIntent != domain.CCSettlementThisMonth && *input.CCSettlementIntent != domain.CCSettlementNextMonth {
+			// Validate the provided intent (support both V1 and V2 values)
+			switch *input.CCSettlementIntent {
+			case domain.CCSettlementImmediate, domain.CCSettlementThisMonth:
+				immediateIntent := domain.CCSettlementImmediate
+				settlementIntent = &immediateIntent
+			case domain.CCSettlementDeferred, domain.CCSettlementNextMonth:
+				deferredIntent := domain.CCSettlementDeferred
+				settlementIntent = &deferredIntent
+			default:
 				return nil, domain.ErrInvalidSettlementIntent
 			}
-			settlementIntent = input.CCSettlementIntent
 		} else {
-			// Default to 'this_month'
-			defaultIntent := domain.CCSettlementThisMonth
+			// Default to 'deferred' (V2 behavior)
+			defaultIntent := domain.CCSettlementDeferred
 			settlementIntent = &defaultIntent
 		}
 	}
@@ -276,8 +299,14 @@ func (s *TransactionService) UpdateTransaction(workspaceID int32, id int32, inpu
 
 // UpdateSettlementIntent updates the CC settlement intent for an unpaid CC transaction
 func (s *TransactionService) UpdateSettlementIntent(workspaceID int32, id int32, intent domain.CCSettlementIntent) (*domain.Transaction, error) {
-	// Validate intent value
-	if intent != domain.CCSettlementThisMonth && intent != domain.CCSettlementNextMonth {
+	// Validate and normalize intent value (support both V1 and V2 values)
+	var normalizedIntent domain.CCSettlementIntent
+	switch intent {
+	case domain.CCSettlementImmediate, domain.CCSettlementThisMonth:
+		normalizedIntent = domain.CCSettlementImmediate
+	case domain.CCSettlementDeferred, domain.CCSettlementNextMonth:
+		normalizedIntent = domain.CCSettlementDeferred
+	default:
 		return nil, domain.ErrInvalidSettlementIntent
 	}
 
@@ -301,7 +330,7 @@ func (s *TransactionService) UpdateSettlementIntent(workspaceID int32, id int32,
 		return nil, domain.ErrSettlementIntentNotApplicable
 	}
 
-	updated, err := s.transactionRepo.UpdateSettlementIntent(workspaceID, id, intent)
+	updated, err := s.transactionRepo.UpdateSettlementIntent(workspaceID, id, normalizedIntent)
 	if err != nil {
 		return nil, err
 	}
@@ -427,4 +456,82 @@ func (s *TransactionService) CreateTransfer(workspaceID int32, input CreateTrans
 // GetRecentlyUsedCategories returns recently used categories for suggestions dropdown
 func (s *TransactionService) GetRecentlyUsedCategories(workspaceID int32) ([]*domain.RecentCategory, error) {
 	return s.transactionRepo.GetRecentlyUsedCategories(workspaceID)
+}
+
+// =====================================================
+// V2 CC LIFECYCLE METHODS
+// =====================================================
+
+// ToggleCCBilled toggles a CC transaction between pending and billed states
+func (s *TransactionService) ToggleCCBilled(workspaceID int32, id int32) (*domain.Transaction, error) {
+	// Get transaction first to verify it exists and is a CC transaction
+	tx, err := s.transactionRepo.GetByID(workspaceID, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Verify this is a CC transaction (has cc_state)
+	if tx.CCState == nil {
+		return nil, domain.ErrNotCCTransaction
+	}
+
+	// Toggle the billed state
+	updated, err := s.transactionRepo.ToggleCCBilled(workspaceID, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Publish event for real-time updates
+	s.publishEvent(workspaceID, websocket.TransactionUpdated(updated))
+
+	return updated, nil
+}
+
+// UpdateCCState updates the CC state of a transaction
+func (s *TransactionService) UpdateCCState(workspaceID int32, id int32, state domain.CCState) (*domain.Transaction, error) {
+	// Get transaction first to verify it exists and is a CC transaction
+	tx, err := s.transactionRepo.GetByID(workspaceID, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Verify this is a CC transaction (has cc_state)
+	if tx.CCState == nil {
+		return nil, domain.ErrNotCCTransaction
+	}
+
+	// Validate state transition
+	if state != domain.CCStatePending && state != domain.CCStateBilled && state != domain.CCStateSettled {
+		return nil, domain.ErrInvalidCCState
+	}
+
+	updated, err := s.transactionRepo.UpdateCCState(workspaceID, id, state)
+	if err != nil {
+		return nil, err
+	}
+
+	// Publish event for real-time updates
+	s.publishEvent(workspaceID, websocket.TransactionUpdated(updated))
+
+	return updated, nil
+}
+
+// GetPendingCCByMonth retrieves pending CC transactions for a specific month
+func (s *TransactionService) GetPendingCCByMonth(workspaceID int32, year int, month int) ([]*domain.CCTransactionWithAccount, error) {
+	return s.transactionRepo.GetPendingCCByMonth(workspaceID, year, month)
+}
+
+// GetBilledCCByMonth retrieves billed CC transactions for a specific month
+func (s *TransactionService) GetBilledCCByMonth(workspaceID int32, year int, month int) ([]*domain.CCTransactionWithAccount, error) {
+	return s.transactionRepo.GetBilledCCByMonth(workspaceID, year, month)
+}
+
+// GetCCMetricsByMonth retrieves CC metrics for a specific month
+func (s *TransactionService) GetCCMetricsByMonth(workspaceID int32, year int, month int) (*domain.CCMetrics, error) {
+	return s.transactionRepo.GetCCMetricsByMonth(workspaceID, year, month)
+}
+
+// BulkSettleTransactions settles multiple CC transactions at once
+func (s *TransactionService) BulkSettleTransactions(workspaceID int32, ids []int32) (int64, error) {
+	return s.transactionRepo.BulkSettleTransactions(workspaceID, ids)
 }

@@ -334,24 +334,24 @@ func TestUpdateRecurring_Success(t *testing.T) {
 		t.Errorf("Expected status 200, got %d", rec.Code)
 	}
 
-	var response RecurringResponse
+	var response UpdateRecurringResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 		t.Fatalf("Failed to unmarshal response: %v", err)
 	}
 
-	if response.Name != "New Name" {
-		t.Errorf("Expected name 'New Name', got %s", response.Name)
+	if response.Template.Name != "New Name" {
+		t.Errorf("Expected name 'New Name', got %s", response.Template.Name)
 	}
 
-	if response.Amount != "200.00" {
-		t.Errorf("Expected amount '200.00', got %s", response.Amount)
+	if response.Template.Amount != "200.00" {
+		t.Errorf("Expected amount '200.00', got %s", response.Template.Amount)
 	}
 
-	if response.DueDay != 15 {
-		t.Errorf("Expected dueDay 15, got %d", response.DueDay)
+	if response.Template.DueDay != 15 {
+		t.Errorf("Expected dueDay 15, got %d", response.Template.DueDay)
 	}
 
-	if response.IsActive {
+	if response.Template.IsActive {
 		t.Error("Expected IsActive to be false")
 	}
 }
@@ -381,8 +381,14 @@ func TestDeleteRecurring_Success(t *testing.T) {
 		t.Fatalf("Expected no error, got %v", err)
 	}
 
-	if rec.Code != http.StatusNoContent {
-		t.Errorf("Expected status 204, got %d", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", rec.Code)
+	}
+
+	// Verify response body
+	var resp DeleteRecurringResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
 	}
 }
 

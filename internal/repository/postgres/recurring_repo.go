@@ -38,6 +38,13 @@ func (r *RecurringRepository) Create(rt *domain.RecurringTransaction) (*domain.R
 		categoryID = pgtype.Int4{Int32: *rt.CategoryID, Valid: true}
 	}
 
+	startDate := pgtype.Date{Time: rt.StartDate, Valid: true}
+
+	var endDate pgtype.Date
+	if rt.EndDate != nil {
+		endDate = pgtype.Date{Time: *rt.EndDate, Valid: true}
+	}
+
 	created, err := r.queries.CreateRecurringTransaction(ctx, sqlc.CreateRecurringTransactionParams{
 		WorkspaceID: rt.WorkspaceID,
 		Name:        rt.Name,
@@ -48,6 +55,8 @@ func (r *RecurringRepository) Create(rt *domain.RecurringTransaction) (*domain.R
 		Frequency:   string(rt.Frequency),
 		DueDay:      rt.DueDay,
 		IsActive:    rt.IsActive,
+		StartDate:   startDate,
+		EndDate:     endDate,
 	})
 	if err != nil {
 		return nil, err
@@ -113,6 +122,13 @@ func (r *RecurringRepository) Update(rt *domain.RecurringTransaction) (*domain.R
 		categoryID = pgtype.Int4{Int32: *rt.CategoryID, Valid: true}
 	}
 
+	startDate := pgtype.Date{Time: rt.StartDate, Valid: true}
+
+	var endDate pgtype.Date
+	if rt.EndDate != nil {
+		endDate = pgtype.Date{Time: *rt.EndDate, Valid: true}
+	}
+
 	updated, err := r.queries.UpdateRecurringTransaction(ctx, sqlc.UpdateRecurringTransactionParams{
 		WorkspaceID: rt.WorkspaceID,
 		ID:          rt.ID,
@@ -124,6 +140,8 @@ func (r *RecurringRepository) Update(rt *domain.RecurringTransaction) (*domain.R
 		Frequency:   string(rt.Frequency),
 		DueDay:      rt.DueDay,
 		IsActive:    rt.IsActive,
+		StartDate:   startDate,
+		EndDate:     endDate,
 	})
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -181,6 +199,7 @@ func sqlcRecurringToDomain(rt sqlc.RecurringTransaction) *domain.RecurringTransa
 		Type:        domain.TransactionType(rt.Type),
 		Frequency:   domain.Frequency(rt.Frequency),
 		DueDay:      rt.DueDay,
+		StartDate:   rt.StartDate.Time,
 		IsActive:    rt.IsActive,
 		CreatedAt:   rt.CreatedAt.Time,
 		UpdatedAt:   rt.UpdatedAt.Time,
@@ -188,6 +207,10 @@ func sqlcRecurringToDomain(rt sqlc.RecurringTransaction) *domain.RecurringTransa
 
 	if rt.CategoryID.Valid {
 		recurring.CategoryID = &rt.CategoryID.Int32
+	}
+
+	if rt.EndDate.Valid {
+		recurring.EndDate = &rt.EndDate.Time
 	}
 
 	if rt.DeletedAt.Valid {
