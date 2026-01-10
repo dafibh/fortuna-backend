@@ -339,7 +339,7 @@ const getCCMetrics = `-- name: GetCCMetrics :one
 SELECT
     COALESCE(SUM(CASE WHEN cc_state = 'pending' THEN amount ELSE 0 END), 0)::NUMERIC(12,2) as pending_total,
     COALESCE(SUM(CASE WHEN cc_state = 'billed' AND settlement_intent = 'deferred' THEN amount ELSE 0 END), 0)::NUMERIC(12,2) as billed_total,
-    COALESCE(SUM(amount), 0)::NUMERIC(12,2) as month_total
+    COALESCE(SUM(CASE WHEN cc_state IN ('pending', 'billed') THEN amount ELSE 0 END), 0)::NUMERIC(12,2) as month_total
 FROM transactions
 WHERE workspace_id = $1
   AND cc_state IS NOT NULL
@@ -360,6 +360,7 @@ type GetCCMetricsRow struct {
 }
 
 // Get CC metrics (pending, billed, total) for a month range
+// month_total = pending + billed (excludes settled transactions)
 func (q *Queries) GetCCMetrics(ctx context.Context, arg GetCCMetricsParams) (GetCCMetricsRow, error) {
 	row := q.db.QueryRow(ctx, getCCMetrics, arg.WorkspaceID, arg.TransactionDate, arg.TransactionDate_2)
 	var i GetCCMetricsRow
