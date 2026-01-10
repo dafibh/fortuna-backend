@@ -886,3 +886,42 @@ func sqlcTransactionWithCategoryToDomain(t sqlc.GetTransactionsWithCategoryRow) 
 	transaction.IsProjected = t.IsProjected.Bool
 	return transaction
 }
+
+// GetProjectionsByTemplate retrieves all projected transactions for a specific template
+func (r *TransactionRepository) GetProjectionsByTemplate(workspaceID int32, templateID int32) ([]*domain.Transaction, error) {
+	ctx := context.Background()
+
+	rows, err := r.queries.GetProjectionsByTemplate(ctx, sqlc.GetProjectionsByTemplateParams{
+		WorkspaceID: workspaceID,
+		TemplateID:  pgtype.Int4{Int32: templateID, Valid: true},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*domain.Transaction, len(rows))
+	for i, row := range rows {
+		result[i] = sqlcTransactionToDomain(row)
+	}
+	return result, nil
+}
+
+// DeleteProjectionsByTemplate deletes all projected transactions for a template
+func (r *TransactionRepository) DeleteProjectionsByTemplate(workspaceID int32, templateID int32) error {
+	ctx := context.Background()
+
+	return r.queries.DeleteProjectionsByTemplate(ctx, sqlc.DeleteProjectionsByTemplateParams{
+		WorkspaceID: workspaceID,
+		TemplateID:  pgtype.Int4{Int32: templateID, Valid: true},
+	})
+}
+
+// OrphanActualsByTemplate unlinks actual transactions from a template (keeps them, clears template_id)
+func (r *TransactionRepository) OrphanActualsByTemplate(workspaceID int32, templateID int32) error {
+	ctx := context.Background()
+
+	return r.queries.OrphanActualsByTemplate(ctx, sqlc.OrphanActualsByTemplateParams{
+		WorkspaceID: workspaceID,
+		TemplateID:  pgtype.Int4{Int32: templateID, Valid: true},
+	})
+}

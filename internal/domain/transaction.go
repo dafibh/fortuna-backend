@@ -208,4 +208,9 @@ type TransactionRepository interface {
 	GetCCPayableSummary(workspaceID int32) ([]*CCPayableSummaryRow, error)
 	GetRecentlyUsedCategories(workspaceID int32) ([]*RecentCategory, error)
 	GetCCPayableBreakdown(workspaceID int32) ([]*CCPayableTransaction, error)
+
+	// Projection management (v2)
+	GetProjectionsByTemplate(workspaceID int32, templateID int32) ([]*Transaction, error)
+	DeleteProjectionsByTemplate(workspaceID int32, templateID int32) error
+	OrphanActualsByTemplate(workspaceID int32, templateID int32) error
 }

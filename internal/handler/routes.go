@@ -6,7 +6,7 @@ import (
 )
 
 // RegisterRoutes sets up all API routes
-func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateLimiter *middleware.RateLimiter, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler, recurringHandler *RecurringHandler, loanProviderHandler *LoanProviderHandler, loanHandler *LoanHandler, loanPaymentHandler *LoanPaymentHandler, wishlistHandler *WishlistHandler, wishlistItemHandler *WishlistItemHandler, wishlistPriceHandler *WishlistPriceHandler, wishlistNoteHandler *WishlistNoteHandler, imageHandler *ImageHandler, wsHandler *WebSocketHandler, apiTokenHandler *APITokenHandler) {
+func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateLimiter *middleware.RateLimiter, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler, recurringHandler *RecurringHandler, recurringTemplateHandler *RecurringTemplateHandler, loanProviderHandler *LoanProviderHandler, loanHandler *LoanHandler, loanPaymentHandler *LoanPaymentHandler, wishlistHandler *WishlistHandler, wishlistItemHandler *WishlistItemHandler, wishlistPriceHandler *WishlistPriceHandler, wishlistNoteHandler *WishlistNoteHandler, imageHandler *ImageHandler, wsHandler *WebSocketHandler, apiTokenHandler *APITokenHandler) {
 	// WebSocket route (auth via query param token)
 	e.GET("/ws", wsHandler.HandleWS)
 
@@ -82,7 +82,7 @@ func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateL
 	cc.GET("/payable/breakdown", ccHandler.GetPayableBreakdown)
 	cc.POST("/payments", ccHandler.CreateCCPayment)
 
-	// Recurring Transactions routes (dual auth with rate limiting)
+	// Recurring Transactions routes (v1 - dual auth with rate limiting)
 	recurring := api.Group("/recurring-transactions")
 	recurring.Use(dualAuth.Authenticate(), middleware.RateLimitMiddleware(rateLimiter))
 	recurring.POST("", recurringHandler.CreateRecurring)
@@ -92,6 +92,15 @@ func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateL
 	recurring.PUT("/:id", recurringHandler.UpdateRecurring)
 	recurring.PATCH("/:id/toggle-active", recurringHandler.ToggleActive)
 	recurring.DELETE("/:id", recurringHandler.DeleteRecurring)
+
+	// Recurring Templates routes (v2 - dual auth with rate limiting)
+	recurringTemplates := api.Group("/recurring-templates")
+	recurringTemplates.Use(dualAuth.Authenticate(), middleware.RateLimitMiddleware(rateLimiter))
+	recurringTemplates.POST("", recurringTemplateHandler.CreateTemplate)
+	recurringTemplates.GET("", recurringTemplateHandler.ListTemplates)
+	recurringTemplates.GET("/:id", recurringTemplateHandler.GetTemplate)
+	recurringTemplates.PUT("/:id", recurringTemplateHandler.UpdateTemplate)
+	recurringTemplates.DELETE("/:id", recurringTemplateHandler.DeleteTemplate)
 
 	// Loan Provider routes (dual auth with rate limiting)
 	loanProviders := api.Group("/loan-providers")

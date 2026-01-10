@@ -55,14 +55,15 @@ type RecurringTemplate struct {
 
 // CreateRecurringTemplateInput represents input for creating a recurring template
 type CreateRecurringTemplateInput struct {
-	WorkspaceID int32
-	Description string
-	Amount      decimal.Decimal
-	CategoryID  int32
-	AccountID   int32
-	Frequency   string
-	StartDate   time.Time
-	EndDate     *time.Time
+	WorkspaceID       int32
+	Description       string
+	Amount            decimal.Decimal
+	CategoryID        int32
+	AccountID         int32
+	Frequency         string
+	StartDate         time.Time
+	EndDate           *time.Time
+	LinkTransactionID *int32 // Optional: link an existing transaction to this template
 }
 
 // UpdateRecurringTemplateInput represents input for updating a recurring template
@@ -84,4 +85,13 @@ type RecurringTemplateRepository interface {
 	GetByID(workspaceID int32, id int32) (*RecurringTemplate, error)
 	ListByWorkspace(workspaceID int32) ([]*RecurringTemplate, error)
 	GetActive(workspaceID int32) ([]*RecurringTemplate, error)
+}
+
+// RecurringTemplateService defines the interface for recurring template business logic
+type RecurringTemplateService interface {
+	CreateTemplate(workspaceID int32, input CreateRecurringTemplateInput) (*RecurringTemplate, error)
+	UpdateTemplate(workspaceID int32, id int32, input UpdateRecurringTemplateInput) (*RecurringTemplate, error)
+	DeleteTemplate(workspaceID int32, id int32) error
+	GetTemplate(workspaceID int32, id int32) (*RecurringTemplate, error)
+	ListTemplates(workspaceID int32) ([]*RecurringTemplate, error)
 }

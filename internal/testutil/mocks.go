@@ -354,6 +354,9 @@ type MockTransactionRepository struct {
 	GetCCPayableSummaryFn             func(workspaceID int32) ([]*domain.CCPayableSummaryRow, error)
 	GetRecentlyUsedCategoriesFn       func(workspaceID int32) ([]*domain.RecentCategory, error)
 	GetCCPayableBreakdownFn           func(workspaceID int32) ([]*domain.CCPayableTransaction, error)
+	GetProjectionsByTemplateFn        func(workspaceID int32, templateID int32) ([]*domain.Transaction, error)
+	DeleteProjectionsByTemplateFn     func(workspaceID int32, templateID int32) error
+	OrphanActualsByTemplateFn         func(workspaceID int32, templateID int32) error
 }
 
 // NewMockTransactionRepository creates a new MockTransactionRepository
@@ -797,6 +800,57 @@ func (m *MockTransactionRepository) GetCCPayableBreakdown(workspaceID int32) ([]
 	}
 	// Default: return empty list
 	return []*domain.CCPayableTransaction{}, nil
+}
+
+// GetProjectionsByTemplate retrieves all projected transactions for a specific template
+func (m *MockTransactionRepository) GetProjectionsByTemplate(workspaceID int32, templateID int32) ([]*domain.Transaction, error) {
+	if m.GetProjectionsByTemplateFn != nil {
+		return m.GetProjectionsByTemplateFn(workspaceID, templateID)
+	}
+
+	var result []*domain.Transaction
+	for _, tx := range m.ByWorkspace[workspaceID] {
+		if tx.DeletedAt != nil {
+			continue
+		}
+		if tx.TemplateID != nil && *tx.TemplateID == templateID && tx.IsProjected {
+			result = append(result, tx)
+		}
+	}
+	return result, nil
+}
+
+// DeleteProjectionsByTemplate deletes all projected transactions for a template
+func (m *MockTransactionRepository) DeleteProjectionsByTemplate(workspaceID int32, templateID int32) error {
+	if m.DeleteProjectionsByTemplateFn != nil {
+		return m.DeleteProjectionsByTemplateFn(workspaceID, templateID)
+	}
+
+	// Filter out projected transactions for this template
+	var remaining []*domain.Transaction
+	for _, tx := range m.ByWorkspace[workspaceID] {
+		if tx.TemplateID != nil && *tx.TemplateID == templateID && tx.IsProjected {
+			delete(m.Transactions, tx.ID)
+			continue
+		}
+		remaining = append(remaining, tx)
+	}
+	m.ByWorkspace[workspaceID] = remaining
+	return nil
+}
+
+// OrphanActualsByTemplate unlinks actual transactions from a template
+func (m *MockTransactionRepository) OrphanActualsByTemplate(workspaceID int32, templateID int32) error {
+	if m.OrphanActualsByTemplateFn != nil {
+		return m.OrphanActualsByTemplateFn(workspaceID, templateID)
+	}
+
+	for _, tx := range m.ByWorkspace[workspaceID] {
+		if tx.TemplateID != nil && *tx.TemplateID == templateID && !tx.IsProjected {
+			tx.TemplateID = nil
+		}
+	}
+	return nil
 }
 
 // MockMonthRepository is a mock implementation of domain.MonthRepository
@@ -1442,6 +1496,135 @@ func (m *MockRecurringRepository) CheckTransactionExists(recurringID, workspaceI
 	}
 	key := fmt.Sprintf("%d-%d-%d", recurringID, year, month)
 	return m.ExistingTransactions[key], nil
+}
+
+// MockRecurringTemplateRepository is a mock implementation of domain.RecurringTemplateRepository
+type MockRecurringTemplateRepository struct {
+	Templates   map[int32]*domain.RecurringTemplate
+	ByWorkspace map[int32][]*domain.RecurringTemplate
+	NextID      int32
+	CreateFn    func(template *domain.RecurringTemplate) (*domain.RecurringTemplate, error)
+	UpdateFn    func(workspaceID int32, id int32, input *domain.UpdateRecurringTemplateInput) (*domain.RecurringTemplate, error)
+	DeleteFn    func(workspaceID int32, id int32) error
+	GetByIDFn   func(workspaceID int32, id int32) (*domain.RecurringTemplate, error)
+	ListFn      func(workspaceID int32) ([]*domain.RecurringTemplate, error)
+	GetActiveFn func(workspaceID int32) ([]*domain.RecurringTemplate, error)
+}
+
+// NewMockRecurringTemplateRepository creates a new MockRecurringTemplateRepository
+func NewMockRecurringTemplateRepository() *MockRecurringTemplateRepository {
+	return &MockRecurringTemplateRepository{
+		Templates:   make(map[int32]*domain.RecurringTemplate),
+		ByWorkspace: make(map[int32][]*domain.RecurringTemplate),
+		NextID:      1,
+	}
+}
+
+// Create creates a new recurring template
+func (m *MockRecurringTemplateRepository) Create(template *domain.RecurringTemplate) (*domain.RecurringTemplate, error) {
+	if m.CreateFn != nil {
+		return m.CreateFn(template)
+	}
+	template.ID = m.NextID
+	m.NextID++
+	template.CreatedAt = time.Now()
+	template.UpdatedAt = time.Now()
+	m.Templates[template.ID] = template
+	m.ByWorkspace[template.WorkspaceID] = append(m.ByWorkspace[template.WorkspaceID], template)
+	return template, nil
+}
+
+// Update updates a recurring template
+func (m *MockRecurringTemplateRepository) Update(workspaceID int32, id int32, input *domain.UpdateRecurringTemplateInput) (*domain.RecurringTemplate, error) {
+	if m.UpdateFn != nil {
+		return m.UpdateFn(workspaceID, id, input)
+	}
+	template, ok := m.Templates[id]
+	if !ok || template.WorkspaceID != workspaceID {
+		return nil, domain.ErrRecurringTemplateNotFound
+	}
+	template.Description = input.Description
+	template.Amount = input.Amount
+	template.CategoryID = input.CategoryID
+	template.AccountID = input.AccountID
+	template.Frequency = input.Frequency
+	template.StartDate = input.StartDate
+	template.EndDate = input.EndDate
+	template.UpdatedAt = time.Now()
+	return template, nil
+}
+
+// Delete deletes a recurring template
+func (m *MockRecurringTemplateRepository) Delete(workspaceID int32, id int32) error {
+	if m.DeleteFn != nil {
+		return m.DeleteFn(workspaceID, id)
+	}
+	template, ok := m.Templates[id]
+	if !ok || template.WorkspaceID != workspaceID {
+		return domain.ErrRecurringTemplateNotFound
+	}
+	delete(m.Templates, id)
+	// Remove from workspace list
+	var remaining []*domain.RecurringTemplate
+	for _, t := range m.ByWorkspace[workspaceID] {
+		if t.ID != id {
+			remaining = append(remaining, t)
+		}
+	}
+	m.ByWorkspace[workspaceID] = remaining
+	return nil
+}
+
+// GetByID retrieves a recurring template by ID
+func (m *MockRecurringTemplateRepository) GetByID(workspaceID int32, id int32) (*domain.RecurringTemplate, error) {
+	if m.GetByIDFn != nil {
+		return m.GetByIDFn(workspaceID, id)
+	}
+	template, ok := m.Templates[id]
+	if !ok || template.WorkspaceID != workspaceID {
+		return nil, domain.ErrRecurringTemplateNotFound
+	}
+	return template, nil
+}
+
+// ListByWorkspace retrieves all recurring templates for a workspace
+func (m *MockRecurringTemplateRepository) ListByWorkspace(workspaceID int32) ([]*domain.RecurringTemplate, error) {
+	if m.ListFn != nil {
+		return m.ListFn(workspaceID)
+	}
+	templates := m.ByWorkspace[workspaceID]
+	if templates == nil {
+		return []*domain.RecurringTemplate{}, nil
+	}
+	return templates, nil
+}
+
+// GetActive retrieves all active recurring templates (no end_date or end_date >= today)
+func (m *MockRecurringTemplateRepository) GetActive(workspaceID int32) ([]*domain.RecurringTemplate, error) {
+	if m.GetActiveFn != nil {
+		return m.GetActiveFn(workspaceID)
+	}
+	templates := m.ByWorkspace[workspaceID]
+	if templates == nil {
+		return []*domain.RecurringTemplate{}, nil
+	}
+	now := time.Now()
+	var active []*domain.RecurringTemplate
+	for _, t := range templates {
+		if t.EndDate == nil || t.EndDate.After(now) || t.EndDate.Equal(now) {
+			active = append(active, t)
+		}
+	}
+	if active == nil {
+		return []*domain.RecurringTemplate{}, nil
+	}
+	return active, nil
+}
+
+// AddTemplate adds a template to the mock repository (helper for tests)
+func (m *MockRecurringTemplateRepository) AddTemplate(template *domain.RecurringTemplate) {
+	m.Templates[template.ID] = template
+	m.ByWorkspace[template.WorkspaceID] = append(m.ByWorkspace[template.WorkspaceID], template)
 }
 
 // MockLoanProviderRepository is a mock implementation of domain.LoanProviderRepository
