@@ -1559,3 +1559,138 @@ func TestDashboardService_GetFutureSpending_MultipleAccounts(t *testing.T) {
 		t.Errorf("Expected 2 accounts, got %d", len(result.Months[0].ByAccount))
 	}
 }
+
+// BenchmarkDashboardService_GetFutureSpending benchmarks the GetFutureSpending method
+// to verify NFR-P6 compliance (<500ms response time)
+func BenchmarkDashboardService_GetFutureSpending(b *testing.B) {
+	now := time.Now()
+	workspaceID := int32(1)
+
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	monthRepo := testutil.NewMockMonthRepository()
+	loanPaymentRepo := testutil.NewMockLoanPaymentRepository()
+
+	// Add realistic number of accounts (5 accounts)
+	for i := int32(1); i <= 5; i++ {
+		accountRepo.AddAccount(&domain.Account{
+			ID:             i,
+			WorkspaceID:    workspaceID,
+			Name:           "Account " + string(rune('A'+i-1)),
+			AccountType:    domain.AccountTypeAsset,
+			Template:       domain.TemplateBank,
+			InitialBalance: decimal.NewFromInt(10000),
+			CreatedAt:      now,
+			UpdatedAt:      now,
+		})
+	}
+
+	// Add realistic volume of transactions (500 transactions over 12 months)
+	categoryID := int32(1)
+	categoryName := "Expenses"
+	for i := 1; i <= 500; i++ {
+		monthOffset := (i % 12)
+		txDate := now.AddDate(0, monthOffset, -(i % 28))
+		accountID := int32((i % 5) + 1)
+
+		transactionRepo.AddTransaction(&domain.Transaction{
+			ID:              int32(i),
+			WorkspaceID:     workspaceID,
+			AccountID:       accountID,
+			Name:            "Transaction " + string(rune(i)),
+			Amount:          decimal.NewFromInt(int64(50 + (i % 500))),
+			Type:            domain.TransactionTypeExpense,
+			TransactionDate: txDate,
+			IsPaid:          true,
+			CategoryID:      &categoryID,
+			CategoryName:    &categoryName,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		})
+	}
+
+	calcService := NewCalculationService(accountRepo, transactionRepo)
+	monthService := NewMonthService(monthRepo, transactionRepo, calcService)
+	dashboardService := NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calcService)
+
+	// Reset timer to exclude setup time
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_, err := dashboardService.GetFutureSpending(workspaceID, 12)
+		if err != nil {
+			b.Fatalf("GetFutureSpending() error = %v", err)
+		}
+	}
+}
+
+// TestDashboardService_GetFutureSpending_Performance verifies NFR-P6 compliance
+// Requirement: <500ms response time for future spending endpoint
+func TestDashboardService_GetFutureSpending_Performance(t *testing.T) {
+	now := time.Now()
+	workspaceID := int32(1)
+
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	monthRepo := testutil.NewMockMonthRepository()
+	loanPaymentRepo := testutil.NewMockLoanPaymentRepository()
+
+	// Add realistic number of accounts
+	for i := int32(1); i <= 5; i++ {
+		accountRepo.AddAccount(&domain.Account{
+			ID:             i,
+			WorkspaceID:    workspaceID,
+			Name:           "Account " + string(rune('A'+i-1)),
+			AccountType:    domain.AccountTypeAsset,
+			Template:       domain.TemplateBank,
+			InitialBalance: decimal.NewFromInt(10000),
+			CreatedAt:      now,
+			UpdatedAt:      now,
+		})
+	}
+
+	// Add realistic volume of transactions (500 transactions over 12 months)
+	categoryID := int32(1)
+	categoryName := "Expenses"
+	for i := 1; i <= 500; i++ {
+		monthOffset := (i % 12)
+		txDate := now.AddDate(0, monthOffset, -(i % 28))
+		accountID := int32((i % 5) + 1)
+
+		transactionRepo.AddTransaction(&domain.Transaction{
+			ID:              int32(i),
+			WorkspaceID:     workspaceID,
+			AccountID:       accountID,
+			Name:            "Transaction " + string(rune(i)),
+			Amount:          decimal.NewFromInt(int64(50 + (i % 500))),
+			Type:            domain.TransactionTypeExpense,
+			TransactionDate: txDate,
+			IsPaid:          true,
+			CategoryID:      &categoryID,
+			CategoryName:    &categoryName,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		})
+	}
+
+	calcService := NewCalculationService(accountRepo, transactionRepo)
+	monthService := NewMonthService(monthRepo, transactionRepo, calcService)
+	dashboardService := NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calcService)
+
+	// Measure execution time
+	start := time.Now()
+	_, err := dashboardService.GetFutureSpending(workspaceID, 12)
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("GetFutureSpending() error = %v", err)
+	}
+
+	// NFR-P6: Response time must be <500ms
+	maxDuration := 500 * time.Millisecond
+	if elapsed > maxDuration {
+		t.Errorf("GetFutureSpending() took %v, expected <%v (NFR-P6 violation)", elapsed, maxDuration)
+	}
+
+	t.Logf("GetFutureSpending() completed in %v (limit: %v)", elapsed, maxDuration)
+}

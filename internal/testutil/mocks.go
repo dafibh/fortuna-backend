@@ -1003,6 +1003,33 @@ func (m *MockTransactionRepository) GetOverdueCC(workspaceID int32) ([]*domain.T
 	return result, nil
 }
 
+// GetByDateRangeForAggregation retrieves all transactions in a date range for aggregation (no pagination)
+func (m *MockTransactionRepository) GetByDateRangeForAggregation(workspaceID int32, startDate, endDate time.Time) ([]*domain.Transaction, error) {
+	if m.GetByWSFn != nil {
+		result, err := m.GetByWSFn(workspaceID, &domain.TransactionFilters{
+			StartDate: &startDate,
+			EndDate:   &endDate,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return result.Data, nil
+	}
+
+	// Filter transactions by workspace and date range
+	var result []*domain.Transaction
+	for _, tx := range m.ByWorkspace[workspaceID] {
+		if tx.DeletedAt != nil {
+			continue
+		}
+		if tx.TransactionDate.Before(startDate) || tx.TransactionDate.After(endDate) {
+			continue
+		}
+		result = append(result, tx)
+	}
+	return result, nil
+}
+
 // MockMonthRepository is a mock implementation of domain.MonthRepository
 type MockMonthRepository struct {
 	Months                             map[int32]*domain.Month

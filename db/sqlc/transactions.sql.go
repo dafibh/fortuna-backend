@@ -1033,6 +1033,124 @@ func (q *Queries) GetTransactionsByWorkspace(ctx context.Context, arg GetTransac
 	return items, nil
 }
 
+const getTransactionsForAggregation = `-- name: GetTransactionsForAggregation :many
+SELECT
+    t.id,
+    t.workspace_id,
+    t.account_id,
+    t.name,
+    t.amount,
+    t.type,
+    t.transaction_date,
+    t.is_paid,
+    t.cc_settlement_intent,
+    t.notes,
+    t.transfer_pair_id,
+    t.category_id,
+    t.is_cc_payment,
+    t.recurring_transaction_id,
+    t.created_at,
+    t.updated_at,
+    t.deleted_at,
+    t.cc_state,
+    t.billed_at,
+    t.settled_at,
+    t.settlement_intent,
+    t.source,
+    t.template_id,
+    t.is_projected,
+    bc.name AS category_name
+FROM transactions t
+LEFT JOIN budget_categories bc ON t.category_id = bc.id AND bc.deleted_at IS NULL
+WHERE t.workspace_id = $1
+  AND t.deleted_at IS NULL
+  AND t.transaction_date >= $2::DATE
+  AND t.transaction_date <= $3::DATE
+ORDER BY t.transaction_date DESC, t.created_at DESC
+`
+
+type GetTransactionsForAggregationParams struct {
+	WorkspaceID int32       `json:"workspace_id"`
+	StartDate   pgtype.Date `json:"start_date"`
+	EndDate     pgtype.Date `json:"end_date"`
+}
+
+type GetTransactionsForAggregationRow struct {
+	ID                     int32              `json:"id"`
+	WorkspaceID            int32              `json:"workspace_id"`
+	AccountID              int32              `json:"account_id"`
+	Name                   string             `json:"name"`
+	Amount                 pgtype.Numeric     `json:"amount"`
+	Type                   string             `json:"type"`
+	TransactionDate        pgtype.Date        `json:"transaction_date"`
+	IsPaid                 bool               `json:"is_paid"`
+	CcSettlementIntent     pgtype.Text        `json:"cc_settlement_intent"`
+	Notes                  pgtype.Text        `json:"notes"`
+	TransferPairID         pgtype.UUID        `json:"transfer_pair_id"`
+	CategoryID             pgtype.Int4        `json:"category_id"`
+	IsCcPayment            bool               `json:"is_cc_payment"`
+	RecurringTransactionID pgtype.Int4        `json:"recurring_transaction_id"`
+	CreatedAt              pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt              pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt              pgtype.Timestamptz `json:"deleted_at"`
+	CcState                pgtype.Text        `json:"cc_state"`
+	BilledAt               pgtype.Timestamptz `json:"billed_at"`
+	SettledAt              pgtype.Timestamptz `json:"settled_at"`
+	SettlementIntent       pgtype.Text        `json:"settlement_intent"`
+	Source                 pgtype.Text        `json:"source"`
+	TemplateID             pgtype.Int4        `json:"template_id"`
+	IsProjected            pgtype.Bool        `json:"is_projected"`
+	CategoryName           pgtype.Text        `json:"category_name"`
+}
+
+// Returns all transactions in a date range with category name for aggregation (no pagination)
+// Used by dashboard future spending calculations
+func (q *Queries) GetTransactionsForAggregation(ctx context.Context, arg GetTransactionsForAggregationParams) ([]GetTransactionsForAggregationRow, error) {
+	rows, err := q.db.Query(ctx, getTransactionsForAggregation, arg.WorkspaceID, arg.StartDate, arg.EndDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetTransactionsForAggregationRow{}
+	for rows.Next() {
+		var i GetTransactionsForAggregationRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.AccountID,
+			&i.Name,
+			&i.Amount,
+			&i.Type,
+			&i.TransactionDate,
+			&i.IsPaid,
+			&i.CcSettlementIntent,
+			&i.Notes,
+			&i.TransferPairID,
+			&i.CategoryID,
+			&i.IsCcPayment,
+			&i.RecurringTransactionID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.CcState,
+			&i.BilledAt,
+			&i.SettledAt,
+			&i.SettlementIntent,
+			&i.Source,
+			&i.TemplateID,
+			&i.IsProjected,
+			&i.CategoryName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getTransactionsWithCategory = `-- name: GetTransactionsWithCategory :many
 SELECT
     t.id,

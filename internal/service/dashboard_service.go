@@ -307,14 +307,8 @@ func (s *DashboardService) GetFutureSpending(workspaceID int32, months int) (*do
 	endDate := startDate.AddDate(0, months, 0)
 
 	// Get all transactions in the date range (includes both actual and projected)
-	filters := &domain.TransactionFilters{
-		StartDate: &startDate,
-		EndDate:   &endDate,
-		Page:      1,
-		PageSize:  domain.MaxPageSize * 100, // Get all transactions
-	}
-
-	txResult, err := s.transactionRepo.GetByWorkspace(workspaceID, filters)
+	// Uses dedicated aggregation method that doesn't have pagination limits
+	transactions, err := s.transactionRepo.GetByDateRangeForAggregation(workspaceID, startDate, endDate)
 	if err != nil {
 		return nil, err
 	}
@@ -340,7 +334,7 @@ func (s *DashboardService) GetFutureSpending(workspaceID int32, months int) (*do
 	monthlyData := make(map[string]*domain.MonthSpending)
 
 	// Process regular transactions
-	for _, txn := range txResult.Data {
+	for _, txn := range transactions {
 		// Only count expenses
 		if txn.Type != domain.TransactionTypeExpense {
 			continue
@@ -388,7 +382,7 @@ func (s *DashboardService) GetFutureSpending(workspaceID int32, months int) (*do
 
 	// Build category name map (from transactions that have category names)
 	categoryMap := make(map[int32]string)
-	for _, txn := range txResult.Data {
+	for _, txn := range transactions {
 		if txn.CategoryID != nil && txn.CategoryName != nil {
 			categoryMap[*txn.CategoryID] = *txn.CategoryName
 		}

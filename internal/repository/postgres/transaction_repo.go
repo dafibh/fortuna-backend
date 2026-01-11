@@ -1087,3 +1087,92 @@ func (r *TransactionRepository) AtomicSettle(transferTx *domain.Transaction, set
 
 	return createdTransfer, len(rows), nil
 }
+
+// GetByDateRangeForAggregation retrieves all transactions in a date range for aggregation
+// This method returns all transactions without pagination, intended for dashboard calculations
+func (r *TransactionRepository) GetByDateRangeForAggregation(workspaceID int32, startDate, endDate time.Time) ([]*domain.Transaction, error) {
+	ctx := context.Background()
+
+	rows, err := r.queries.GetTransactionsForAggregation(ctx, sqlc.GetTransactionsForAggregationParams{
+		WorkspaceID: workspaceID,
+		StartDate:   pgtype.Date{Time: startDate, Valid: true},
+		EndDate:     pgtype.Date{Time: endDate, Valid: true},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	transactions := make([]*domain.Transaction, len(rows))
+	for i, row := range rows {
+		transactions[i] = sqlcAggregationRowToDomain(row)
+	}
+	return transactions, nil
+}
+
+// sqlcAggregationRowToDomain converts a GetTransactionsForAggregationRow to domain.Transaction
+func sqlcAggregationRowToDomain(row sqlc.GetTransactionsForAggregationRow) *domain.Transaction {
+	transaction := &domain.Transaction{
+		ID:              row.ID,
+		WorkspaceID:     row.WorkspaceID,
+		AccountID:       row.AccountID,
+		Name:            row.Name,
+		Amount:          pgNumericToDecimal(row.Amount),
+		Type:            domain.TransactionType(row.Type),
+		TransactionDate: row.TransactionDate.Time,
+		IsPaid:          row.IsPaid,
+		IsCCPayment:     row.IsCcPayment,
+		CreatedAt:       row.CreatedAt.Time,
+		UpdatedAt:       row.UpdatedAt.Time,
+	}
+
+	if row.CcSettlementIntent.Valid {
+		intent := domain.CCSettlementIntent(row.CcSettlementIntent.String)
+		transaction.CCSettlementIntent = &intent
+	}
+	if row.Notes.Valid {
+		transaction.Notes = &row.Notes.String
+	}
+	if row.DeletedAt.Valid {
+		transaction.DeletedAt = &row.DeletedAt.Time
+	}
+	if row.TransferPairID.Valid {
+		pairID := uuid.UUID(row.TransferPairID.Bytes)
+		transaction.TransferPairID = &pairID
+	}
+	if row.CategoryID.Valid {
+		transaction.CategoryID = &row.CategoryID.Int32
+	}
+	if row.CategoryName.Valid {
+		transaction.CategoryName = &row.CategoryName.String
+	}
+	if row.RecurringTransactionID.Valid {
+		transaction.RecurringTransactionID = &row.RecurringTransactionID.Int32
+	}
+	// CC Lifecycle (v2)
+	if row.CcState.Valid {
+		state := domain.CCState(row.CcState.String)
+		transaction.CCState = &state
+	}
+	if row.BilledAt.Valid {
+		transaction.BilledAt = &row.BilledAt.Time
+	}
+	if row.SettledAt.Valid {
+		transaction.SettledAt = &row.SettledAt.Time
+	}
+	if row.SettlementIntent.Valid {
+		intent := domain.SettlementIntent(row.SettlementIntent.String)
+		transaction.SettlementIntent = &intent
+	}
+	// Projection fields (v2)
+	if row.Source.Valid {
+		transaction.Source = row.Source.String
+	}
+	if row.TemplateID.Valid {
+		transaction.TemplateID = &row.TemplateID.Int32
+	}
+	if row.IsProjected.Valid {
+		transaction.IsProjected = row.IsProjected.Bool
+	}
+
+	return transaction
+}

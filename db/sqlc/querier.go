@@ -138,6 +138,9 @@ type Querier interface {
 	// Get multiple transactions by their IDs
 	GetTransactionsByIDs(ctx context.Context, arg GetTransactionsByIDsParams) ([]Transaction, error)
 	GetTransactionsByWorkspace(ctx context.Context, arg GetTransactionsByWorkspaceParams) ([]Transaction, error)
+	// Returns all transactions in a date range with category name for aggregation (no pagination)
+	// Used by dashboard future spending calculations
+	GetTransactionsForAggregation(ctx context.Context, arg GetTransactionsForAggregationParams) ([]GetTransactionsForAggregationRow, error)
 	// Returns transactions with category name joined for display
 	GetTransactionsWithCategory(ctx context.Context, arg GetTransactionsWithCategoryParams) ([]GetTransactionsWithCategoryRow, error)
 	GetUnpaidLoanPaymentsByMonth(ctx context.Context, arg GetUnpaidLoanPaymentsByMonthParams) ([]LoanPayment, error)

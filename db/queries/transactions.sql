@@ -355,3 +355,40 @@ WHERE workspace_id = $1
   AND settlement_intent = 'deferred'
   AND deleted_at IS NULL
 ORDER BY transaction_date ASC;
+
+-- name: GetTransactionsForAggregation :many
+-- Returns all transactions in a date range with category name for aggregation (no pagination)
+-- Used by dashboard future spending calculations
+SELECT
+    t.id,
+    t.workspace_id,
+    t.account_id,
+    t.name,
+    t.amount,
+    t.type,
+    t.transaction_date,
+    t.is_paid,
+    t.cc_settlement_intent,
+    t.notes,
+    t.transfer_pair_id,
+    t.category_id,
+    t.is_cc_payment,
+    t.recurring_transaction_id,
+    t.created_at,
+    t.updated_at,
+    t.deleted_at,
+    t.cc_state,
+    t.billed_at,
+    t.settled_at,
+    t.settlement_intent,
+    t.source,
+    t.template_id,
+    t.is_projected,
+    bc.name AS category_name
+FROM transactions t
+LEFT JOIN budget_categories bc ON t.category_id = bc.id AND bc.deleted_at IS NULL
+WHERE t.workspace_id = @workspace_id
+  AND t.deleted_at IS NULL
+  AND t.transaction_date >= @start_date::DATE
+  AND t.transaction_date <= @end_date::DATE
+ORDER BY t.transaction_date DESC, t.created_at DESC;

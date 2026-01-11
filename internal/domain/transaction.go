@@ -246,4 +246,7 @@ type TransactionRepository interface {
 
 	// Overdue detection (v2)
 	GetOverdueCC(workspaceID int32) ([]*Transaction, error)
+
+	// Aggregation operations (no pagination)
+	GetByDateRangeForAggregation(workspaceID int32, startDate, endDate time.Time) ([]*Transaction, error)
 }
