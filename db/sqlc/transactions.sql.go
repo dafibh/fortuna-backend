@@ -403,13 +403,13 @@ func (q *Queries) GetBilledCCByMonth(ctx context.Context, arg GetBilledCCByMonth
 
 const getCCMetrics = `-- name: GetCCMetrics :one
 SELECT
-    COALESCE(SUM(CASE WHEN cc_state = 'pending' THEN amount ELSE 0 END), 0)::NUMERIC(12,2) as pending_total,
-    COALESCE(SUM(CASE WHEN cc_state = 'billed' AND settlement_intent = 'deferred' THEN amount ELSE 0 END), 0)::NUMERIC(12,2) as outstanding_total,
-    COALESCE(SUM(CASE WHEN cc_state IN ('pending', 'billed', 'settled') THEN amount ELSE 0 END), 0)::NUMERIC(12,2) as purchases_total
+    COALESCE(SUM(CASE WHEN cc_state = 'pending' AND transaction_date >= $2 AND transaction_date < $3 THEN amount ELSE 0 END), 0)::NUMERIC(12,2) as pending_total,
+    COALESCE(SUM(CASE WHEN cc_state = 'billed' AND settlement_intent = 'deferred' AND transaction_date < $2 THEN amount ELSE 0 END), 0)::NUMERIC(12,2) as outstanding_total,
+    COALESCE(SUM(CASE WHEN cc_state IN ('pending', 'billed', 'settled') AND transaction_date >= $2 AND transaction_date < $3 THEN amount ELSE 0 END), 0)::NUMERIC(12,2) as purchases_total
 FROM transactions
 WHERE workspace_id = $1
   AND cc_state IS NOT NULL
-  AND transaction_date >= $2 AND transaction_date < $3
+  AND ((transaction_date >= $2 AND transaction_date < $3) OR (cc_state = 'billed' AND settlement_intent = 'deferred' AND transaction_date < $2))
   AND deleted_at IS NULL
 `
 
@@ -427,7 +427,8 @@ type GetCCMetricsRow struct {
 
 // Get CC metrics (pending, outstanding, purchases) for a month range
 // purchases = pending + billed + settled (all CC activity this month)
-// outstanding = billed transactions with deferred intent (balance to settle)
+// outstanding = billed transactions with deferred intent from previous months (balance to settle)
+// Outstanding excludes deferred transactions from the current month being viewed (they'll be paid next month)
 func (q *Queries) GetCCMetrics(ctx context.Context, arg GetCCMetricsParams) (GetCCMetricsRow, error) {
 	row := q.db.QueryRow(ctx, getCCMetrics, arg.WorkspaceID, arg.TransactionDate, arg.TransactionDate_2)
 	var i GetCCMetricsRow

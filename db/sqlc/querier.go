@@ -85,7 +85,8 @@ type Querier interface {
 	GetBudgetCategoryByName(ctx context.Context, arg GetBudgetCategoryByNameParams) (BudgetCategory, error)
 	// Get CC metrics (pending, outstanding, purchases) for a month range
 	// purchases = pending + billed + settled (all CC activity this month)
-	// outstanding = billed transactions with deferred intent (balance to settle)
+	// outstanding = billed transactions with deferred intent from previous months (balance to settle)
+	// Outstanding excludes deferred transactions from the current month being viewed (they'll be paid next month)
 	GetCCMetrics(ctx context.Context, arg GetCCMetricsParams) (GetCCMetricsRow, error)
 	// Get total outstanding balance across all CC accounts (sum of unpaid expenses)
 	GetCCOutstandingSummary(ctx context.Context, workspaceID int32) (GetCCOutstandingSummaryRow, error)
