@@ -2076,6 +2076,10 @@
                 "linkTransactionId": {
                     "type": "integer"
                 },
+                "settlementIntent": {
+                    "description": "For CC accounts: \"immediate\" or \"deferred\"",
+                    "type": "string"
+                },
                 "startDate": {
                     "type": "string"
                 }
@@ -2502,6 +2506,10 @@
                 "id": {
                     "type": "integer"
                 },
+                "settlementIntent": {
+                    "description": "For CC accounts: \"immediate\" or \"deferred\"",
+                    "type": "string"
+                },
                 "startDate": {
                     "type": "string"
                 },
@@ -2659,6 +2667,10 @@
                     "type": "string"
                 },
                 "frequency": {
+                    "type": "string"
+                },
+                "settlementIntent": {
+                    "description": "For CC accounts: \"immediate\" or \"deferred\"",
                     "type": "string"
                 },
                 "startDate": {

@@ -1718,12 +1718,13 @@ func TestCreateTransaction_CCAccount_DefaultsToPendingDeferred(t *testing.T) {
 		t.Errorf("Expected SettlementIntent 'deferred', got %s", *transaction.SettlementIntent)
 	}
 
-	// BilledAt and SettledAt should be nil for pending transactions
+	// BilledAt should be nil for pending transactions (isPaid false + billedAt nil = pending)
 	if transaction.BilledAt != nil {
 		t.Errorf("Expected BilledAt to be nil for pending transaction, got %v", transaction.BilledAt)
 	}
-	if transaction.SettledAt != nil {
-		t.Errorf("Expected SettledAt to be nil for pending transaction, got %v", transaction.SettledAt)
+	// IsPaid should be false for CC transactions (so they start as pending)
+	if transaction.IsPaid {
+		t.Errorf("Expected IsPaid to be false for pending CC transaction")
 	}
 }
 
@@ -1765,9 +1766,6 @@ func TestCreateTransaction_NonCCAccount_NullCCFields(t *testing.T) {
 	}
 	if transaction.BilledAt != nil {
 		t.Errorf("Expected BilledAt to be nil for non-CC account, got %v", transaction.BilledAt)
-	}
-	if transaction.SettledAt != nil {
-		t.Errorf("Expected SettledAt to be nil for non-CC account, got %v", transaction.SettledAt)
 	}
 }
 
@@ -1819,14 +1817,13 @@ func TestCreateTransaction_CCAccount_ImmediateIntent_StartsAsPending(t *testing.
 		t.Errorf("Expected SettlementIntent 'immediate', got %s", *transaction.SettlementIntent)
 	}
 
-	// SettledAt should be nil (settlement happens through the settlement flow, not on creation)
-	if transaction.SettledAt != nil {
-		t.Errorf("Expected SettledAt to be nil for new CC transaction, got %v", transaction.SettledAt)
-	}
-
 	// BilledAt should be nil (billing happens through the billing flow)
 	if transaction.BilledAt != nil {
 		t.Errorf("Expected BilledAt to be nil for new CC transaction, got %v", transaction.BilledAt)
+	}
+	// IsPaid should be false for CC transactions (so they start as pending)
+	if transaction.IsPaid {
+		t.Errorf("Expected IsPaid to be false for pending CC transaction")
 	}
 }
 
@@ -1956,10 +1953,9 @@ func TestToggleBilled_SettledTransaction_Error(t *testing.T) {
 	workspaceID := int32(1)
 	transactionID := int32(1)
 
-	// Add settled CC transaction
-	settledState := domain.CCStateSettled
+	// Add settled CC transaction (v2: isPaid = true means settled)
 	immediateIntent := domain.SettlementIntentImmediate
-	settledAt := time.Now().Add(-24 * time.Hour)
+	billedAt := time.Now().Add(-48 * time.Hour)
 	transactionRepo.AddTransaction(&domain.Transaction{
 		ID:               transactionID,
 		WorkspaceID:      workspaceID,
@@ -1967,9 +1963,9 @@ func TestToggleBilled_SettledTransaction_Error(t *testing.T) {
 		Name:             "Settled CC Purchase",
 		Amount:           decimal.NewFromFloat(100.00),
 		Type:             domain.TransactionTypeExpense,
-		CCState:          &settledState,
+		IsPaid:           true, // v2: isPaid = true means settled
+		BilledAt:         &billedAt,
 		SettlementIntent: &immediateIntent,
-		SettledAt:        &settledAt,
 	})
 
 	_, err := transactionService.ToggleBilled(workspaceID, transactionID)

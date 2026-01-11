@@ -62,10 +62,9 @@ type TransactionResponse struct {
 	IsProjected bool   `json:"isProjected"`          // true if this is a projected (not yet actual) transaction
 	IsModified  bool   `json:"isModified"`           // true if projected instance differs from template
 
-	// CC Lifecycle fields
-	CCState          *string `json:"ccState,omitempty"`          // "pending", "billed", or "settled"
+	// CC Lifecycle fields (v2 simplified - ccState computed from isPaid and billedAt)
+	CCState          *string `json:"ccState,omitempty"`          // Computed: "pending", "billed", or "settled"
 	BilledAt         *string `json:"billedAt,omitempty"`         // Timestamp when marked as billed
-	SettledAt        *string `json:"settledAt,omitempty"`        // Timestamp when settled
 	SettlementIntent *string `json:"settlementIntent,omitempty"` // "immediate" or "deferred"
 }
 
@@ -780,10 +779,7 @@ func toTransactionResponse(transaction *domain.Transaction) TransactionResponse 
 		billedAt := transaction.BilledAt.Format(time.RFC3339)
 		resp.BilledAt = &billedAt
 	}
-	if transaction.SettledAt != nil {
-		settledAt := transaction.SettledAt.Format(time.RFC3339)
-		resp.SettledAt = &settledAt
-	}
+	// SettledAt removed in v2 - settlement status is determined by isPaid
 	if transaction.SettlementIntent != nil {
 		settlementIntent := string(*transaction.SettlementIntent)
 		resp.SettlementIntent = &settlementIntent

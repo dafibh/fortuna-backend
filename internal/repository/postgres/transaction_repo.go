@@ -59,23 +59,11 @@ func (r *TransactionRepository) Create(transaction *domain.Transaction) (*domain
 		categoryID.Valid = true
 	}
 
-	// CC Lifecycle (v2)
-	var ccState pgtype.Text
-	if transaction.CCState != nil {
-		ccState.String = string(*transaction.CCState)
-		ccState.Valid = true
-	}
-
+	// CC Lifecycle (v2 simplified)
 	var billedAt pgtype.Timestamptz
 	if transaction.BilledAt != nil {
 		billedAt.Time = *transaction.BilledAt
 		billedAt.Valid = true
-	}
-
-	var settledAt pgtype.Timestamptz
-	if transaction.SettledAt != nil {
-		settledAt.Time = *transaction.SettledAt
-		settledAt.Valid = true
 	}
 
 	var settlementIntent pgtype.Text
@@ -116,9 +104,7 @@ func (r *TransactionRepository) Create(transaction *domain.Transaction) (*domain
 		TransferPairID:   transferPairID,
 		CategoryID:       categoryID,
 		IsCcPayment:      transaction.IsCCPayment,
-		CcState:          ccState,
 		BilledAt:         billedAt,
-		SettledAt:        settledAt,
 		SettlementIntent: settlementIntent,
 		Source:           source,
 		TemplateID:       templateID,
@@ -196,10 +182,8 @@ func (r *TransactionRepository) GetByWorkspace(workspaceID int32, filters *domai
 			params.Type = pgtype.Text{String: string(*filters.Type), Valid: true}
 			countParams.Type = pgtype.Text{String: string(*filters.Type), Valid: true}
 		}
-		if filters.CCStatus != nil {
-			params.CcStatus = pgtype.Text{String: string(*filters.CCStatus), Valid: true}
-			countParams.CcStatus = pgtype.Text{String: string(*filters.CCStatus), Valid: true}
-		}
+		// Note: CCStatus filtering now happens via computed ccState from isPaid/billedAt
+		// The SQL query no longer has cc_status filter - filtering is done client-side if needed
 	}
 
 	// Get total count
@@ -275,23 +259,11 @@ func (r *TransactionRepository) Update(workspaceID int32, id int32, data *domain
 		categoryID.Valid = true
 	}
 
-	// CC Lifecycle (v2)
-	var ccState pgtype.Text
-	if data.CCState != nil {
-		ccState.String = string(*data.CCState)
-		ccState.Valid = true
-	}
-
+	// CC Lifecycle (v2 simplified)
 	var billedAt pgtype.Timestamptz
 	if data.BilledAt != nil {
 		billedAt.Time = *data.BilledAt
 		billedAt.Valid = true
-	}
-
-	var settledAt pgtype.Timestamptz
-	if data.SettledAt != nil {
-		settledAt.Time = *data.SettledAt
-		settledAt.Valid = true
 	}
 
 	var settlementIntent pgtype.Text
@@ -330,9 +302,8 @@ func (r *TransactionRepository) Update(workspaceID int32, id int32, data *domain
 		AccountID:        data.AccountID,
 		Notes:            notes,
 		CategoryID:       categoryID,
-		CcState:          ccState,
+		IsPaid:           data.IsPaid,
 		BilledAt:         billedAt,
-		SettledAt:        settledAt,
 		SettlementIntent: settlementIntent,
 		Source:           source,
 		TemplateID:       templateID,
@@ -427,23 +398,11 @@ func (r *TransactionRepository) createTransactionWithTx(ctx context.Context, qtx
 		categoryID.Valid = true
 	}
 
-	// CC Lifecycle (v2)
-	var ccState pgtype.Text
-	if transaction.CCState != nil {
-		ccState.String = string(*transaction.CCState)
-		ccState.Valid = true
-	}
-
+	// CC Lifecycle (v2 simplified)
 	var billedAt pgtype.Timestamptz
 	if transaction.BilledAt != nil {
 		billedAt.Time = *transaction.BilledAt
 		billedAt.Valid = true
-	}
-
-	var settledAt pgtype.Timestamptz
-	if transaction.SettledAt != nil {
-		settledAt.Time = *transaction.SettledAt
-		settledAt.Valid = true
 	}
 
 	var settlementIntent pgtype.Text
@@ -484,9 +443,7 @@ func (r *TransactionRepository) createTransactionWithTx(ctx context.Context, qtx
 		TransferPairID:   transferPairID,
 		CategoryID:       categoryID,
 		IsCcPayment:      transaction.IsCCPayment,
-		CcState:          ccState,
 		BilledAt:         billedAt,
-		SettledAt:        settledAt,
 		SettlementIntent: settlementIntent,
 		Source:           source,
 		TemplateID:       templateID,
@@ -685,20 +642,17 @@ func sqlcTransactionToDomain(t sqlc.Transaction) *domain.Transaction {
 	if t.CategoryID.Valid {
 		transaction.CategoryID = &t.CategoryID.Int32
 	}
-	// CC Lifecycle (v2)
-	if t.CcState.Valid {
-		state := domain.CCState(t.CcState.String)
-		transaction.CCState = &state
-	}
+	// CC Lifecycle (v2 simplified - compute CCState from isPaid and billedAt)
 	if t.BilledAt.Valid {
 		transaction.BilledAt = &t.BilledAt.Time
-	}
-	if t.SettledAt.Valid {
-		transaction.SettledAt = &t.SettledAt.Time
 	}
 	if t.SettlementIntent.Valid {
 		intent := domain.SettlementIntent(t.SettlementIntent.String)
 		transaction.SettlementIntent = &intent
+	}
+	// Compute CCState from isPaid and billedAt (only for CC transactions - those with settlement intent)
+	if t.SettlementIntent.Valid {
+		transaction.CCState = domain.ComputeCCState(t.IsPaid, transaction.BilledAt)
 	}
 	// Recurring/Projection (v2)
 	if t.Source.Valid {
@@ -743,20 +697,17 @@ func sqlcTransactionWithCategoryToDomain(t sqlc.GetTransactionsWithCategoryRow) 
 	if t.CategoryName.Valid {
 		transaction.CategoryName = &t.CategoryName.String
 	}
-	// CC Lifecycle (v2)
-	if t.CcState.Valid {
-		state := domain.CCState(t.CcState.String)
-		transaction.CCState = &state
-	}
+	// CC Lifecycle (v2 simplified - compute CCState from isPaid and billedAt)
 	if t.BilledAt.Valid {
 		transaction.BilledAt = &t.BilledAt.Time
-	}
-	if t.SettledAt.Valid {
-		transaction.SettledAt = &t.SettledAt.Time
 	}
 	if t.SettlementIntent.Valid {
 		intent := domain.SettlementIntent(t.SettlementIntent.String)
 		transaction.SettlementIntent = &intent
+	}
+	// Compute CCState from isPaid and billedAt (only for CC transactions - those with settlement intent)
+	if t.SettlementIntent.Valid {
+		transaction.CCState = domain.ComputeCCState(t.IsPaid, transaction.BilledAt)
 	}
 	// Recurring/Projection (v2)
 	if t.Source.Valid {
@@ -909,7 +860,7 @@ func (r *TransactionRepository) GetDeferredForSettlement(workspaceID int32) ([]*
 
 	transactions := make([]*domain.Transaction, len(rows))
 	for i, row := range rows {
-		transactions[i] = sqlcTransactionToDomain(row)
+		transactions[i] = sqlcDeferredRowToDomain(row)
 	}
 	return transactions, nil
 }
@@ -925,7 +876,7 @@ func (r *TransactionRepository) GetOverdueCC(workspaceID int32) ([]*domain.Trans
 
 	transactions := make([]*domain.Transaction, len(rows))
 	for i, row := range rows {
-		transactions[i] = sqlcTransactionToDomain(row)
+		transactions[i] = sqlcOverdueRowToDomain(row)
 	}
 	return transactions, nil
 }
@@ -1025,22 +976,129 @@ func sqlcAggregationRowToDomain(row sqlc.GetTransactionsForAggregationRow) *doma
 	if row.CategoryName.Valid {
 		transaction.CategoryName = &row.CategoryName.String
 	}
-	// CC Lifecycle (v2)
-	if row.CcState.Valid {
-		state := domain.CCState(row.CcState.String)
-		transaction.CCState = &state
-	}
+	// CC Lifecycle (v2 simplified - compute CCState from isPaid and billedAt)
 	if row.BilledAt.Valid {
 		transaction.BilledAt = &row.BilledAt.Time
-	}
-	if row.SettledAt.Valid {
-		transaction.SettledAt = &row.SettledAt.Time
 	}
 	if row.SettlementIntent.Valid {
 		intent := domain.SettlementIntent(row.SettlementIntent.String)
 		transaction.SettlementIntent = &intent
 	}
+	// Compute CCState from isPaid and billedAt (only for CC transactions - those with settlement intent)
+	if row.SettlementIntent.Valid {
+		transaction.CCState = domain.ComputeCCState(row.IsPaid, transaction.BilledAt)
+	}
 	// Projection fields (v2)
+	if row.Source.Valid {
+		transaction.Source = row.Source.String
+	}
+	if row.TemplateID.Valid {
+		transaction.TemplateID = &row.TemplateID.Int32
+	}
+	if row.IsProjected.Valid {
+		transaction.IsProjected = row.IsProjected.Bool
+	}
+
+	return transaction
+}
+
+// sqlcDeferredRowToDomain converts a GetDeferredForSettlementRow to domain.Transaction
+func sqlcDeferredRowToDomain(row sqlc.GetDeferredForSettlementRow) *domain.Transaction {
+	transaction := &domain.Transaction{
+		ID:              row.ID,
+		WorkspaceID:     row.WorkspaceID,
+		AccountID:       row.AccountID,
+		Name:            row.Name,
+		Amount:          pgNumericToDecimal(row.Amount),
+		Type:            domain.TransactionType(row.Type),
+		TransactionDate: row.TransactionDate.Time,
+		IsPaid:          row.IsPaid,
+		IsCCPayment:     row.IsCcPayment,
+		CreatedAt:       row.CreatedAt.Time,
+		UpdatedAt:       row.UpdatedAt.Time,
+	}
+
+	if row.Notes.Valid {
+		transaction.Notes = &row.Notes.String
+	}
+	if row.DeletedAt.Valid {
+		transaction.DeletedAt = &row.DeletedAt.Time
+	}
+	if row.TransferPairID.Valid {
+		pairID := uuid.UUID(row.TransferPairID.Bytes)
+		transaction.TransferPairID = &pairID
+	}
+	if row.CategoryID.Valid {
+		transaction.CategoryID = &row.CategoryID.Int32
+	}
+	// CC Lifecycle (v2 simplified)
+	if row.BilledAt.Valid {
+		transaction.BilledAt = &row.BilledAt.Time
+	}
+	if row.SettlementIntent.Valid {
+		intent := domain.SettlementIntent(row.SettlementIntent.String)
+		transaction.SettlementIntent = &intent
+	}
+	// Compute CCState from isPaid and billedAt
+	if row.SettlementIntent.Valid {
+		transaction.CCState = domain.ComputeCCState(row.IsPaid, transaction.BilledAt)
+	}
+	// Projection fields
+	if row.Source.Valid {
+		transaction.Source = row.Source.String
+	}
+	if row.TemplateID.Valid {
+		transaction.TemplateID = &row.TemplateID.Int32
+	}
+	if row.IsProjected.Valid {
+		transaction.IsProjected = row.IsProjected.Bool
+	}
+
+	return transaction
+}
+
+// sqlcOverdueRowToDomain converts a GetOverdueCCRow to domain.Transaction
+func sqlcOverdueRowToDomain(row sqlc.GetOverdueCCRow) *domain.Transaction {
+	transaction := &domain.Transaction{
+		ID:              row.ID,
+		WorkspaceID:     row.WorkspaceID,
+		AccountID:       row.AccountID,
+		Name:            row.Name,
+		Amount:          pgNumericToDecimal(row.Amount),
+		Type:            domain.TransactionType(row.Type),
+		TransactionDate: row.TransactionDate.Time,
+		IsPaid:          row.IsPaid,
+		IsCCPayment:     row.IsCcPayment,
+		CreatedAt:       row.CreatedAt.Time,
+		UpdatedAt:       row.UpdatedAt.Time,
+	}
+
+	if row.Notes.Valid {
+		transaction.Notes = &row.Notes.String
+	}
+	if row.DeletedAt.Valid {
+		transaction.DeletedAt = &row.DeletedAt.Time
+	}
+	if row.TransferPairID.Valid {
+		pairID := uuid.UUID(row.TransferPairID.Bytes)
+		transaction.TransferPairID = &pairID
+	}
+	if row.CategoryID.Valid {
+		transaction.CategoryID = &row.CategoryID.Int32
+	}
+	// CC Lifecycle (v2 simplified)
+	if row.BilledAt.Valid {
+		transaction.BilledAt = &row.BilledAt.Time
+	}
+	if row.SettlementIntent.Valid {
+		intent := domain.SettlementIntent(row.SettlementIntent.String)
+		transaction.SettlementIntent = &intent
+	}
+	// Compute CCState from isPaid and billedAt
+	if row.SettlementIntent.Valid {
+		transaction.CCState = domain.ComputeCCState(row.IsPaid, transaction.BilledAt)
+	}
+	// Projection fields
 	if row.Source.Valid {
 		transaction.Source = row.Source.String
 	}

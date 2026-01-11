@@ -8,17 +8,18 @@ import (
 
 // RecurringTemplate represents a recurring template for generating projected transactions
 type RecurringTemplate struct {
-	ID          int32           `json:"id"`
-	WorkspaceID int32           `json:"workspaceId"`
-	Description string          `json:"description"`
-	Amount      decimal.Decimal `json:"amount"`
-	CategoryID  int32           `json:"categoryId"`
-	AccountID   int32           `json:"accountId"`
-	Frequency   string          `json:"frequency"` // 'monthly' for MVP
-	StartDate   time.Time       `json:"startDate"`
-	EndDate     *time.Time      `json:"endDate"` // NULL means runs forever
-	CreatedAt   time.Time       `json:"createdAt"`
-	UpdatedAt   time.Time       `json:"updatedAt"`
+	ID               int32             `json:"id"`
+	WorkspaceID      int32             `json:"workspaceId"`
+	Description      string            `json:"description"`
+	Amount           decimal.Decimal   `json:"amount"`
+	CategoryID       int32             `json:"categoryId"`
+	AccountID        int32             `json:"accountId"`
+	Frequency        string            `json:"frequency"` // 'monthly' for MVP
+	StartDate        time.Time         `json:"startDate"`
+	EndDate          *time.Time        `json:"endDate"`          // NULL means runs forever
+	SettlementIntent *SettlementIntent `json:"settlementIntent"` // For CC accounts: 'immediate' or 'deferred'
+	CreatedAt        time.Time         `json:"createdAt"`
+	UpdatedAt        time.Time         `json:"updatedAt"`
 }
 
 // CreateRecurringTemplateInput represents input for creating a recurring template
@@ -31,18 +32,20 @@ type CreateRecurringTemplateInput struct {
 	Frequency         string
 	StartDate         time.Time
 	EndDate           *time.Time
-	LinkTransactionID *int32 // Optional: link an existing transaction to this template
+	SettlementIntent  *SettlementIntent // For CC accounts: 'immediate' or 'deferred'
+	LinkTransactionID *int32            // Optional: link an existing transaction to this template
 }
 
 // UpdateRecurringTemplateInput represents input for updating a recurring template
 type UpdateRecurringTemplateInput struct {
-	Description string
-	Amount      decimal.Decimal
-	CategoryID  int32
-	AccountID   int32
-	Frequency   string
-	StartDate   time.Time
-	EndDate     *time.Time
+	Description      string
+	Amount           decimal.Decimal
+	CategoryID       int32
+	AccountID        int32
+	Frequency        string
+	StartDate        time.Time
+	EndDate          *time.Time
+	SettlementIntent *SettlementIntent // For CC accounts: 'immediate' or 'deferred'
 }
 
 // RecurringTemplateRepository defines the interface for recurring template persistence

@@ -3,14 +3,14 @@
 -- name: CreateRecurringTemplate :one
 INSERT INTO recurring_templates (
     workspace_id, description, amount, category_id, account_id,
-    frequency, start_date, end_date
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    frequency, start_date, end_date, settlement_intent
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING *;
 
 -- name: UpdateRecurringTemplate :one
 UPDATE recurring_templates
 SET description = $3, amount = $4, category_id = $5, account_id = $6,
-    frequency = $7, start_date = $8, end_date = $9, updated_at = NOW()
+    frequency = $7, start_date = $8, end_date = $9, settlement_intent = $10, updated_at = NOW()
 WHERE id = $1 AND workspace_id = $2
 RETURNING *;
 

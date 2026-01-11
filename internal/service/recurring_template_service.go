@@ -280,20 +280,24 @@ func (s *RecurringTemplateServiceImpl) validateUpdateInput(input domain.UpdateRe
 	return nil
 }
 
-// getCCFieldsForAccount returns CC lifecycle fields if the account is a credit card account
-// Returns (ccState, settlementIntent) - both nil if not a CC account
-func (s *RecurringTemplateServiceImpl) getCCFieldsForAccount(workspaceID int32, accountID int32) (*domain.CCState, *domain.SettlementIntent) {
-	account, err := s.accountRepo.GetByID(workspaceID, accountID)
+// getSettlementIntentForTemplate returns the settlement intent for CC templates
+// CCState is now computed from isPaid and billedAt, so we only need settlement intent
+func (s *RecurringTemplateServiceImpl) getSettlementIntentForTemplate(workspaceID int32, template *domain.RecurringTemplate) *domain.SettlementIntent {
+	account, err := s.accountRepo.GetByID(workspaceID, template.AccountID)
 	if err != nil {
-		return nil, nil
+		return nil
 	}
 	if account.Template != domain.TemplateCreditCard {
-		return nil, nil
+		return nil
 	}
-	// CC account: default to pending state with deferred settlement
-	ccState := domain.CCStatePending
-	settlementIntent := domain.SettlementIntentDeferred
-	return &ccState, &settlementIntent
+	// Use template's settlement intent if set, otherwise default to deferred
+	var settlementIntent domain.SettlementIntent
+	if template.SettlementIntent != nil {
+		settlementIntent = *template.SettlementIntent
+	} else {
+		settlementIntent = domain.SettlementIntentDeferred
+	}
+	return &settlementIntent
 }
 
 // generateProjections creates projected transactions for a template
@@ -361,8 +365,8 @@ func (s *RecurringTemplateServiceImpl) generateProjections(workspaceID int32, te
 			}
 		}
 
-		// Get CC lifecycle fields if this is a CC account
-		ccState, settlementIntent := s.getCCFieldsForAccount(workspaceID, template.AccountID)
+		// Get settlement intent if this is a CC account
+		settlementIntent := s.getSettlementIntentForTemplate(workspaceID, template)
 
 		transaction := &domain.Transaction{
 			WorkspaceID:      workspaceID,
@@ -375,8 +379,7 @@ func (s *RecurringTemplateServiceImpl) generateProjections(workspaceID int32, te
 			Source:           "recurring",
 			TemplateID:       &template.ID,
 			IsProjected:      true,
-			IsPaid:           false,
-			CCState:          ccState,
+			IsPaid:           false, // CCState computed from isPaid and billedAt (both nil = pending)
 			SettlementIntent: settlementIntent,
 		}
 
@@ -407,8 +410,8 @@ func (s *RecurringTemplateServiceImpl) recalculateProjections(workspaceID int32,
 		existingByMonth[monthKey] = proj
 	}
 
-	// Get CC lifecycle fields based on new template's account
-	ccState, settlementIntent := s.getCCFieldsForAccount(workspaceID, newTemplate.AccountID)
+	// Get settlement intent based on new template
+	settlementIntent := s.getSettlementIntentForTemplate(workspaceID, newTemplate)
 
 	// Process each existing projection
 	for _, proj := range existingProjections {
@@ -428,7 +431,8 @@ func (s *RecurringTemplateServiceImpl) recalculateProjections(workspaceID int32,
 			Source:           "recurring",
 			TemplateID:       &newTemplate.ID,
 			IsProjected:      true,
-			CCState:          ccState,
+			IsPaid:           proj.IsPaid, // Preserve current isPaid status
+			BilledAt:         proj.BilledAt, // Preserve current billedAt
 			SettlementIntent: settlementIntent,
 		}
 		if _, err := s.transactionRepo.Update(workspaceID, proj.ID, updateData); err != nil {
@@ -530,8 +534,8 @@ func (s *RecurringTemplateServiceImpl) generateProjectionsWithSkips(workspaceID 
 			}
 		}
 
-		// Get CC lifecycle fields if this is a CC account
-		ccState, settlementIntent := s.getCCFieldsForAccount(workspaceID, template.AccountID)
+		// Get settlement intent if this is a CC account
+		settlementIntent := s.getSettlementIntentForTemplate(workspaceID, template)
 
 		transaction := &domain.Transaction{
 			WorkspaceID:      workspaceID,
@@ -544,8 +548,7 @@ func (s *RecurringTemplateServiceImpl) generateProjectionsWithSkips(workspaceID 
 			Source:           "recurring",
 			TemplateID:       &template.ID,
 			IsProjected:      true,
-			IsPaid:           false,
-			CCState:          ccState,
+			IsPaid:           false, // CCState computed from isPaid and billedAt
 			SettlementIntent: settlementIntent,
 		}
 

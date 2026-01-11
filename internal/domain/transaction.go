@@ -15,6 +15,10 @@ const (
 )
 
 // CCState represents the lifecycle state of a credit card transaction
+// This is a computed/virtual state derived from billedAt and isPaid:
+// - pending: billedAt IS NULL AND isPaid = false
+// - billed: billedAt IS NOT NULL AND isPaid = false
+// - settled: isPaid = true
 type CCState string
 
 const (
@@ -22,6 +26,20 @@ const (
 	CCStateBilled  CCState = "billed"
 	CCStateSettled CCState = "settled"
 )
+
+// ComputeCCState derives the CC state from isPaid and billedAt
+func ComputeCCState(isPaid bool, billedAt *time.Time) *CCState {
+	if isPaid {
+		state := CCStateSettled
+		return &state
+	}
+	if billedAt != nil {
+		state := CCStateBilled
+		return &state
+	}
+	state := CCStatePending
+	return &state
+}
 
 // SettlementIntent represents when a CC transaction should be settled
 type SettlementIntent string
@@ -50,9 +68,8 @@ type Transaction struct {
 	DeletedAt       *time.Time      `json:"deletedAt,omitempty"`
 
 	// CC Lifecycle
-	CCState          *CCState          `json:"ccState"`          // 'pending' | 'billed' | 'settled' | null
-	BilledAt         *time.Time        `json:"billedAt"`         // when marked as billed
-	SettledAt        *time.Time        `json:"settledAt"`        // when settlement completed
+	CCState          *CCState          `json:"ccState"`          // Computed: derived from billedAt and isPaid
+	BilledAt         *time.Time        `json:"billedAt"`         // when marked as billed (null = pending)
 	SettlementIntent *SettlementIntent `json:"settlementIntent"` // 'immediate' | 'deferred' | null
 
 	// Recurring/Projection
@@ -100,9 +117,8 @@ type UpdateTransactionData struct {
 	Notes           *string
 	CategoryID      *int32
 	// CC Lifecycle
-	CCState          *CCState
+	IsPaid           bool // For settlement status
 	BilledAt         *time.Time
-	SettledAt        *time.Time
 	SettlementIntent *SettlementIntent
 	// Recurring/Projection
 	Source      string

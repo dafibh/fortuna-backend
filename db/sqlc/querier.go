@@ -13,7 +13,7 @@ import (
 type Querier interface {
 	// Batch toggle multiple transactions from pending to billed
 	BatchToggleToBilled(ctx context.Context, arg BatchToggleToBilledParams) ([]Transaction, error)
-	// Bulk update multiple transactions to settled state
+	// Bulk update multiple transactions to settled state (is_paid = true)
 	BulkSettleTransactions(ctx context.Context, arg BulkSettleTransactionsParams) ([]Transaction, error)
 	// Copies all allocations from one month to another (atomic, skips deleted categories)
 	CopyAllocationsToMonth(ctx context.Context, arg CopyAllocationsToMonthParams) error
@@ -73,15 +73,15 @@ type Querier interface {
 	GetAllMonths(ctx context.Context, workspaceID int32) ([]Month, error)
 	GetBestPriceForItem(ctx context.Context, arg GetBestPriceForItemParams) (string, error)
 	// Get billed CC transactions with deferred settlement intent for a month range
-	GetBilledCCByMonth(ctx context.Context, arg GetBilledCCByMonthParams) ([]Transaction, error)
+	GetBilledCCByMonth(ctx context.Context, arg GetBilledCCByMonthParams) ([]GetBilledCCByMonthRow, error)
 	GetBudgetAllocationByCategory(ctx context.Context, arg GetBudgetAllocationByCategoryParams) (BudgetAllocation, error)
 	GetBudgetAllocationsByMonth(ctx context.Context, arg GetBudgetAllocationsByMonthParams) ([]GetBudgetAllocationsByMonthRow, error)
 	GetBudgetCategoryByID(ctx context.Context, arg GetBudgetCategoryByIDParams) (BudgetCategory, error)
 	GetBudgetCategoryByName(ctx context.Context, arg GetBudgetCategoryByNameParams) (BudgetCategory, error)
 	// Get CC metrics (pending, outstanding, purchases) for a month range
-	// purchases = pending + billed + settled (all CC activity this month)
+	// Simplified: pending = billed_at IS NULL, billed = billed_at IS NOT NULL AND is_paid = false, settled = is_paid = true
+	// purchases = all CC activity this month (regardless of state)
 	// outstanding = billed transactions with deferred intent from previous months (balance to settle)
-	// Outstanding excludes deferred transactions from the current month being viewed (they'll be paid next month)
 	GetCCMetrics(ctx context.Context, arg GetCCMetricsParams) (GetCCMetricsRow, error)
 	// Get total outstanding balance across all CC accounts (sum of unpaid expenses)
 	GetCCOutstandingSummary(ctx context.Context, workspaceID int32) (GetCCOutstandingSummaryRow, error)
@@ -92,7 +92,7 @@ type Querier interface {
 	GetCompletedLoansWithStats(ctx context.Context, workspaceID int32) ([]GetCompletedLoansWithStatsRow, error)
 	GetCurrentPricesByItem(ctx context.Context, arg GetCurrentPricesByItemParams) ([]GetCurrentPricesByItemRow, error)
 	// Get all billed, deferred transactions that need settlement (ordered by date)
-	GetDeferredForSettlement(ctx context.Context, workspaceID int32) ([]Transaction, error)
+	GetDeferredForSettlement(ctx context.Context, workspaceID int32) ([]GetDeferredForSettlementRow, error)
 	GetExclusionsByTemplate(ctx context.Context, arg GetExclusionsByTemplateParams) ([]ProjectionExclusion, error)
 	GetFirstItemImage(ctx context.Context, arg GetFirstItemImageParams) (pgtype.Text, error)
 	GetLatestMonth(ctx context.Context, workspaceID int32) (Month, error)
@@ -109,9 +109,9 @@ type Querier interface {
 	// Batch query to get income/expense totals grouped by year/month for N+1 prevention
 	GetMonthlyTransactionSummaries(ctx context.Context, workspaceID int32) ([]GetMonthlyTransactionSummariesRow, error)
 	// Get CC transactions that are billed but overdue (2+ months old)
-	GetOverdueCC(ctx context.Context, workspaceID int32) ([]Transaction, error)
-	// Get pending CC transactions for a specific month range
-	GetPendingCCByMonth(ctx context.Context, arg GetPendingCCByMonthParams) ([]Transaction, error)
+	GetOverdueCC(ctx context.Context, workspaceID int32) ([]GetOverdueCCRow, error)
+	// Get pending CC transactions (billed_at IS NULL) for a specific month range
+	GetPendingCCByMonth(ctx context.Context, arg GetPendingCCByMonthParams) ([]GetPendingCCByMonthRow, error)
 	// Get outstanding balance for each CC account
 	GetPerAccountOutstanding(ctx context.Context, workspaceID int32) ([]GetPerAccountOutstandingRow, error)
 	GetPriceHistoryByPlatform(ctx context.Context, arg GetPriceHistoryByPlatformParams) ([]WishlistItemPrice, error)
@@ -172,16 +172,17 @@ type Querier interface {
 	// Sum unpaid expenses within a date range for disposable income calculation
 	SumUnpaidExpensesByDateRange(ctx context.Context, arg SumUnpaidExpensesByDateRangeParams) (pgtype.Numeric, error)
 	SumUnpaidLoanPaymentsByMonth(ctx context.Context, arg SumUnpaidLoanPaymentsByMonthParams) (pgtype.Numeric, error)
+	// ========================================
+	// CC Lifecycle Operations (v2 - Simplified)
+	// CC State: pending (billed_at IS NULL), billed (billed_at IS NOT NULL, is_paid=false), settled (is_paid=true)
+	// ========================================
+	// Toggle billed status for a CC transaction (pending <-> billed)
+	ToggleBilledStatus(ctx context.Context, arg ToggleBilledStatusParams) (Transaction, error)
 	ToggleLoanPaymentPaid(ctx context.Context, arg ToggleLoanPaymentPaidParams) (LoanPayment, error)
 	ToggleTransactionPaidStatus(ctx context.Context, arg ToggleTransactionPaidStatusParams) (Transaction, error)
 	UpdateAPITokenLastUsed(ctx context.Context, id pgtype.UUID) error
 	UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error)
 	UpdateBudgetCategory(ctx context.Context, arg UpdateBudgetCategoryParams) (BudgetCategory, error)
-	// ========================================
-	// CC Lifecycle Operations (v2)
-	// ========================================
-	// Update CC state and timestamps for a transaction
-	UpdateCCState(ctx context.Context, arg UpdateCCStateParams) (Transaction, error)
 	UpdateLoan(ctx context.Context, arg UpdateLoanParams) (Loan, error)
 	// Only updates editable fields (item_name, notes) - amount/months/dates are locked after creation
 	UpdateLoanPartial(ctx context.Context, arg UpdateLoanPartialParams) (Loan, error)

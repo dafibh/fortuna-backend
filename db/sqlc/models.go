@@ -126,27 +126,29 @@ type RecurringTemplate struct {
 	EndDate     pgtype.Date        `json:"end_date"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	// Default settlement intent for CC transactions: immediate (pay this month) or deferred (pay next month)
+	SettlementIntent pgtype.Text `json:"settlement_intent"`
 }
 
 type Transaction struct {
-	ID               int32              `json:"id"`
-	WorkspaceID      int32              `json:"workspace_id"`
-	AccountID        int32              `json:"account_id"`
-	Name             string             `json:"name"`
-	Amount           pgtype.Numeric     `json:"amount"`
-	Type             string             `json:"type"`
-	TransactionDate  pgtype.Date        `json:"transaction_date"`
-	IsPaid           bool               `json:"is_paid"`
-	Notes            pgtype.Text        `json:"notes"`
-	CreatedAt        pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
-	DeletedAt        pgtype.Timestamptz `json:"deleted_at"`
-	TransferPairID   pgtype.UUID        `json:"transfer_pair_id"`
-	CategoryID       pgtype.Int4        `json:"category_id"`
-	IsCcPayment      bool               `json:"is_cc_payment"`
-	CcState          pgtype.Text        `json:"cc_state"`
+	ID              int32          `json:"id"`
+	WorkspaceID     int32          `json:"workspace_id"`
+	AccountID       int32          `json:"account_id"`
+	Name            string         `json:"name"`
+	Amount          pgtype.Numeric `json:"amount"`
+	Type            string         `json:"type"`
+	TransactionDate pgtype.Date    `json:"transaction_date"`
+	// For CC transactions: true = settled (bill paid). For regular transactions: true = paid/completed.
+	IsPaid         bool               `json:"is_paid"`
+	Notes          pgtype.Text        `json:"notes"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt      pgtype.Timestamptz `json:"deleted_at"`
+	TransferPairID pgtype.UUID        `json:"transfer_pair_id"`
+	CategoryID     pgtype.Int4        `json:"category_id"`
+	IsCcPayment    bool               `json:"is_cc_payment"`
+	// For CC transactions only: timestamp when transaction appeared on statement. NULL = pending, set = billed.
 	BilledAt         pgtype.Timestamptz `json:"billed_at"`
-	SettledAt        pgtype.Timestamptz `json:"settled_at"`
 	SettlementIntent pgtype.Text        `json:"settlement_intent"`
 	Source           pgtype.Text        `json:"source"`
 	TemplateID       pgtype.Int4        `json:"template_id"`

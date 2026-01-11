@@ -119,7 +119,10 @@ func (s *TransactionService) CreateTransaction(workspaceID int32, input CreateTr
 	}
 
 	// Handle CC lifecycle fields
-	var ccState *domain.CCState
+	// v2 simplified: CCState is computed from isPaid and billedAt
+	// - pending: billedAt IS NULL AND isPaid = false (default for new CC transactions)
+	// - billed: billedAt IS NOT NULL AND isPaid = false
+	// - settled: isPaid = true
 	var v2SettlementIntent *domain.SettlementIntent
 	if account.Template == domain.TemplateCreditCard {
 		// Determine settlement intent: use provided or default to deferred
@@ -130,11 +133,11 @@ func (s *TransactionService) CreateTransaction(workspaceID int32, input CreateTr
 			intent = *input.SettlementIntent
 		}
 		v2SettlementIntent = &intent
-
-		// All CC transactions start as pending regardless of settlement intent
-		// The actual settlement happens through the settlement flow (pending → billed → settled)
-		state := domain.CCStatePending
-		ccState = &state
+		// All CC transactions start as pending (billedAt = nil, isPaid = false)
+		// Override isPaid to false unless explicitly set by user
+		if input.IsPaid == nil {
+			isPaid = false
+		}
 	}
 	// For non-CC accounts, all CC lifecycle fields remain nil
 
@@ -156,8 +159,8 @@ func (s *TransactionService) CreateTransaction(workspaceID int32, input CreateTr
 		IsPaid:           isPaid,
 		Notes:            notes,
 		CategoryID:       input.CategoryID,
-		CCState:          ccState,
 		SettlementIntent: v2SettlementIntent,
+		// CCState is computed from billedAt and isPaid (nil billedAt + false isPaid = pending)
 	}
 
 	created, err := s.transactionRepo.Create(transaction)
@@ -211,30 +214,32 @@ func (s *TransactionService) ToggleBilled(workspaceID int32, id int32) (*domain.
 		return nil, err
 	}
 
-	// Verify this is a CC transaction
-	if txn.CCState == nil {
+	// Verify this is a CC transaction (has settlement intent)
+	if txn.SettlementIntent == nil {
 		return nil, domain.ErrNotCCTransaction
 	}
 
-	now := time.Now()
-
-	switch *txn.CCState {
-	case domain.CCStatePending:
-		// Toggle to billed
-		state := domain.CCStateBilled
-		txn.CCState = &state
-		txn.BilledAt = &now
-	case domain.CCStateBilled:
-		// Toggle back to pending
-		state := domain.CCStatePending
-		txn.CCState = &state
-		txn.BilledAt = nil
-	case domain.CCStateSettled:
+	// Compute current CC state from billedAt and isPaid
+	// - pending: billedAt IS NULL AND isPaid = false
+	// - billed: billedAt IS NOT NULL AND isPaid = false
+	// - settled: isPaid = true
+	if txn.IsPaid {
 		// Cannot toggle settled transactions
 		return nil, domain.ErrInvalidCCStateTransition
 	}
 
-	// Update the transaction with new CC state
+	now := time.Now()
+	var newBilledAt *time.Time
+
+	if txn.BilledAt == nil {
+		// Currently pending -> toggle to billed
+		newBilledAt = &now
+	} else {
+		// Currently billed -> toggle back to pending
+		newBilledAt = nil
+	}
+
+	// Update the transaction with new billedAt
 	updated, err := s.transactionRepo.Update(workspaceID, id, &domain.UpdateTransactionData{
 		Name:             txn.Name,
 		Amount:           txn.Amount,
@@ -243,9 +248,8 @@ func (s *TransactionService) ToggleBilled(workspaceID int32, id int32) (*domain.
 		AccountID:        txn.AccountID,
 		Notes:            txn.Notes,
 		CategoryID:       txn.CategoryID,
-		CCState:          txn.CCState,
-		BilledAt:         txn.BilledAt,
-		SettledAt:        txn.SettledAt,
+		IsPaid:           txn.IsPaid, // Preserve isPaid (should be false here)
+		BilledAt:         newBilledAt,
 		SettlementIntent: txn.SettlementIntent,
 	})
 	if err != nil {
@@ -272,6 +276,12 @@ type UpdateTransactionInput struct {
 
 // UpdateTransaction updates an existing transaction with validation
 func (s *TransactionService) UpdateTransaction(workspaceID int32, id int32, input UpdateTransactionInput) (*domain.Transaction, error) {
+	// Fetch existing transaction to preserve CC fields
+	existing, err := s.transactionRepo.GetByID(workspaceID, id)
+	if err != nil {
+		return nil, err
+	}
+
 	// Validate name
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
@@ -292,7 +302,7 @@ func (s *TransactionService) UpdateTransaction(workspaceID int32, id int32, inpu
 	}
 
 	// Validate account exists and belongs to workspace
-	_, err := s.accountRepo.GetByID(workspaceID, input.AccountID)
+	_, err = s.accountRepo.GetByID(workspaceID, input.AccountID)
 	if err != nil {
 		return nil, domain.ErrAccountNotFound
 	}
@@ -317,6 +327,12 @@ func (s *TransactionService) UpdateTransaction(workspaceID int32, id int32, inpu
 		}
 	}
 
+	// Preserve existing CC fields, only update settlementIntent if provided
+	settlementIntent := existing.SettlementIntent
+	if input.SettlementIntent != nil {
+		settlementIntent = input.SettlementIntent
+	}
+
 	updated, err := s.transactionRepo.Update(workspaceID, id, &domain.UpdateTransactionData{
 		Name:             name,
 		Amount:           input.Amount,
@@ -325,7 +341,14 @@ func (s *TransactionService) UpdateTransaction(workspaceID int32, id int32, inpu
 		AccountID:        input.AccountID,
 		Notes:            notes,
 		CategoryID:       input.CategoryID,
-		SettlementIntent: input.SettlementIntent,
+		// Preserve CC lifecycle fields (v2 simplified)
+		IsPaid:           existing.IsPaid,
+		BilledAt:         existing.BilledAt,
+		SettlementIntent: settlementIntent,
+		// Preserve recurring/projection fields
+		Source:      existing.Source,
+		TemplateID:  existing.TemplateID,
+		IsProjected: existing.IsProjected,
 	})
 	if err != nil {
 		return nil, err
@@ -692,7 +715,8 @@ func (s *TransactionService) UpdateAmount(workspaceID int32, id int32, amount de
 		AccountID:        existing.AccountID,
 		Notes:            existing.Notes,
 		CategoryID:       existing.CategoryID,
-		CCState:          existing.CCState,
+		IsPaid:           existing.IsPaid,
+		BilledAt:         existing.BilledAt,
 		SettlementIntent: existing.SettlementIntent,
 	}
 

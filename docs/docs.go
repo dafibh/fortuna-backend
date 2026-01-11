@@ -2082,6 +2082,10 @@ const docTemplate = `{
                 "linkTransactionId": {
                     "type": "integer"
                 },
+                "settlementIntent": {
+                    "description": "For CC accounts: \"immediate\" or \"deferred\"",
+                    "type": "string"
+                },
                 "startDate": {
                     "type": "string"
                 }
@@ -2508,6 +2512,10 @@ const docTemplate = `{
                 "id": {
                     "type": "integer"
                 },
+                "settlementIntent": {
+                    "description": "For CC accounts: \"immediate\" or \"deferred\"",
+                    "type": "string"
+                },
                 "startDate": {
                     "type": "string"
                 },
@@ -2665,6 +2673,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "frequency": {
+                    "type": "string"
+                },
+                "settlementIntent": {
+                    "description": "For CC accounts: \"immediate\" or \"deferred\"",
                     "type": "string"
                 },
                 "startDate": {

@@ -2,10 +2,10 @@
 INSERT INTO transactions (
     workspace_id, account_id, name, amount, type,
     transaction_date, is_paid, notes, transfer_pair_id, category_id, is_cc_payment,
-    cc_state, billed_at, settled_at, settlement_intent,
+    billed_at, settlement_intent,
     source, template_id, is_projected
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
 ) RETURNING *;
 
 -- name: GetTransactionByID :one
@@ -30,8 +30,7 @@ WHERE workspace_id = @workspace_id
   AND (sqlc.narg('account_id')::INTEGER IS NULL OR account_id = sqlc.narg('account_id'))
   AND (sqlc.narg('start_date')::DATE IS NULL OR transaction_date >= sqlc.narg('start_date'))
   AND (sqlc.narg('end_date')::DATE IS NULL OR transaction_date <= sqlc.narg('end_date'))
-  AND (sqlc.narg('type')::VARCHAR IS NULL OR type = sqlc.narg('type'))
-  AND (sqlc.narg('cc_status')::VARCHAR IS NULL OR cc_state = sqlc.narg('cc_status'));
+  AND (sqlc.narg('type')::VARCHAR IS NULL OR type = sqlc.narg('type'));
 
 -- name: ToggleTransactionPaidStatus :one
 UPDATE transactions
@@ -49,13 +48,12 @@ SET
     account_id = $7,
     notes = $8,
     category_id = $9,
-    cc_state = $10,
+    is_paid = $10,
     billed_at = $11,
-    settled_at = $12,
-    settlement_intent = $13,
-    source = $14,
-    template_id = $15,
-    is_projected = $16,
+    settlement_intent = $12,
+    source = $13,
+    template_id = $14,
+    is_projected = $15,
     updated_at = NOW()
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
 RETURNING *;
@@ -142,9 +140,7 @@ SELECT
     t.created_at,
     t.updated_at,
     t.deleted_at,
-    t.cc_state,
     t.billed_at,
-    t.settled_at,
     t.settlement_intent,
     t.source,
     t.template_id,
@@ -158,7 +154,6 @@ WHERE t.workspace_id = @workspace_id
   AND (sqlc.narg('start_date')::DATE IS NULL OR t.transaction_date >= sqlc.narg('start_date'))
   AND (sqlc.narg('end_date')::DATE IS NULL OR t.transaction_date <= sqlc.narg('end_date'))
   AND (sqlc.narg('type')::VARCHAR IS NULL OR t.type = sqlc.narg('type'))
-  AND (sqlc.narg('cc_status')::VARCHAR IS NULL OR t.cc_state = sqlc.narg('cc_status'))
 ORDER BY t.transaction_date DESC, t.created_at DESC
 LIMIT @page_size OFFSET @page_offset;
 
@@ -186,86 +181,94 @@ WHERE workspace_id = $1
 ORDER BY id;
 
 -- ========================================
--- CC Lifecycle Operations (v2)
+-- CC Lifecycle Operations (v2 - Simplified)
+-- CC State: pending (billed_at IS NULL), billed (billed_at IS NOT NULL, is_paid=false), settled (is_paid=true)
 -- ========================================
 
--- name: UpdateCCState :one
--- Update CC state and timestamps for a transaction
+-- name: ToggleBilledStatus :one
+-- Toggle billed status for a CC transaction (pending <-> billed)
 UPDATE transactions
-SET cc_state = $3,
-    billed_at = $4,
-    settled_at = $5,
+SET billed_at = CASE WHEN billed_at IS NULL THEN NOW() ELSE NULL END,
     updated_at = NOW()
 WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL
 RETURNING *;
 
 -- name: GetPendingCCByMonth :many
--- Get pending CC transactions for a specific month range
-SELECT * FROM transactions
-WHERE workspace_id = $1
-  AND cc_state = 'pending'
-  AND transaction_date >= $2 AND transaction_date < $3
-  AND deleted_at IS NULL
-ORDER BY transaction_date DESC;
+-- Get pending CC transactions (billed_at IS NULL) for a specific month range
+SELECT * FROM transactions t
+JOIN accounts a ON t.account_id = a.id
+WHERE t.workspace_id = $1
+  AND a.template = 'credit_card'
+  AND t.billed_at IS NULL
+  AND t.is_paid = false
+  AND t.transaction_date >= $2 AND t.transaction_date < $3
+  AND t.deleted_at IS NULL
+ORDER BY t.transaction_date DESC;
 
 -- name: GetBilledCCByMonth :many
 -- Get billed CC transactions with deferred settlement intent for a month range
-SELECT * FROM transactions
-WHERE workspace_id = $1
-  AND cc_state = 'billed'
-  AND settlement_intent = 'deferred'
-  AND transaction_date >= $2 AND transaction_date < $3
-  AND deleted_at IS NULL
-ORDER BY transaction_date DESC;
+SELECT * FROM transactions t
+JOIN accounts a ON t.account_id = a.id
+WHERE t.workspace_id = $1
+  AND a.template = 'credit_card'
+  AND t.billed_at IS NOT NULL
+  AND t.is_paid = false
+  AND t.settlement_intent = 'deferred'
+  AND t.transaction_date >= $2 AND t.transaction_date < $3
+  AND t.deleted_at IS NULL
+ORDER BY t.transaction_date DESC;
 
 -- name: GetOverdueCC :many
 -- Get CC transactions that are billed but overdue (2+ months old)
-SELECT * FROM transactions
-WHERE workspace_id = $1
-  AND cc_state = 'billed'
-  AND settlement_intent = 'deferred'
-  AND billed_at < NOW() - INTERVAL '2 months'
-  AND deleted_at IS NULL
-ORDER BY billed_at ASC;
+SELECT * FROM transactions t
+JOIN accounts a ON t.account_id = a.id
+WHERE t.workspace_id = $1
+  AND a.template = 'credit_card'
+  AND t.billed_at IS NOT NULL
+  AND t.is_paid = false
+  AND t.settlement_intent = 'deferred'
+  AND t.billed_at < NOW() - INTERVAL '2 months'
+  AND t.deleted_at IS NULL
+ORDER BY t.billed_at ASC;
 
 -- name: BulkSettleTransactions :many
--- Bulk update multiple transactions to settled state
+-- Bulk update multiple transactions to settled state (is_paid = true)
 UPDATE transactions
-SET cc_state = 'settled',
-    settled_at = NOW(),
+SET is_paid = true,
     updated_at = NOW()
 WHERE id = ANY($1::int[])
   AND workspace_id = $2
-  AND cc_state = 'billed'
+  AND billed_at IS NOT NULL
+  AND is_paid = false
   AND deleted_at IS NULL
 RETURNING *;
 
 -- name: BatchToggleToBilled :many
 -- Batch toggle multiple transactions from pending to billed
 UPDATE transactions
-SET cc_state = 'billed',
-    billed_at = NOW(),
+SET billed_at = NOW(),
     updated_at = NOW()
 WHERE id = ANY($1::int[])
   AND workspace_id = $2
-  AND cc_state = 'pending'
+  AND billed_at IS NULL
   AND deleted_at IS NULL
 RETURNING *;
 
 -- name: GetCCMetrics :one
 -- Get CC metrics (pending, outstanding, purchases) for a month range
--- purchases = pending + billed + settled (all CC activity this month)
+-- Simplified: pending = billed_at IS NULL, billed = billed_at IS NOT NULL AND is_paid = false, settled = is_paid = true
+-- purchases = all CC activity this month (regardless of state)
 -- outstanding = billed transactions with deferred intent from previous months (balance to settle)
--- Outstanding excludes deferred transactions from the current month being viewed (they'll be paid next month)
 SELECT
-    COALESCE(SUM(CASE WHEN cc_state = 'pending' AND transaction_date >= $2 AND transaction_date < $3 THEN amount ELSE 0 END), 0)::NUMERIC(12,2) as pending_total,
-    COALESCE(SUM(CASE WHEN cc_state = 'billed' AND settlement_intent = 'deferred' AND transaction_date < $2 THEN amount ELSE 0 END), 0)::NUMERIC(12,2) as outstanding_total,
-    COALESCE(SUM(CASE WHEN cc_state IN ('pending', 'billed', 'settled') AND transaction_date >= $2 AND transaction_date < $3 THEN amount ELSE 0 END), 0)::NUMERIC(12,2) as purchases_total
-FROM transactions
-WHERE workspace_id = $1
-  AND cc_state IS NOT NULL
-  AND ((transaction_date >= $2 AND transaction_date < $3) OR (cc_state = 'billed' AND settlement_intent = 'deferred' AND transaction_date < $2))
-  AND deleted_at IS NULL;
+    COALESCE(SUM(CASE WHEN t.billed_at IS NULL AND t.is_paid = false AND t.transaction_date >= $2 AND t.transaction_date < $3 THEN t.amount ELSE 0 END), 0)::NUMERIC(12,2) as pending_total,
+    COALESCE(SUM(CASE WHEN t.billed_at IS NOT NULL AND t.is_paid = false AND t.settlement_intent = 'deferred' AND t.transaction_date < $2 THEN t.amount ELSE 0 END), 0)::NUMERIC(12,2) as outstanding_total,
+    COALESCE(SUM(CASE WHEN t.transaction_date >= $2 AND t.transaction_date < $3 THEN t.amount ELSE 0 END), 0)::NUMERIC(12,2) as purchases_total
+FROM transactions t
+JOIN accounts a ON t.account_id = a.id
+WHERE t.workspace_id = $1
+  AND a.template = 'credit_card'
+  AND ((t.transaction_date >= $2 AND t.transaction_date < $3) OR (t.billed_at IS NOT NULL AND t.is_paid = false AND t.settlement_intent = 'deferred' AND t.transaction_date < $2))
+  AND t.deleted_at IS NULL;
 
 -- ========================================
 -- Projection Management (v2)
@@ -307,12 +310,15 @@ WHERE workspace_id = $1
 
 -- name: GetDeferredForSettlement :many
 -- Get all billed, deferred transactions that need settlement (ordered by date)
-SELECT * FROM transactions
-WHERE workspace_id = $1
-  AND cc_state = 'billed'
-  AND settlement_intent = 'deferred'
-  AND deleted_at IS NULL
-ORDER BY transaction_date ASC;
+SELECT * FROM transactions t
+JOIN accounts a ON t.account_id = a.id
+WHERE t.workspace_id = $1
+  AND a.template = 'credit_card'
+  AND t.billed_at IS NOT NULL
+  AND t.is_paid = false
+  AND t.settlement_intent = 'deferred'
+  AND t.deleted_at IS NULL
+ORDER BY t.transaction_date ASC;
 
 -- name: GetTransactionsForAggregation :many
 -- Returns all transactions in a date range with category name for aggregation (no pagination)
@@ -333,9 +339,7 @@ SELECT
     t.created_at,
     t.updated_at,
     t.deleted_at,
-    t.cc_state,
     t.billed_at,
-    t.settled_at,
     t.settlement_intent,
     t.source,
     t.template_id,

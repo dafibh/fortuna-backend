@@ -40,15 +40,22 @@ func (r *RecurringTemplateRepository) Create(template *domain.RecurringTemplate)
 		endDate = pgtype.Date{Time: *template.EndDate, Valid: true}
 	}
 
+	var settlementIntent pgtype.Text
+	if template.SettlementIntent != nil {
+		settlementIntent.String = string(*template.SettlementIntent)
+		settlementIntent.Valid = true
+	}
+
 	created, err := r.queries.CreateRecurringTemplate(ctx, sqlc.CreateRecurringTemplateParams{
-		WorkspaceID: template.WorkspaceID,
-		Description: template.Description,
-		Amount:      amount,
-		CategoryID:  template.CategoryID,
-		AccountID:   template.AccountID,
-		Frequency:   template.Frequency,
-		StartDate:   startDate,
-		EndDate:     endDate,
+		WorkspaceID:      template.WorkspaceID,
+		Description:      template.Description,
+		Amount:           amount,
+		CategoryID:       template.CategoryID,
+		AccountID:        template.AccountID,
+		Frequency:        template.Frequency,
+		StartDate:        startDate,
+		EndDate:          endDate,
+		SettlementIntent: settlementIntent,
 	})
 	if err != nil {
 		return nil, err
@@ -73,16 +80,23 @@ func (r *RecurringTemplateRepository) Update(workspaceID int32, id int32, input 
 		endDate = pgtype.Date{Time: *input.EndDate, Valid: true}
 	}
 
+	var settlementIntent pgtype.Text
+	if input.SettlementIntent != nil {
+		settlementIntent.String = string(*input.SettlementIntent)
+		settlementIntent.Valid = true
+	}
+
 	updated, err := r.queries.UpdateRecurringTemplate(ctx, sqlc.UpdateRecurringTemplateParams{
-		ID:          id,
-		WorkspaceID: workspaceID,
-		Description: input.Description,
-		Amount:      amount,
-		CategoryID:  input.CategoryID,
-		AccountID:   input.AccountID,
-		Frequency:   input.Frequency,
-		StartDate:   startDate,
-		EndDate:     endDate,
+		ID:               id,
+		WorkspaceID:      workspaceID,
+		Description:      input.Description,
+		Amount:           amount,
+		CategoryID:       input.CategoryID,
+		AccountID:        input.AccountID,
+		Frequency:        input.Frequency,
+		StartDate:        startDate,
+		EndDate:          endDate,
+		SettlementIntent: settlementIntent,
 	})
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -197,6 +211,11 @@ func sqlcRecurringTemplateToDomain(t sqlc.RecurringTemplate) *domain.RecurringTe
 	if t.EndDate.Valid {
 		endDate := t.EndDate.Time
 		template.EndDate = &endDate
+	}
+
+	if t.SettlementIntent.Valid {
+		intent := domain.SettlementIntent(t.SettlementIntent.String)
+		template.SettlementIntent = &intent
 	}
 
 	return template

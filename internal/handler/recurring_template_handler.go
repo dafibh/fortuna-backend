@@ -34,33 +34,36 @@ type CreateTemplateRequest struct {
 	Frequency         string  `json:"frequency"`
 	StartDate         string  `json:"startDate"`
 	EndDate           *string `json:"endDate,omitempty"`
+	SettlementIntent  *string `json:"settlementIntent,omitempty"` // For CC accounts: "immediate" or "deferred"
 	LinkTransactionID *int32  `json:"linkTransactionId,omitempty"`
 }
 
 // UpdateTemplateRequest represents the update recurring template request body
 type UpdateTemplateRequest struct {
-	Description string  `json:"description"`
-	Amount      string  `json:"amount"`
-	CategoryID  int32   `json:"categoryId"`
-	AccountID   int32   `json:"accountId"`
-	Frequency   string  `json:"frequency"`
-	StartDate   string  `json:"startDate"`
-	EndDate     *string `json:"endDate,omitempty"`
+	Description      string  `json:"description"`
+	Amount           string  `json:"amount"`
+	CategoryID       int32   `json:"categoryId"`
+	AccountID        int32   `json:"accountId"`
+	Frequency        string  `json:"frequency"`
+	StartDate        string  `json:"startDate"`
+	EndDate          *string `json:"endDate,omitempty"`
+	SettlementIntent *string `json:"settlementIntent,omitempty"` // For CC accounts: "immediate" or "deferred"
 }
 
 // TemplateResponse represents a recurring template in API responses
 type TemplateResponse struct {
-	ID          int32   `json:"id"`
-	WorkspaceID int32   `json:"workspaceId"`
-	Description string  `json:"description"`
-	Amount      string  `json:"amount"`
-	CategoryID  int32   `json:"categoryId"`
-	AccountID   int32   `json:"accountId"`
-	Frequency   string  `json:"frequency"`
-	StartDate   string  `json:"startDate"`
-	EndDate     *string `json:"endDate,omitempty"`
-	CreatedAt   string  `json:"createdAt"`
-	UpdatedAt   string  `json:"updatedAt"`
+	ID               int32   `json:"id"`
+	WorkspaceID      int32   `json:"workspaceId"`
+	Description      string  `json:"description"`
+	Amount           string  `json:"amount"`
+	CategoryID       int32   `json:"categoryId"`
+	AccountID        int32   `json:"accountId"`
+	Frequency        string  `json:"frequency"`
+	StartDate        string  `json:"startDate"`
+	EndDate          *string `json:"endDate,omitempty"`
+	SettlementIntent *string `json:"settlementIntent,omitempty"` // For CC accounts: "immediate" or "deferred"
+	CreatedAt        string  `json:"createdAt"`
+	UpdatedAt        string  `json:"updatedAt"`
 }
 
 // TemplateListResponse represents the list response
@@ -127,6 +130,17 @@ func (h *RecurringTemplateHandler) CreateTemplate(c echo.Context) error {
 			})
 		}
 		input.EndDate = &endDate
+	}
+
+	// Parse optional settlement intent (for CC accounts)
+	if req.SettlementIntent != nil && *req.SettlementIntent != "" {
+		intent := domain.SettlementIntent(*req.SettlementIntent)
+		if intent != domain.SettlementIntentImmediate && intent != domain.SettlementIntentDeferred {
+			return NewValidationError(c, "Invalid settlement intent", []ValidationError{
+				{Field: "settlementIntent", Message: "Must be one of: immediate, deferred"},
+			})
+		}
+		input.SettlementIntent = &intent
 	}
 
 	template, err := h.service.CreateTemplate(workspaceID, input)
@@ -268,6 +282,17 @@ func (h *RecurringTemplateHandler) UpdateTemplate(c echo.Context) error {
 		input.EndDate = &endDate
 	}
 
+	// Parse optional settlement intent (for CC accounts)
+	if req.SettlementIntent != nil && *req.SettlementIntent != "" {
+		intent := domain.SettlementIntent(*req.SettlementIntent)
+		if intent != domain.SettlementIntentImmediate && intent != domain.SettlementIntentDeferred {
+			return NewValidationError(c, "Invalid settlement intent", []ValidationError{
+				{Field: "settlementIntent", Message: "Must be one of: immediate, deferred"},
+			})
+		}
+		input.SettlementIntent = &intent
+	}
+
 	template, err := h.service.UpdateTemplate(workspaceID, int32(id), input)
 	if err != nil {
 		return h.handleServiceError(c, err, workspaceID, "update recurring template")
@@ -367,6 +392,10 @@ func toTemplateResponse(t *domain.RecurringTemplate) TemplateResponse {
 	if t.EndDate != nil {
 		endDate := t.EndDate.Format("2006-01-02")
 		resp.EndDate = &endDate
+	}
+	if t.SettlementIntent != nil {
+		intent := string(*t.SettlementIntent)
+		resp.SettlementIntent = &intent
 	}
 	return resp
 }

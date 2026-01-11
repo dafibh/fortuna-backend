@@ -381,6 +381,10 @@ func (m *MockTransactionRepository) Create(transaction *domain.Transaction) (*do
 	}
 	transaction.ID = m.NextID
 	m.NextID++
+	// Compute CCState from isPaid and billedAt (mirrors real repository behavior)
+	if transaction.SettlementIntent != nil {
+		transaction.CCState = domain.ComputeCCState(transaction.IsPaid, transaction.BilledAt)
+	}
 	m.Transactions[transaction.ID] = transaction
 	m.ByWorkspace[transaction.WorkspaceID] = append(m.ByWorkspace[transaction.WorkspaceID], transaction)
 	return transaction, nil
@@ -511,6 +515,14 @@ func (m *MockTransactionRepository) Update(workspaceID int32, id int32, data *do
 	transaction.AccountID = data.AccountID
 	transaction.Notes = data.Notes
 	transaction.CategoryID = data.CategoryID
+	// Update CC lifecycle fields (v2 simplified)
+	transaction.IsPaid = data.IsPaid
+	transaction.BilledAt = data.BilledAt
+	transaction.SettlementIntent = data.SettlementIntent
+	// Compute CCState from isPaid and billedAt
+	if transaction.SettlementIntent != nil {
+		transaction.CCState = domain.ComputeCCState(transaction.IsPaid, transaction.BilledAt)
+	}
 	return transaction, nil
 }
 
@@ -847,14 +859,13 @@ func (m *MockTransactionRepository) BulkSettle(workspaceID int32, ids []int32) (
 	if m.BulkSettleFn != nil {
 		return m.BulkSettleFn(workspaceID, ids)
 	}
-	// Default: update transactions to settled state
+	// Default: update transactions to settled state (isPaid = true)
 	var result []*domain.Transaction
-	settledState := domain.CCStateSettled
-	now := time.Now()
 	for _, id := range ids {
 		if tx, ok := m.Transactions[id]; ok && tx.WorkspaceID == workspaceID {
-			tx.CCState = &settledState
-			tx.SettledAt = &now
+			tx.IsPaid = true // v2: isPaid = true means settled
+			// Recompute CCState
+			tx.CCState = domain.ComputeCCState(tx.IsPaid, tx.BilledAt)
 			result = append(result, tx)
 		}
 	}
@@ -893,14 +904,13 @@ func (m *MockTransactionRepository) AtomicSettle(transferTx *domain.Transaction,
 	m.Transactions[transferTx.ID] = transferTx
 	m.ByWorkspace[transferTx.WorkspaceID] = append(m.ByWorkspace[transferTx.WorkspaceID], transferTx)
 
-	// Settle all transactions
-	settledState := domain.CCStateSettled
-	now := time.Now()
+	// Settle all transactions (isPaid = true)
 	settledCount := 0
 	for _, id := range settleIDs {
 		if tx, ok := m.Transactions[id]; ok && tx.WorkspaceID == transferTx.WorkspaceID {
-			tx.CCState = &settledState
-			tx.SettledAt = &now
+			tx.IsPaid = true // v2: isPaid = true means settled
+			// Recompute CCState
+			tx.CCState = domain.ComputeCCState(tx.IsPaid, tx.BilledAt)
 			settledCount++
 		}
 	}
