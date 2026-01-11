@@ -6,6 +6,7 @@ import (
 
 	"github.com/dafibh/fortuna/fortuna-backend/internal/domain"
 	"github.com/dafibh/fortuna/fortuna-backend/internal/util"
+	"github.com/dafibh/fortuna/fortuna-backend/internal/websocket"
 	"github.com/rs/zerolog/log"
 )
 
@@ -14,6 +15,7 @@ type ProjectionSyncService struct {
 	templateRepo    domain.RecurringTemplateRepository
 	transactionRepo domain.TransactionRepository
 	exclusionRepo   domain.ProjectionExclusionRepository
+	eventPublisher  websocket.EventPublisher
 }
 
 // NewProjectionSyncService creates a new ProjectionSyncService
@@ -30,6 +32,18 @@ func NewProjectionSyncService(
 // SetExclusionRepository sets the exclusion repository for projection exclusion tracking
 func (s *ProjectionSyncService) SetExclusionRepository(exclusionRepo domain.ProjectionExclusionRepository) {
 	s.exclusionRepo = exclusionRepo
+}
+
+// SetEventPublisher sets the event publisher for real-time updates
+func (s *ProjectionSyncService) SetEventPublisher(publisher websocket.EventPublisher) {
+	s.eventPublisher = publisher
+}
+
+// publishEvent publishes a WebSocket event if a publisher is configured
+func (s *ProjectionSyncService) publishEvent(workspaceID int32, event websocket.Event) {
+	if s.eventPublisher != nil {
+		s.eventPublisher.Publish(workspaceID, event)
+	}
 }
 
 // SyncAllActive synchronizes projections for all active templates across all workspaces
@@ -90,15 +104,29 @@ func (s *ProjectionSyncService) syncTemplate(template *domain.RecurringTemplate)
 	}
 
 	// Generate missing projections up to targetEnd
-	return s.generateUpToMonth(template, targetEnd)
+	created, err := s.generateUpToMonth(template, targetEnd)
+	if err != nil {
+		return err
+	}
+
+	// Publish event if projections were created
+	if created > 0 {
+		s.publishEvent(template.WorkspaceID, websocket.ProjectionSynced(map[string]any{
+			"templateId":         template.ID,
+			"projectionsCreated": created,
+		}))
+	}
+
+	return nil
 }
 
 // generateUpToMonth creates any missing projections up to the target month
-func (s *ProjectionSyncService) generateUpToMonth(template *domain.RecurringTemplate, targetEnd time.Time) error {
+// Returns the number of projections created
+func (s *ProjectionSyncService) generateUpToMonth(template *domain.RecurringTemplate, targetEnd time.Time) (int, error) {
 	// Get existing projections to check for duplicates
 	existingProjections, err := s.transactionRepo.GetProjectionsByTemplate(template.WorkspaceID, template.ID)
 	if err != nil {
-		return fmt.Errorf("failed to get existing projections: %w", err)
+		return 0, fmt.Errorf("failed to get existing projections: %w", err)
 	}
 
 	// Build set of existing projection months
@@ -163,7 +191,7 @@ func (s *ProjectionSyncService) generateUpToMonth(template *domain.RecurringTemp
 		}
 
 		if _, err := s.transactionRepo.Create(transaction); err != nil {
-			return fmt.Errorf("failed to create projection for %s: %w", monthKey, err)
+			return created, fmt.Errorf("failed to create projection for %s: %w", monthKey, err)
 		}
 
 		created++
@@ -177,7 +205,7 @@ func (s *ProjectionSyncService) generateUpToMonth(template *domain.RecurringTemp
 			Msg("Created new projections for template")
 	}
 
-	return nil
+	return created, nil
 }
 
 // calculateActualDate returns the actual date for a target day in a given month

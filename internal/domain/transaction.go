@@ -82,6 +82,7 @@ type TransactionFilters struct {
 	StartDate *time.Time
 	EndDate   *time.Time
 	Type      *TransactionType
+	CCStatus  *CCState // Filter by cc_state (pending, billed, settled)
 	Page      int32
 	PageSize  int32
 }

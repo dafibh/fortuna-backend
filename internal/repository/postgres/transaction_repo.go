@@ -210,6 +210,10 @@ func (r *TransactionRepository) GetByWorkspace(workspaceID int32, filters *domai
 			params.Type = pgtype.Text{String: string(*filters.Type), Valid: true}
 			countParams.Type = pgtype.Text{String: string(*filters.Type), Valid: true}
 		}
+		if filters.CCStatus != nil {
+			params.CcStatus = pgtype.Text{String: string(*filters.CCStatus), Valid: true}
+			countParams.CcStatus = pgtype.Text{String: string(*filters.CCStatus), Valid: true}
+		}
 	}
 
 	// Get total count

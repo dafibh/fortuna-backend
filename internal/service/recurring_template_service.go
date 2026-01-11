@@ -5,6 +5,7 @@ import (
 
 	"github.com/dafibh/fortuna/fortuna-backend/internal/domain"
 	"github.com/dafibh/fortuna/fortuna-backend/internal/util"
+	"github.com/dafibh/fortuna/fortuna-backend/internal/websocket"
 	"github.com/shopspring/decimal"
 )
 
@@ -15,6 +16,7 @@ type RecurringTemplateServiceImpl struct {
 	accountRepo     domain.AccountRepository
 	categoryRepo    domain.BudgetCategoryRepository
 	exclusionRepo   domain.ProjectionExclusionRepository
+	eventPublisher  websocket.EventPublisher
 }
 
 // NewRecurringTemplateService creates a new RecurringTemplateService
@@ -35,6 +37,18 @@ func NewRecurringTemplateService(
 // SetExclusionRepository sets the exclusion repository for projection exclusion tracking
 func (s *RecurringTemplateServiceImpl) SetExclusionRepository(exclusionRepo domain.ProjectionExclusionRepository) {
 	s.exclusionRepo = exclusionRepo
+}
+
+// SetEventPublisher sets the event publisher for real-time updates
+func (s *RecurringTemplateServiceImpl) SetEventPublisher(publisher websocket.EventPublisher) {
+	s.eventPublisher = publisher
+}
+
+// publishEvent publishes a WebSocket event if a publisher is configured
+func (s *RecurringTemplateServiceImpl) publishEvent(workspaceID int32, event websocket.Event) {
+	if s.eventPublisher != nil {
+		s.eventPublisher.Publish(workspaceID, event)
+	}
 }
 
 // CreateTemplate creates a new recurring template and generates projections
@@ -96,6 +110,9 @@ func (s *RecurringTemplateServiceImpl) CreateTemplate(workspaceID int32, input d
 		_ = s.templateRepo.Delete(workspaceID, created.ID)
 		return nil, err
 	}
+
+	// Publish event for real-time updates
+	s.publishEvent(workspaceID, websocket.RecurringCreated(created))
 
 	return created, nil
 }
@@ -164,6 +181,9 @@ func (s *RecurringTemplateServiceImpl) UpdateTemplate(workspaceID int32, id int3
 		return nil, err
 	}
 
+	// Publish event for real-time updates
+	s.publishEvent(workspaceID, websocket.RecurringUpdated(updated))
+
 	return updated, nil
 }
 
@@ -186,7 +206,14 @@ func (s *RecurringTemplateServiceImpl) DeleteTemplate(workspaceID int32, id int3
 	}
 
 	// 3. Delete the template
-	return s.templateRepo.Delete(workspaceID, id)
+	if err := s.templateRepo.Delete(workspaceID, id); err != nil {
+		return err
+	}
+
+	// Publish event for real-time updates
+	s.publishEvent(workspaceID, websocket.RecurringDeleted(map[string]any{"id": id}))
+
+	return nil
 }
 
 // GetTemplate retrieves a single template by ID

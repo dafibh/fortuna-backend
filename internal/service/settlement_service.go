@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/dafibh/fortuna/fortuna-backend/internal/domain"
+	"github.com/dafibh/fortuna/fortuna-backend/internal/websocket"
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
@@ -12,6 +13,7 @@ import (
 type SettlementService struct {
 	transactionRepo domain.TransactionRepository
 	accountRepo     domain.AccountRepository
+	eventPublisher  websocket.EventPublisher
 }
 
 // NewSettlementService creates a new SettlementService
@@ -19,6 +21,18 @@ func NewSettlementService(transactionRepo domain.TransactionRepository, accountR
 	return &SettlementService{
 		transactionRepo: transactionRepo,
 		accountRepo:     accountRepo,
+	}
+}
+
+// SetEventPublisher sets the event publisher for real-time updates
+func (s *SettlementService) SetEventPublisher(publisher websocket.EventPublisher) {
+	s.eventPublisher = publisher
+}
+
+// publishEvent publishes a WebSocket event if a publisher is configured
+func (s *SettlementService) publishEvent(workspaceID int32, event websocket.Event) {
+	if s.eventPublisher != nil {
+		s.eventPublisher.Publish(workspaceID, event)
 	}
 }
 
@@ -106,11 +120,16 @@ func (s *SettlementService) Settle(workspaceID int32, input domain.SettlementInp
 		return nil, domain.ErrTransactionsNotFound
 	}
 
-	// 8. Return settlement result
-	return &domain.SettlementResult{
+	// 8. Build settlement result
+	result := &domain.SettlementResult{
 		TransferID:   createdTransfer.ID,
 		SettledCount: settledCount,
 		TotalAmount:  totalAmount,
 		SettledAt:    now,
-	}, nil
+	}
+
+	// 9. Publish event for real-time updates
+	s.publishEvent(workspaceID, websocket.SettlementCreated(result))
+
+	return result, nil
 }

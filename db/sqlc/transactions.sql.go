@@ -145,6 +145,7 @@ WHERE workspace_id = $1
   AND ($3::DATE IS NULL OR transaction_date >= $3)
   AND ($4::DATE IS NULL OR transaction_date <= $4)
   AND ($5::VARCHAR IS NULL OR type = $5)
+  AND ($6::VARCHAR IS NULL OR cc_state = $6)
 `
 
 type CountTransactionsByWorkspaceParams struct {
@@ -153,6 +154,7 @@ type CountTransactionsByWorkspaceParams struct {
 	StartDate   pgtype.Date `json:"start_date"`
 	EndDate     pgtype.Date `json:"end_date"`
 	Type        pgtype.Text `json:"type"`
+	CcStatus    pgtype.Text `json:"cc_status"`
 }
 
 func (q *Queries) CountTransactionsByWorkspace(ctx context.Context, arg CountTransactionsByWorkspaceParams) (int64, error) {
@@ -162,6 +164,7 @@ func (q *Queries) CountTransactionsByWorkspace(ctx context.Context, arg CountTra
 		arg.StartDate,
 		arg.EndDate,
 		arg.Type,
+		arg.CcStatus,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -1186,8 +1189,9 @@ WHERE t.workspace_id = $1
   AND ($3::DATE IS NULL OR t.transaction_date >= $3)
   AND ($4::DATE IS NULL OR t.transaction_date <= $4)
   AND ($5::VARCHAR IS NULL OR t.type = $5)
+  AND ($6::VARCHAR IS NULL OR t.cc_state = $6)
 ORDER BY t.transaction_date DESC, t.created_at DESC
-LIMIT $7 OFFSET $6
+LIMIT $8 OFFSET $7
 `
 
 type GetTransactionsWithCategoryParams struct {
@@ -1196,6 +1200,7 @@ type GetTransactionsWithCategoryParams struct {
 	StartDate   pgtype.Date `json:"start_date"`
 	EndDate     pgtype.Date `json:"end_date"`
 	Type        pgtype.Text `json:"type"`
+	CcStatus    pgtype.Text `json:"cc_status"`
 	PageOffset  int32       `json:"page_offset"`
 	PageSize    int32       `json:"page_size"`
 }
@@ -1236,6 +1241,7 @@ func (q *Queries) GetTransactionsWithCategory(ctx context.Context, arg GetTransa
 		arg.StartDate,
 		arg.EndDate,
 		arg.Type,
+		arg.CcStatus,
 		arg.PageOffset,
 		arg.PageSize,
 	)

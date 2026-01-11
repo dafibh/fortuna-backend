@@ -229,6 +229,7 @@ type PaginatedTransactionsResponse struct {
 // @Param startDate query string false "Start date (YYYY-MM-DD)"
 // @Param endDate query string false "End date (YYYY-MM-DD)"
 // @Param type query string false "Transaction type (income or expense)"
+// @Param ccStatus query string false "Filter by CC status (pending, billed, or settled)"
 // @Param page query int false "Page number" default(1)
 // @Param pageSize query int false "Items per page" default(20)
 // @Success 200 {object} PaginatedTransactionsResponse
@@ -299,6 +300,15 @@ func (h *TransactionHandler) GetTransactions(c echo.Context) error {
 			return NewValidationError(c, "Invalid type (must be 'income' or 'expense')", nil)
 		}
 		filters.Type = &transactionType
+	}
+
+	ccStatusStr := c.QueryParam("ccStatus")
+	if ccStatusStr != "" {
+		ccStatus := domain.CCState(ccStatusStr)
+		if ccStatus != domain.CCStatePending && ccStatus != domain.CCStateBilled && ccStatus != domain.CCStateSettled {
+			return NewValidationError(c, "Invalid ccStatus (must be 'pending', 'billed', or 'settled')", nil)
+		}
+		filters.CCStatus = &ccStatus
 	}
 
 	if pageStr != "" {

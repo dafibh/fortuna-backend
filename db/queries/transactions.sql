@@ -30,7 +30,8 @@ WHERE workspace_id = @workspace_id
   AND (sqlc.narg('account_id')::INTEGER IS NULL OR account_id = sqlc.narg('account_id'))
   AND (sqlc.narg('start_date')::DATE IS NULL OR transaction_date >= sqlc.narg('start_date'))
   AND (sqlc.narg('end_date')::DATE IS NULL OR transaction_date <= sqlc.narg('end_date'))
-  AND (sqlc.narg('type')::VARCHAR IS NULL OR type = sqlc.narg('type'));
+  AND (sqlc.narg('type')::VARCHAR IS NULL OR type = sqlc.narg('type'))
+  AND (sqlc.narg('cc_status')::VARCHAR IS NULL OR cc_state = sqlc.narg('cc_status'));
 
 -- name: ToggleTransactionPaidStatus :one
 UPDATE transactions
@@ -182,6 +183,7 @@ WHERE t.workspace_id = @workspace_id
   AND (sqlc.narg('start_date')::DATE IS NULL OR t.transaction_date >= sqlc.narg('start_date'))
   AND (sqlc.narg('end_date')::DATE IS NULL OR t.transaction_date <= sqlc.narg('end_date'))
   AND (sqlc.narg('type')::VARCHAR IS NULL OR t.type = sqlc.narg('type'))
+  AND (sqlc.narg('cc_status')::VARCHAR IS NULL OR t.cc_state = sqlc.narg('cc_status'))
 ORDER BY t.transaction_date DESC, t.created_at DESC
 LIMIT @page_size OFFSET @page_offset;
 

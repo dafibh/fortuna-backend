@@ -169,8 +169,10 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to create WebSocket JWT validator")
 	}
 
-	// Link WebSocket event publisher to transaction service for real-time updates
+	// Link WebSocket event publisher to services for real-time updates
 	transactionService.SetEventPublisher(wsHub)
+	recurringTemplateService.SetEventPublisher(wsHub)
+	settlementService.SetEventPublisher(wsHub)
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(authService)
@@ -199,6 +201,7 @@ func main() {
 	// Initialize projection sync service for daily background sync
 	projectionSyncService := service.NewProjectionSyncService(recurringTemplateRepo, transactionRepo)
 	projectionSyncService.SetExclusionRepository(exclusionRepo)
+	projectionSyncService.SetEventPublisher(wsHub)
 
 	// Start projection sync goroutine with context for graceful shutdown
 	projectionCtx, projectionCancel := context.WithCancel(context.Background())
