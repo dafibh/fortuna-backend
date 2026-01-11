@@ -81,7 +81,9 @@ type Querier interface {
 	// Get CC metrics (pending, outstanding, purchases) for a month range
 	// Simplified: pending = billed_at IS NULL, billed = billed_at IS NOT NULL AND is_paid = false, settled = is_paid = true
 	// purchases = all CC activity this month (regardless of state)
-	// outstanding = billed transactions with deferred intent from previous months (balance to settle)
+	// outstanding = billed transactions to settle this month:
+	//   1. deferred intent from previous months
+	//   2. immediate intent from current month
 	GetCCMetrics(ctx context.Context, arg GetCCMetricsParams) (GetCCMetricsRow, error)
 	// Get total outstanding balance across all CC accounts (sum of unpaid expenses)
 	GetCCOutstandingSummary(ctx context.Context, workspaceID int32) (GetCCOutstandingSummaryRow, error)

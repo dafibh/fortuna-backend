@@ -420,13 +420,19 @@ func (q *Queries) GetBilledCCByMonth(ctx context.Context, arg GetBilledCCByMonth
 const getCCMetrics = `-- name: GetCCMetrics :one
 SELECT
     COALESCE(SUM(CASE WHEN t.billed_at IS NULL AND t.is_paid = false AND t.transaction_date >= $2 AND t.transaction_date < $3 THEN t.amount ELSE 0 END), 0)::NUMERIC(12,2) as pending_total,
-    COALESCE(SUM(CASE WHEN t.billed_at IS NOT NULL AND t.is_paid = false AND t.settlement_intent = 'deferred' AND t.transaction_date < $2 THEN t.amount ELSE 0 END), 0)::NUMERIC(12,2) as outstanding_total,
+    COALESCE(SUM(CASE WHEN t.billed_at IS NOT NULL AND t.is_paid = false AND (
+        (t.settlement_intent = 'deferred' AND t.transaction_date < $2) OR
+        (t.settlement_intent = 'immediate' AND t.transaction_date >= $2 AND t.transaction_date < $3)
+    ) THEN t.amount ELSE 0 END), 0)::NUMERIC(12,2) as outstanding_total,
     COALESCE(SUM(CASE WHEN t.transaction_date >= $2 AND t.transaction_date < $3 THEN t.amount ELSE 0 END), 0)::NUMERIC(12,2) as purchases_total
 FROM transactions t
 JOIN accounts a ON t.account_id = a.id
 WHERE t.workspace_id = $1
   AND a.template = 'credit_card'
-  AND ((t.transaction_date >= $2 AND t.transaction_date < $3) OR (t.billed_at IS NOT NULL AND t.is_paid = false AND t.settlement_intent = 'deferred' AND t.transaction_date < $2))
+  AND (
+    (t.transaction_date >= $2 AND t.transaction_date < $3) OR
+    (t.billed_at IS NOT NULL AND t.is_paid = false AND t.settlement_intent = 'deferred' AND t.transaction_date < $2)
+  )
   AND t.deleted_at IS NULL
 `
 
@@ -445,7 +451,9 @@ type GetCCMetricsRow struct {
 // Get CC metrics (pending, outstanding, purchases) for a month range
 // Simplified: pending = billed_at IS NULL, billed = billed_at IS NOT NULL AND is_paid = false, settled = is_paid = true
 // purchases = all CC activity this month (regardless of state)
-// outstanding = billed transactions with deferred intent from previous months (balance to settle)
+// outstanding = billed transactions to settle this month:
+//  1. deferred intent from previous months
+//  2. immediate intent from current month
 func (q *Queries) GetCCMetrics(ctx context.Context, arg GetCCMetricsParams) (GetCCMetricsRow, error) {
 	row := q.db.QueryRow(ctx, getCCMetrics, arg.WorkspaceID, arg.TransactionDate, arg.TransactionDate_2)
 	var i GetCCMetricsRow
