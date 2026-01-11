@@ -25,13 +25,6 @@ func NewDashboardHandler(dashboardService *service.DashboardService) *DashboardH
 	}
 }
 
-// CCPayableResponse represents the CC payable summary in API response
-type CCPayableResponse struct {
-	ThisMonth string `json:"thisMonth"`
-	NextMonth string `json:"nextMonth"`
-	Total     string `json:"total"`
-}
-
 // ProjectionResponse represents projected financial data for future months
 type ProjectionResponse struct {
 	RecurringIncome   string `json:"recurringIncome"`
@@ -49,7 +42,6 @@ type DashboardSummaryResponse struct {
 	DisposableIncome      string              `json:"disposableIncome"`
 	DaysRemaining         int                 `json:"daysRemaining"`
 	DailyBudget           string              `json:"dailyBudget"`
-	CCPayable             *CCPayableResponse  `json:"ccPayable"`
 	Month                 MonthResponse       `json:"month"`
 	Projection            *ProjectionResponse `json:"projection,omitempty"`
 }
@@ -112,15 +104,6 @@ func (h *DashboardHandler) GetSummary(c echo.Context) error {
 		return NewInternalError(c, "Failed to get dashboard summary")
 	}
 
-	var ccPayable *CCPayableResponse
-	if summary.CCPayable != nil {
-		ccPayable = &CCPayableResponse{
-			ThisMonth: summary.CCPayable.ThisMonth.StringFixed(2),
-			NextMonth: summary.CCPayable.NextMonth.StringFixed(2),
-			Total:     summary.CCPayable.Total.StringFixed(2),
-		}
-	}
-
 	var projection *ProjectionResponse
 	if summary.Projection != nil {
 		projection = &ProjectionResponse{
@@ -145,7 +128,6 @@ func (h *DashboardHandler) GetSummary(c echo.Context) error {
 		DisposableIncome:      summary.DisposableIncome.StringFixed(2),
 		DaysRemaining:         summary.DaysRemaining,
 		DailyBudget:           summary.DailyBudget.StringFixed(2),
-		CCPayable:             ccPayable,
 		Month:                 toMonthResponse(summary.Month),
 		Projection:            projection,
 	})

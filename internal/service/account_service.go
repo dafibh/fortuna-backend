@@ -77,7 +77,6 @@ func (s *AccountService) UpdateAccount(workspaceID int32, id int32, name string)
 }
 
 // DeleteAccount soft-deletes an account (sets deleted_at timestamp)
-// TODO: When transactions table exists (Epic 2), add option to hard-delete accounts with no transactions
 func (s *AccountService) DeleteAccount(workspaceID int32, id int32) error {
 	// SoftDelete atomically checks existence and deletes, returning ErrAccountNotFound if not found
 	return s.accountRepo.SoftDelete(workspaceID, id)

@@ -114,12 +114,6 @@ func (s *DashboardService) getActualSummary(workspaceID int32, year, month int) 
 		dailyBudget = disposableIncome.Div(decimal.NewFromInt(int64(daysRemaining)))
 	}
 
-	// 8. Get CC payable summary
-	ccPayable, err := s.GetCCPayable(workspaceID)
-	if err != nil {
-		return nil, err
-	}
-
 	return &domain.DashboardSummary{
 		IsProjection:       false,
 		TotalBalance:       totalBalance,
@@ -129,7 +123,6 @@ func (s *DashboardService) getActualSummary(workspaceID int32, year, month int) 
 		UnpaidLoanPayments: unpaidLoanPayments,
 		DaysRemaining:      daysRemaining,
 		DailyBudget:        dailyBudget,
-		CCPayable:          ccPayable,
 		Month:              monthData,
 	}, nil
 }
@@ -185,11 +178,6 @@ func (s *DashboardService) getProjection(workspaceID int32, year, month int) (*d
 		UnpaidLoanPayments:    unpaidLoanPayments,
 		DaysRemaining:         daysRemaining,
 		DailyBudget:           dailyBudget,
-		CCPayable: &domain.CCPayableSummary{
-			ThisMonth: decimal.Zero,
-			NextMonth: decimal.Zero,
-			Total:     decimal.Zero,
-		},
 		Month: &domain.CalculatedMonth{
 			Month: domain.Month{
 				Year:            year,
@@ -272,17 +260,6 @@ func (s *DashboardService) calculateTotalBalance(workspaceID int32) (decimal.Dec
 	}
 
 	return total, nil
-}
-
-// GetCCPayable returns an empty CC payable summary (v1 this_month/next_month deprecated)
-// The v2 CC lifecycle uses pending/billed/settled states with immediate/deferred settlement intent
-func (s *DashboardService) GetCCPayable(workspaceID int32) (*domain.CCPayableSummary, error) {
-	// V1 CC payable has been deprecated - return zeros for backward compatibility
-	return &domain.CCPayableSummary{
-		ThisMonth: decimal.Zero,
-		NextMonth: decimal.Zero,
-		Total:     decimal.Zero,
-	}, nil
 }
 
 // GetFutureSpending returns aggregated spending data for future months

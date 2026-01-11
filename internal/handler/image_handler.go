@@ -189,11 +189,7 @@ func (h *ImageHandler) DeleteImage(c echo.Context) error {
 		return NewServiceUnavailableError(c, "Image deletion is disabled (storage not configured)")
 	}
 
-	// Accept either path (new) or url (legacy) parameter
 	objectPath := c.QueryParam("path")
-	if objectPath == "" {
-		objectPath = c.QueryParam("url") // Legacy support
-	}
 	if objectPath == "" {
 		return NewValidationError(c, "Image path required", []ValidationError{
 			{Field: "path", Message: "Path is required"},

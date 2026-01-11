@@ -2,13 +2,6 @@ package domain
 
 import "github.com/shopspring/decimal"
 
-// CCPayableSummary contains credit card payable amounts by settlement intent
-type CCPayableSummary struct {
-	ThisMonth decimal.Decimal `json:"thisMonth"`
-	NextMonth decimal.Decimal `json:"nextMonth"`
-	Total     decimal.Decimal `json:"total"`
-}
-
 // FutureSpendingData contains aggregated spending data for future months
 type FutureSpendingData struct {
 	Months []MonthSpendingResponse `json:"months"`
@@ -66,7 +59,6 @@ type DashboardSummary struct {
 	UnpaidLoanPayments    decimal.Decimal    `json:"unpaidLoanPayments"`
 	DaysRemaining         int                `json:"daysRemaining"`
 	DailyBudget           decimal.Decimal    `json:"dailyBudget"`
-	CCPayable             *CCPayableSummary  `json:"ccPayable"`
 	Month                 *CalculatedMonth   `json:"month"`
 	Projection            *ProjectionDetails `json:"projection,omitempty"`
 }

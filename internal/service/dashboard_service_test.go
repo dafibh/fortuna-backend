@@ -601,37 +601,6 @@ func TestDashboardService_NegativeDisposableIncome(t *testing.T) {
 	}
 }
 
-func TestDashboardService_GetCCPayable(t *testing.T) {
-	// V1 CC payable has been deprecated - GetCCPayable now always returns zeros
-	// This test verifies the backward-compatible behavior
-	workspaceID := int32(1)
-
-	accountRepo := testutil.NewMockAccountRepository()
-	transactionRepo := testutil.NewMockTransactionRepository()
-	monthRepo := testutil.NewMockMonthRepository()
-	loanPaymentRepo := testutil.NewMockLoanPaymentRepository()
-
-	calcService := NewCalculationService(accountRepo, transactionRepo)
-	monthService := NewMonthService(monthRepo, transactionRepo, calcService)
-	dashboardService := NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calcService)
-
-	summary, err := dashboardService.GetCCPayable(workspaceID)
-	if err != nil {
-		t.Fatalf("GetCCPayable() error = %v", err)
-	}
-
-	// V1 deprecated - always returns zeros
-	if summary.ThisMonth.StringFixed(2) != "0.00" {
-		t.Errorf("GetCCPayable() ThisMonth = %v, want 0.00", summary.ThisMonth.StringFixed(2))
-	}
-	if summary.NextMonth.StringFixed(2) != "0.00" {
-		t.Errorf("GetCCPayable() NextMonth = %v, want 0.00", summary.NextMonth.StringFixed(2))
-	}
-	if summary.Total.StringFixed(2) != "0.00" {
-		t.Errorf("GetCCPayable() Total = %v, want 0.00", summary.Total.StringFixed(2))
-	}
-}
-
 func TestDashboardService_Projection_FutureMonth(t *testing.T) {
 	// Test that future months return projection data
 	now := time.Now()
@@ -721,20 +690,6 @@ func TestDashboardService_Projection_FutureMonth(t *testing.T) {
 	}
 	if !summary.Projection.LoanPayments.IsZero() {
 		t.Errorf("LoanPayments = %v, want 0", summary.Projection.LoanPayments)
-	}
-
-	// Verify CC payable is zero for projected months
-	if summary.CCPayable == nil {
-		t.Fatal("CCPayable should not be nil for projection")
-	}
-	if !summary.CCPayable.ThisMonth.IsZero() {
-		t.Errorf("CCPayable.ThisMonth = %v, want 0", summary.CCPayable.ThisMonth)
-	}
-	if !summary.CCPayable.NextMonth.IsZero() {
-		t.Errorf("CCPayable.NextMonth = %v, want 0", summary.CCPayable.NextMonth)
-	}
-	if !summary.CCPayable.Total.IsZero() {
-		t.Errorf("CCPayable.Total = %v, want 0", summary.CCPayable.Total)
 	}
 
 	// Verify month data is set correctly
@@ -994,54 +949,6 @@ func TestDashboardService_Projection_BalanceChaining(t *testing.T) {
 	// For MVP, closing = starting (no changes)
 	if !summary.Month.ClosingBalance.Equal(expectedBalance) {
 		t.Errorf("Projected ClosingBalance = %v, want %v (same as starting for MVP)", summary.Month.ClosingBalance, expectedBalance)
-	}
-}
-
-func TestDashboardService_GetSummary_IncludesCCPayable(t *testing.T) {
-	// V1 CC payable has been deprecated - CCPayable in summary now returns zeros
-	testYear := 2025
-	testMonth := 1
-	startDate := time.Date(testYear, time.Month(testMonth), 1, 0, 0, 0, 0, time.UTC)
-	endDate := startDate.AddDate(0, 1, -1)
-
-	accountRepo := testutil.NewMockAccountRepository()
-	transactionRepo := testutil.NewMockTransactionRepository()
-	monthRepo := testutil.NewMockMonthRepository()
-
-	monthRepo.AddMonth(&domain.Month{
-		ID:              1,
-		WorkspaceID:     1,
-		Year:            testYear,
-		Month:           testMonth,
-		StartDate:       startDate,
-		EndDate:         endDate,
-		StartingBalance: decimal.Zero,
-	})
-
-	loanPaymentRepo := testutil.NewMockLoanPaymentRepository()
-	calcService := NewCalculationService(accountRepo, transactionRepo)
-	monthService := NewMonthService(monthRepo, transactionRepo, calcService)
-	dashboardService := NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calcService)
-
-	summary, err := dashboardService.GetSummaryForMonth(1, testYear, testMonth)
-	if err != nil {
-		t.Fatalf("GetSummaryForMonth() error = %v", err)
-	}
-
-	// Verify CCPayable is included in the summary (returns zeros since v1 deprecated)
-	if summary.CCPayable == nil {
-		t.Fatal("GetSummaryForMonth() CCPayable should not be nil")
-	}
-
-	// V1 deprecated - always returns zeros
-	if summary.CCPayable.ThisMonth.StringFixed(2) != "0.00" {
-		t.Errorf("CCPayable.ThisMonth = %v, want 0.00", summary.CCPayable.ThisMonth.StringFixed(2))
-	}
-	if summary.CCPayable.NextMonth.StringFixed(2) != "0.00" {
-		t.Errorf("CCPayable.NextMonth = %v, want 0.00", summary.CCPayable.NextMonth.StringFixed(2))
-	}
-	if summary.CCPayable.Total.StringFixed(2) != "0.00" {
-		t.Errorf("CCPayable.Total = %v, want 0.00", summary.CCPayable.Total.StringFixed(2))
 	}
 }
 
