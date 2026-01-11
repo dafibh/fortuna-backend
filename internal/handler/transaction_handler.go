@@ -934,6 +934,71 @@ func (h *TransactionHandler) GetDeferredToSettle(c echo.Context) error {
 	return c.JSON(http.StatusOK, groups)
 }
 
+// ImmediateGroup represents billed transactions with immediate intent for current month
+type ImmediateGroup struct {
+	Month        string                `json:"month"`        // "2026-01"
+	MonthLabel   string                `json:"monthLabel"`   // "January"
+	TotalAmount  string                `json:"totalAmount"`
+	ItemCount    int                   `json:"itemCount"`
+	Transactions []TransactionResponse `json:"transactions"`
+}
+
+// GetImmediateToSettle returns billed transactions with immediate intent for the current month
+// @Summary Get immediate transactions to settle
+// @Description Returns billed CC transactions with immediate intent (Pay This Month) for the current month
+// @Tags transactions
+// @Produce json
+// @Param month query string false "Month in YYYY-MM format (defaults to current month)"
+// @Security BearerAuth
+// @Success 200 {object} ImmediateGroup
+// @Failure 401 {object} ProblemDetails
+// @Failure 500 {object} ProblemDetails
+// @Router /transactions/immediate-to-settle [get]
+func (h *TransactionHandler) GetImmediateToSettle(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	// Parse month parameter (default to current month)
+	monthStr := c.QueryParam("month")
+	var month time.Time
+	if monthStr != "" {
+		parsed, err := time.Parse("2006-01", monthStr)
+		if err != nil {
+			return NewValidationError(c, "Invalid month format. Use YYYY-MM", nil)
+		}
+		month = parsed
+	} else {
+		now := time.Now()
+		month = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	}
+
+	transactions, err := h.transactionService.GetImmediateForSettlement(workspaceID, month)
+	if err != nil {
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Msg("Failed to get immediate transactions")
+		return NewInternalError(c, "Failed to get immediate transactions")
+	}
+
+	// Calculate total
+	total := decimal.Zero
+	txResponses := make([]TransactionResponse, len(transactions))
+	for i, tx := range transactions {
+		total = total.Add(tx.Amount)
+		txResponses[i] = toTransactionResponse(tx)
+	}
+
+	group := ImmediateGroup{
+		Month:        month.Format("2006-01"),
+		MonthLabel:   month.Format("January"),
+		TotalAmount:  total.StringFixed(2),
+		ItemCount:    len(transactions),
+		Transactions: txResponses,
+	}
+
+	return c.JSON(http.StatusOK, group)
+}
+
 // OverdueGroupResponse represents an overdue group in API responses
 type OverdueGroupResponse struct {
 	Month         string                `json:"month"`         // "2025-11"

@@ -865,6 +865,26 @@ func (r *TransactionRepository) GetDeferredForSettlement(workspaceID int32) ([]*
 	return transactions, nil
 }
 
+// GetImmediateForSettlement retrieves billed transactions with immediate intent for the current month
+func (r *TransactionRepository) GetImmediateForSettlement(workspaceID int32, startDate, endDate time.Time) ([]*domain.Transaction, error) {
+	ctx := context.Background()
+
+	rows, err := r.queries.GetImmediateForSettlement(ctx, sqlc.GetImmediateForSettlementParams{
+		WorkspaceID:       workspaceID,
+		TransactionDate:   pgtype.Date{Time: startDate, Valid: true},
+		TransactionDate_2: pgtype.Date{Time: endDate, Valid: true},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	transactions := make([]*domain.Transaction, len(rows))
+	for i, row := range rows {
+		transactions[i] = sqlcImmediateRowToDomain(row)
+	}
+	return transactions, nil
+}
+
 // GetOverdueCC retrieves overdue CC transactions (billed + deferred for 2+ months)
 func (r *TransactionRepository) GetOverdueCC(workspaceID int32) ([]*domain.Transaction, error) {
 	ctx := context.Background()
@@ -1004,6 +1024,61 @@ func sqlcAggregationRowToDomain(row sqlc.GetTransactionsForAggregationRow) *doma
 
 // sqlcDeferredRowToDomain converts a GetDeferredForSettlementRow to domain.Transaction
 func sqlcDeferredRowToDomain(row sqlc.GetDeferredForSettlementRow) *domain.Transaction {
+	transaction := &domain.Transaction{
+		ID:              row.ID,
+		WorkspaceID:     row.WorkspaceID,
+		AccountID:       row.AccountID,
+		Name:            row.Name,
+		Amount:          pgNumericToDecimal(row.Amount),
+		Type:            domain.TransactionType(row.Type),
+		TransactionDate: row.TransactionDate.Time,
+		IsPaid:          row.IsPaid,
+		IsCCPayment:     row.IsCcPayment,
+		CreatedAt:       row.CreatedAt.Time,
+		UpdatedAt:       row.UpdatedAt.Time,
+	}
+
+	if row.Notes.Valid {
+		transaction.Notes = &row.Notes.String
+	}
+	if row.DeletedAt.Valid {
+		transaction.DeletedAt = &row.DeletedAt.Time
+	}
+	if row.TransferPairID.Valid {
+		pairID := uuid.UUID(row.TransferPairID.Bytes)
+		transaction.TransferPairID = &pairID
+	}
+	if row.CategoryID.Valid {
+		transaction.CategoryID = &row.CategoryID.Int32
+	}
+	// CC Lifecycle (v2 simplified)
+	if row.BilledAt.Valid {
+		transaction.BilledAt = &row.BilledAt.Time
+	}
+	if row.SettlementIntent.Valid {
+		intent := domain.SettlementIntent(row.SettlementIntent.String)
+		transaction.SettlementIntent = &intent
+	}
+	// Compute CCState from isPaid and billedAt
+	if row.SettlementIntent.Valid {
+		transaction.CCState = domain.ComputeCCState(row.IsPaid, transaction.BilledAt)
+	}
+	// Projection fields
+	if row.Source.Valid {
+		transaction.Source = row.Source.String
+	}
+	if row.TemplateID.Valid {
+		transaction.TemplateID = &row.TemplateID.Int32
+	}
+	if row.IsProjected.Valid {
+		transaction.IsProjected = row.IsProjected.Bool
+	}
+
+	return transaction
+}
+
+// sqlcImmediateRowToDomain converts a GetImmediateForSettlementRow to domain.Transaction
+func sqlcImmediateRowToDomain(row sqlc.GetImmediateForSettlementRow) *domain.Transaction {
 	transaction := &domain.Transaction{
 		ID:              row.ID,
 		WorkspaceID:     row.WorkspaceID,

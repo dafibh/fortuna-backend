@@ -69,31 +69,35 @@ SET deleted_at = NOW(), updated_at = NOW()
 WHERE workspace_id = $1 AND transfer_pair_id = $2 AND deleted_at IS NULL;
 
 -- name: GetAccountTransactionSummaries :many
+-- Only count paid transactions for balance calculations
 SELECT
     account_id,
-    COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) AS sum_income,
-    COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) AS sum_expenses,
+    COALESCE(SUM(CASE WHEN type = 'income' AND is_paid = true THEN amount ELSE 0 END), 0) AS sum_income,
+    COALESCE(SUM(CASE WHEN type = 'expense' AND is_paid = true THEN amount ELSE 0 END), 0) AS sum_expenses,
     COALESCE(SUM(CASE WHEN type = 'expense' AND is_paid = false THEN amount ELSE 0 END), 0) AS sum_unpaid_expenses
 FROM transactions
 WHERE workspace_id = $1 AND deleted_at IS NULL
 GROUP BY account_id;
 
 -- name: SumTransactionsByTypeAndDateRange :one
+-- Only count paid transactions
 SELECT COALESCE(SUM(amount), 0)::NUMERIC(12,2) as total
 FROM transactions
 WHERE workspace_id = $1
   AND transaction_date >= $2
   AND transaction_date <= $3
   AND type = $4
+  AND is_paid = true
   AND deleted_at IS NULL;
 
 -- name: GetMonthlyTransactionSummaries :many
 -- Batch query to get income/expense totals grouped by year/month for N+1 prevention
+-- Only count paid transactions
 SELECT
     EXTRACT(YEAR FROM transaction_date)::INTEGER AS year,
     EXTRACT(MONTH FROM transaction_date)::INTEGER AS month,
-    COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0)::NUMERIC(12,2) AS total_income,
-    COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0)::NUMERIC(12,2) AS total_expenses
+    COALESCE(SUM(CASE WHEN type = 'income' AND is_paid = true THEN amount ELSE 0 END), 0)::NUMERIC(12,2) AS total_income,
+    COALESCE(SUM(CASE WHEN type = 'expense' AND is_paid = true THEN amount ELSE 0 END), 0)::NUMERIC(12,2) AS total_expenses
 FROM transactions
 WHERE workspace_id = $1
   AND deleted_at IS NULL
@@ -257,7 +261,7 @@ RETURNING *;
 -- name: GetCCMetrics :one
 -- Get CC metrics (pending, outstanding, purchases) for a month range
 -- Simplified: pending = billed_at IS NULL, billed = billed_at IS NOT NULL AND is_paid = false, settled = is_paid = true
--- purchases = all CC activity this month (regardless of state)
+-- purchases = CC expenses this month (only expenses, income is payments against balance)
 -- outstanding = billed transactions to settle this month:
 --   1. deferred intent from previous months
 --   2. immediate intent from current month
@@ -267,7 +271,7 @@ SELECT
         (t.settlement_intent = 'deferred' AND t.transaction_date < $2) OR
         (t.settlement_intent = 'immediate' AND t.transaction_date >= $2 AND t.transaction_date < $3)
     ) THEN t.amount ELSE 0 END), 0)::NUMERIC(12,2) as outstanding_total,
-    COALESCE(SUM(CASE WHEN t.transaction_date >= $2 AND t.transaction_date < $3 THEN t.amount ELSE 0 END), 0)::NUMERIC(12,2) as purchases_total
+    COALESCE(SUM(CASE WHEN t.type = 'expense' AND t.transaction_date >= $2 AND t.transaction_date < $3 THEN t.amount ELSE 0 END), 0)::NUMERIC(12,2) as purchases_total
 FROM transactions t
 JOIN accounts a ON t.account_id = a.id
 WHERE t.workspace_id = $1
@@ -325,6 +329,20 @@ WHERE t.workspace_id = $1
   AND t.billed_at IS NOT NULL
   AND t.is_paid = false
   AND t.settlement_intent = 'deferred'
+  AND t.deleted_at IS NULL
+ORDER BY t.transaction_date ASC;
+
+-- name: GetImmediateForSettlement :many
+-- Get billed transactions with immediate intent for the current month
+SELECT * FROM transactions t
+JOIN accounts a ON t.account_id = a.id
+WHERE t.workspace_id = $1
+  AND a.template = 'credit_card'
+  AND t.billed_at IS NOT NULL
+  AND t.is_paid = false
+  AND t.settlement_intent = 'immediate'
+  AND t.transaction_date >= $2
+  AND t.transaction_date < $3
   AND t.deleted_at IS NULL
 ORDER BY t.transaction_date ASC;
 

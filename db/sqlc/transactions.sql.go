@@ -275,8 +275,8 @@ func (q *Queries) DeleteProjectionsByTemplate(ctx context.Context, arg DeletePro
 const getAccountTransactionSummaries = `-- name: GetAccountTransactionSummaries :many
 SELECT
     account_id,
-    COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) AS sum_income,
-    COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) AS sum_expenses,
+    COALESCE(SUM(CASE WHEN type = 'income' AND is_paid = true THEN amount ELSE 0 END), 0) AS sum_income,
+    COALESCE(SUM(CASE WHEN type = 'expense' AND is_paid = true THEN amount ELSE 0 END), 0) AS sum_expenses,
     COALESCE(SUM(CASE WHEN type = 'expense' AND is_paid = false THEN amount ELSE 0 END), 0) AS sum_unpaid_expenses
 FROM transactions
 WHERE workspace_id = $1 AND deleted_at IS NULL
@@ -290,6 +290,7 @@ type GetAccountTransactionSummariesRow struct {
 	SumUnpaidExpenses interface{} `json:"sum_unpaid_expenses"`
 }
 
+// Only count paid transactions for balance calculations
 func (q *Queries) GetAccountTransactionSummaries(ctx context.Context, workspaceID int32) ([]GetAccountTransactionSummariesRow, error) {
 	rows, err := q.db.Query(ctx, getAccountTransactionSummaries, workspaceID)
 	if err != nil {
@@ -424,7 +425,7 @@ SELECT
         (t.settlement_intent = 'deferred' AND t.transaction_date < $2) OR
         (t.settlement_intent = 'immediate' AND t.transaction_date >= $2 AND t.transaction_date < $3)
     ) THEN t.amount ELSE 0 END), 0)::NUMERIC(12,2) as outstanding_total,
-    COALESCE(SUM(CASE WHEN t.transaction_date >= $2 AND t.transaction_date < $3 THEN t.amount ELSE 0 END), 0)::NUMERIC(12,2) as purchases_total
+    COALESCE(SUM(CASE WHEN t.type = 'expense' AND t.transaction_date >= $2 AND t.transaction_date < $3 THEN t.amount ELSE 0 END), 0)::NUMERIC(12,2) as purchases_total
 FROM transactions t
 JOIN accounts a ON t.account_id = a.id
 WHERE t.workspace_id = $1
@@ -450,7 +451,7 @@ type GetCCMetricsRow struct {
 
 // Get CC metrics (pending, outstanding, purchases) for a month range
 // Simplified: pending = billed_at IS NULL, billed = billed_at IS NOT NULL AND is_paid = false, settled = is_paid = true
-// purchases = all CC activity this month (regardless of state)
+// purchases = CC expenses this month (only expenses, income is payments against balance)
 // outstanding = billed transactions to settle this month:
 //  1. deferred intent from previous months
 //  2. immediate intent from current month
@@ -556,12 +557,115 @@ func (q *Queries) GetDeferredForSettlement(ctx context.Context, workspaceID int3
 	return items, nil
 }
 
+const getImmediateForSettlement = `-- name: GetImmediateForSettlement :many
+SELECT t.id, t.workspace_id, account_id, t.name, amount, type, transaction_date, is_paid, notes, t.created_at, t.updated_at, t.deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, a.id, a.workspace_id, a.name, account_type, template, initial_balance, a.created_at, a.updated_at, a.deleted_at FROM transactions t
+JOIN accounts a ON t.account_id = a.id
+WHERE t.workspace_id = $1
+  AND a.template = 'credit_card'
+  AND t.billed_at IS NOT NULL
+  AND t.is_paid = false
+  AND t.settlement_intent = 'immediate'
+  AND t.transaction_date >= $2
+  AND t.transaction_date < $3
+  AND t.deleted_at IS NULL
+ORDER BY t.transaction_date ASC
+`
+
+type GetImmediateForSettlementParams struct {
+	WorkspaceID       int32       `json:"workspace_id"`
+	TransactionDate   pgtype.Date `json:"transaction_date"`
+	TransactionDate_2 pgtype.Date `json:"transaction_date_2"`
+}
+
+type GetImmediateForSettlementRow struct {
+	ID               int32              `json:"id"`
+	WorkspaceID      int32              `json:"workspace_id"`
+	AccountID        int32              `json:"account_id"`
+	Name             string             `json:"name"`
+	Amount           pgtype.Numeric     `json:"amount"`
+	Type             string             `json:"type"`
+	TransactionDate  pgtype.Date        `json:"transaction_date"`
+	IsPaid           bool               `json:"is_paid"`
+	Notes            pgtype.Text        `json:"notes"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt        pgtype.Timestamptz `json:"deleted_at"`
+	TransferPairID   pgtype.UUID        `json:"transfer_pair_id"`
+	CategoryID       pgtype.Int4        `json:"category_id"`
+	IsCcPayment      bool               `json:"is_cc_payment"`
+	BilledAt         pgtype.Timestamptz `json:"billed_at"`
+	SettlementIntent pgtype.Text        `json:"settlement_intent"`
+	Source           pgtype.Text        `json:"source"`
+	TemplateID       pgtype.Int4        `json:"template_id"`
+	IsProjected      pgtype.Bool        `json:"is_projected"`
+	ID_2             int32              `json:"id_2"`
+	WorkspaceID_2    int32              `json:"workspace_id_2"`
+	Name_2           string             `json:"name_2"`
+	AccountType      string             `json:"account_type"`
+	Template         string             `json:"template"`
+	InitialBalance   pgtype.Numeric     `json:"initial_balance"`
+	CreatedAt_2      pgtype.Timestamptz `json:"created_at_2"`
+	UpdatedAt_2      pgtype.Timestamptz `json:"updated_at_2"`
+	DeletedAt_2      pgtype.Timestamptz `json:"deleted_at_2"`
+}
+
+// Get billed transactions with immediate intent for the current month
+func (q *Queries) GetImmediateForSettlement(ctx context.Context, arg GetImmediateForSettlementParams) ([]GetImmediateForSettlementRow, error) {
+	rows, err := q.db.Query(ctx, getImmediateForSettlement, arg.WorkspaceID, arg.TransactionDate, arg.TransactionDate_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetImmediateForSettlementRow{}
+	for rows.Next() {
+		var i GetImmediateForSettlementRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.AccountID,
+			&i.Name,
+			&i.Amount,
+			&i.Type,
+			&i.TransactionDate,
+			&i.IsPaid,
+			&i.Notes,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.TransferPairID,
+			&i.CategoryID,
+			&i.IsCcPayment,
+			&i.BilledAt,
+			&i.SettlementIntent,
+			&i.Source,
+			&i.TemplateID,
+			&i.IsProjected,
+			&i.ID_2,
+			&i.WorkspaceID_2,
+			&i.Name_2,
+			&i.AccountType,
+			&i.Template,
+			&i.InitialBalance,
+			&i.CreatedAt_2,
+			&i.UpdatedAt_2,
+			&i.DeletedAt_2,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getMonthlyTransactionSummaries = `-- name: GetMonthlyTransactionSummaries :many
 SELECT
     EXTRACT(YEAR FROM transaction_date)::INTEGER AS year,
     EXTRACT(MONTH FROM transaction_date)::INTEGER AS month,
-    COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0)::NUMERIC(12,2) AS total_income,
-    COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0)::NUMERIC(12,2) AS total_expenses
+    COALESCE(SUM(CASE WHEN type = 'income' AND is_paid = true THEN amount ELSE 0 END), 0)::NUMERIC(12,2) AS total_income,
+    COALESCE(SUM(CASE WHEN type = 'expense' AND is_paid = true THEN amount ELSE 0 END), 0)::NUMERIC(12,2) AS total_expenses
 FROM transactions
 WHERE workspace_id = $1
   AND deleted_at IS NULL
@@ -577,6 +681,7 @@ type GetMonthlyTransactionSummariesRow struct {
 }
 
 // Batch query to get income/expense totals grouped by year/month for N+1 prevention
+// Only count paid transactions
 func (q *Queries) GetMonthlyTransactionSummaries(ctx context.Context, workspaceID int32) ([]GetMonthlyTransactionSummariesRow, error) {
 	rows, err := q.db.Query(ctx, getMonthlyTransactionSummaries, workspaceID)
 	if err != nil {
@@ -1382,6 +1487,7 @@ WHERE workspace_id = $1
   AND transaction_date >= $2
   AND transaction_date <= $3
   AND type = $4
+  AND is_paid = true
   AND deleted_at IS NULL
 `
 
@@ -1392,6 +1498,7 @@ type SumTransactionsByTypeAndDateRangeParams struct {
 	Type              string      `json:"type"`
 }
 
+// Only count paid transactions
 func (q *Queries) SumTransactionsByTypeAndDateRange(ctx context.Context, arg SumTransactionsByTypeAndDateRangeParams) (pgtype.Numeric, error) {
 	row := q.db.QueryRow(ctx, sumTransactionsByTypeAndDateRange,
 		arg.WorkspaceID,

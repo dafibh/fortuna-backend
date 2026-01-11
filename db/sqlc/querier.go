@@ -62,6 +62,7 @@ type Querier interface {
 	GetAPITokensByWorkspace(ctx context.Context, workspaceID int32) ([]ApiToken, error)
 	GetAccountByID(ctx context.Context, arg GetAccountByIDParams) (Account, error)
 	GetAccountByIDIncludeDeleted(ctx context.Context, arg GetAccountByIDIncludeDeletedParams) (Account, error)
+	// Only count paid transactions for balance calculations
 	GetAccountTransactionSummaries(ctx context.Context, workspaceID int32) ([]GetAccountTransactionSummariesRow, error)
 	GetAccountsByWorkspace(ctx context.Context, workspaceID int32) ([]Account, error)
 	GetAccountsByWorkspaceAll(ctx context.Context, workspaceID int32) ([]Account, error)
@@ -80,7 +81,7 @@ type Querier interface {
 	GetBudgetCategoryByName(ctx context.Context, arg GetBudgetCategoryByNameParams) (BudgetCategory, error)
 	// Get CC metrics (pending, outstanding, purchases) for a month range
 	// Simplified: pending = billed_at IS NULL, billed = billed_at IS NOT NULL AND is_paid = false, settled = is_paid = true
-	// purchases = all CC activity this month (regardless of state)
+	// purchases = CC expenses this month (only expenses, income is payments against balance)
 	// outstanding = billed transactions to settle this month:
 	//   1. deferred intent from previous months
 	//   2. immediate intent from current month
@@ -97,6 +98,8 @@ type Querier interface {
 	GetDeferredForSettlement(ctx context.Context, workspaceID int32) ([]GetDeferredForSettlementRow, error)
 	GetExclusionsByTemplate(ctx context.Context, arg GetExclusionsByTemplateParams) ([]ProjectionExclusion, error)
 	GetFirstItemImage(ctx context.Context, arg GetFirstItemImageParams) (pgtype.Text, error)
+	// Get billed transactions with immediate intent for the current month
+	GetImmediateForSettlement(ctx context.Context, arg GetImmediateForSettlementParams) ([]GetImmediateForSettlementRow, error)
 	GetLatestMonth(ctx context.Context, workspaceID int32) (Month, error)
 	GetLoanByID(ctx context.Context, arg GetLoanByIDParams) (Loan, error)
 	GetLoanDeleteStats(ctx context.Context, loanID int32) (GetLoanDeleteStatsRow, error)
@@ -109,6 +112,7 @@ type Querier interface {
 	GetLoansWithStats(ctx context.Context, workspaceID int32) ([]GetLoansWithStatsRow, error)
 	GetMonthByYearMonth(ctx context.Context, arg GetMonthByYearMonthParams) (Month, error)
 	// Batch query to get income/expense totals grouped by year/month for N+1 prevention
+	// Only count paid transactions
 	GetMonthlyTransactionSummaries(ctx context.Context, workspaceID int32) ([]GetMonthlyTransactionSummariesRow, error)
 	// Get CC transactions that are billed but overdue (2+ months old)
 	GetOverdueCC(ctx context.Context, workspaceID int32) ([]GetOverdueCCRow, error)
@@ -170,6 +174,7 @@ type Querier interface {
 	SoftDeleteTransferPair(ctx context.Context, arg SoftDeleteTransferPairParams) (int64, error)
 	// Sum paid expenses within a date range for in-hand balance calculation
 	SumPaidExpensesByDateRange(ctx context.Context, arg SumPaidExpensesByDateRangeParams) (pgtype.Numeric, error)
+	// Only count paid transactions
 	SumTransactionsByTypeAndDateRange(ctx context.Context, arg SumTransactionsByTypeAndDateRangeParams) (pgtype.Numeric, error)
 	// Sum unpaid expenses within a date range for disposable income calculation
 	SumUnpaidExpensesByDateRange(ctx context.Context, arg SumUnpaidExpensesByDateRangeParams) (pgtype.Numeric, error)
