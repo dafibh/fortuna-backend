@@ -76,8 +76,8 @@ type TemplateListResponse struct {
 // @Produce json
 // @Param template body CreateTemplateRequest true "Template data"
 // @Success 201 {object} TemplateResponse
-// @Failure 400 {object} ProblemDetail
-// @Failure 401 {object} ProblemDetail
+// @Failure 400 {object} ProblemDetails
+// @Failure 401 {object} ProblemDetails
 // @Security BearerAuth
 // @Router /recurring-templates [post]
 func (h *RecurringTemplateHandler) CreateTemplate(c echo.Context) error {
@@ -145,7 +145,7 @@ func (h *RecurringTemplateHandler) CreateTemplate(c echo.Context) error {
 // @Tags Recurring Templates
 // @Produce json
 // @Success 200 {object} TemplateListResponse
-// @Failure 401 {object} ProblemDetail
+// @Failure 401 {object} ProblemDetails
 // @Security BearerAuth
 // @Router /recurring-templates [get]
 func (h *RecurringTemplateHandler) ListTemplates(c echo.Context) error {
@@ -175,8 +175,8 @@ func (h *RecurringTemplateHandler) ListTemplates(c echo.Context) error {
 // @Produce json
 // @Param id path int true "Template ID"
 // @Success 200 {object} TemplateResponse
-// @Failure 401 {object} ProblemDetail
-// @Failure 404 {object} ProblemDetail
+// @Failure 401 {object} ProblemDetails
+// @Failure 404 {object} ProblemDetails
 // @Security BearerAuth
 // @Router /recurring-templates/{id} [get]
 func (h *RecurringTemplateHandler) GetTemplate(c echo.Context) error {
@@ -211,9 +211,9 @@ func (h *RecurringTemplateHandler) GetTemplate(c echo.Context) error {
 // @Param id path int true "Template ID"
 // @Param template body UpdateTemplateRequest true "Updated template data"
 // @Success 200 {object} TemplateResponse
-// @Failure 400 {object} ProblemDetail
-// @Failure 401 {object} ProblemDetail
-// @Failure 404 {object} ProblemDetail
+// @Failure 400 {object} ProblemDetails
+// @Failure 401 {object} ProblemDetails
+// @Failure 404 {object} ProblemDetails
 // @Security BearerAuth
 // @Router /recurring-templates/{id} [put]
 func (h *RecurringTemplateHandler) UpdateTemplate(c echo.Context) error {
@@ -284,8 +284,8 @@ func (h *RecurringTemplateHandler) UpdateTemplate(c echo.Context) error {
 // @Tags Recurring Templates
 // @Param id path int true "Template ID"
 // @Success 204 "No Content"
-// @Failure 401 {object} ProblemDetail
-// @Failure 404 {object} ProblemDetail
+// @Failure 401 {object} ProblemDetails
+// @Failure 404 {object} ProblemDetails
 // @Security BearerAuth
 // @Router /recurring-templates/{id} [delete]
 func (h *RecurringTemplateHandler) DeleteTemplate(c echo.Context) error {

@@ -13,6 +13,24 @@ definitions:
       tokenPrefix:
         type: string
     type: object
+  domain.AccountAmount:
+    properties:
+      amount:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+    type: object
+  domain.CategoryAmount:
+    properties:
+      amount:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+    type: object
   domain.CreateAPITokenResponse:
     properties:
       createdAt:
@@ -27,6 +45,28 @@ definitions:
       tokenPrefix:
         type: string
       warning:
+        type: string
+    type: object
+  domain.FutureSpendingData:
+    properties:
+      months:
+        items:
+          $ref: '#/definitions/domain.MonthSpendingResponse'
+        type: array
+    type: object
+  domain.MonthSpendingResponse:
+    properties:
+      byAccount:
+        items:
+          $ref: '#/definitions/domain.AccountAmount'
+        type: array
+      byCategory:
+        items:
+          $ref: '#/definitions/domain.CategoryAmount'
+        type: array
+      month:
+        type: string
+      total:
         type: string
     type: object
   handler.AccountResponse:
@@ -79,6 +119,22 @@ definitions:
           $ref: '#/definitions/handler.BatchPresignedURLItem'
         type: array
     type: object
+  handler.BatchToggleBilledRequest:
+    properties:
+      ids:
+        items:
+          type: integer
+        type: array
+    type: object
+  handler.BatchToggleBilledResponse:
+    properties:
+      count:
+        type: integer
+      updated:
+        items:
+          $ref: '#/definitions/handler.TransactionResponse'
+        type: array
+    type: object
   handler.BudgetProgressResponse:
     properties:
       allocated:
@@ -96,6 +152,19 @@ definitions:
       status:
         type: string
     type: object
+  handler.CCMetricsResponse:
+    properties:
+      outstanding:
+        description: Sum of billed CC transactions with deferred intent (balance to
+          settle)
+        type: string
+      pending:
+        description: Sum of pending CC transactions
+        type: string
+      purchases:
+        description: Sum of all CC transactions (pending + billed + settled)
+        type: string
+    type: object
   handler.CCOutstandingResponse:
     properties:
       ccAccountCount:
@@ -105,62 +174,6 @@ definitions:
           $ref: '#/definitions/handler.PerAccountOutstandingEntry'
         type: array
       totalOutstanding:
-        type: string
-    type: object
-  handler.CCPayableBreakdownResponse:
-    properties:
-      grandTotal:
-        type: string
-      nextMonth:
-        items:
-          $ref: '#/definitions/handler.CCPayableByAccountEntry'
-        type: array
-      nextMonthTotal:
-        type: string
-      thisMonth:
-        items:
-          $ref: '#/definitions/handler.CCPayableByAccountEntry'
-        type: array
-      thisMonthTotal:
-        type: string
-    type: object
-  handler.CCPayableByAccountEntry:
-    properties:
-      accountId:
-        type: integer
-      accountName:
-        type: string
-      total:
-        type: string
-      transactions:
-        items:
-          $ref: '#/definitions/handler.CCPayableTransactionEntry'
-        type: array
-    type: object
-  handler.CCPayableResponse:
-    properties:
-      nextMonth:
-        type: string
-      thisMonth:
-        type: string
-      total:
-        type: string
-    type: object
-  handler.CCPayableTransactionEntry:
-    properties:
-      accountId:
-        type: integer
-      accountName:
-        type: string
-      amount:
-        type: string
-      id:
-        type: integer
-      name:
-        type: string
-      settlementIntent:
-        type: string
-      transactionDate:
         type: string
     type: object
   handler.CCPaymentResponseEntry:
@@ -197,6 +210,25 @@ definitions:
       transactionDate:
         type: string
     type: object
+  handler.CreateTemplateRequest:
+    properties:
+      accountId:
+        type: integer
+      amount:
+        type: string
+      categoryId:
+        type: integer
+      description:
+        type: string
+      endDate:
+        type: string
+      frequency:
+        type: string
+      linkTransactionId:
+        type: integer
+      startDate:
+        type: string
+    type: object
   handler.CreateTransactionRequest:
     properties:
       accountId:
@@ -205,8 +237,6 @@ definitions:
         type: string
       categoryId:
         type: integer
-      ccSettlementIntent:
-        type: string
       date:
         type: string
       isPaid:
@@ -215,13 +245,14 @@ definitions:
         type: string
       notes:
         type: string
+      settlementIntent:
+        description: 'v2: "immediate" or "deferred"'
+        type: string
       type:
         type: string
     type: object
   handler.DashboardSummaryResponse:
     properties:
-      ccPayable:
-        $ref: '#/definitions/handler.CCPayableResponse'
       dailyBudget:
         type: string
       daysRemaining:
@@ -240,6 +271,23 @@ definitions:
         type: integer
       totalBalance:
         type: string
+    type: object
+  handler.DeferredGroup:
+    properties:
+      itemCount:
+        type: integer
+      month:
+        description: '"2026-01"'
+        type: string
+      monthLabel:
+        description: '"January"'
+        type: string
+      totalAmount:
+        type: string
+      transactions:
+        items:
+          $ref: '#/definitions/handler.TransactionResponse'
+        type: array
     type: object
   handler.LoanWithStatsResponse:
     properties:
@@ -333,6 +381,26 @@ definitions:
       year:
         type: integer
     type: object
+  handler.OverdueGroupResponse:
+    properties:
+      itemCount:
+        type: integer
+      month:
+        description: '"2025-11"'
+        type: string
+      monthLabel:
+        description: '"November 2025"'
+        type: string
+      monthsOverdue:
+        description: Number of months overdue
+        type: integer
+      totalAmount:
+        type: string
+      transactions:
+        items:
+          $ref: '#/definitions/handler.TransactionResponse'
+        type: array
+    type: object
   handler.PaginatedTransactionsResponse:
     properties:
       data:
@@ -392,7 +460,36 @@ definitions:
       recurringIncome:
         type: string
     type: object
-  handler.TransactionResponse:
+  handler.SettlementRequest:
+    properties:
+      sourceAccountId:
+        type: integer
+      targetCcAccountId:
+        type: integer
+      transactionIds:
+        items:
+          type: integer
+        type: array
+    type: object
+  handler.SettlementResponse:
+    properties:
+      settledAt:
+        type: string
+      settledCount:
+        type: integer
+      totalAmount:
+        type: string
+      transferId:
+        type: integer
+    type: object
+  handler.TemplateListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/handler.TemplateResponse'
+        type: array
+    type: object
+  handler.TemplateResponse:
     properties:
       accountId:
         type: integer
@@ -400,21 +497,66 @@ definitions:
         type: string
       categoryId:
         type: integer
+      createdAt:
+        type: string
+      description:
+        type: string
+      endDate:
+        type: string
+      frequency:
+        type: string
+      id:
+        type: integer
+      startDate:
+        type: string
+      updatedAt:
+        type: string
+      workspaceId:
+        type: integer
+    type: object
+  handler.TransactionResponse:
+    properties:
+      accountId:
+        type: integer
+      amount:
+        type: string
+      billedAt:
+        description: Timestamp when marked as billed
+        type: string
+      categoryId:
+        type: integer
       categoryName:
         type: string
-      ccSettlementIntent:
+      ccState:
+        description: CC Lifecycle fields
         type: string
       createdAt:
         type: string
       id:
         type: integer
+      isModified:
+        description: true if projected instance differs from template
+        type: boolean
       isPaid:
+        type: boolean
+      isProjected:
+        description: true if this is a projected (not yet actual) transaction
         type: boolean
       name:
         type: string
       notes:
         type: string
-      recurringTransactionId:
+      settledAt:
+        description: Timestamp when settled
+        type: string
+      settlementIntent:
+        description: '"immediate" or "deferred"'
+        type: string
+      source:
+        description: Recurring/Projection fields
+        type: string
+      templateId:
+        description: ID of recurring template that generated this
         type: integer
       transactionDate:
         type: string
@@ -451,6 +593,28 @@ definitions:
   handler.UpdateAccountRequest:
     properties:
       name:
+        type: string
+    type: object
+  handler.UpdateAmountRequest:
+    properties:
+      amount:
+        type: string
+    type: object
+  handler.UpdateTemplateRequest:
+    properties:
+      accountId:
+        type: integer
+      amount:
+        type: string
+      categoryId:
+        type: integer
+      description:
+        type: string
+      endDate:
+        type: string
+      frequency:
+        type: string
+      startDate:
         type: string
     type: object
   handler.ValidationError:
@@ -766,32 +930,6 @@ paths:
       summary: Get budget allocations
       tags:
       - budgets
-  /cc/payable/breakdown:
-    get:
-      consumes:
-      - application/json
-      description: Returns all unpaid CC transactions grouped by this_month/next_month
-        and account
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/handler.CCPayableBreakdownResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/handler.ProblemDetails'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/handler.ProblemDetails'
-      security:
-      - BearerAuth: []
-      summary: Get CC payable breakdown
-      tags:
-      - cc
   /cc/payments:
     post:
       consumes:
@@ -833,6 +971,40 @@ paths:
       summary: Create CC payment
       tags:
       - cc
+  /dashboard/future-spending:
+    get:
+      consumes:
+      - application/json
+      description: Get aggregated spending data for future months including projections
+      parameters:
+      - description: Number of months to include (1-24, default 12)
+        in: query
+        name: months
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.FutureSpendingData'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+      security:
+      - BearerAuth: []
+      summary: Get future spending data
+      tags:
+      - dashboard
   /dashboard/summary:
     get:
       consumes:
@@ -975,6 +1147,194 @@ paths:
       summary: List loans
       tags:
       - loans
+  /recurring-templates:
+    get:
+      description: Retrieves all recurring templates for the workspace
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.TemplateListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+      security:
+      - BearerAuth: []
+      summary: List all recurring templates
+      tags:
+      - Recurring Templates
+    post:
+      consumes:
+      - application/json
+      description: Creates a new recurring template with projection generation
+      parameters:
+      - description: Template data
+        in: body
+        name: template
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateTemplateRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/handler.TemplateResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+      security:
+      - BearerAuth: []
+      summary: Create a recurring template
+      tags:
+      - Recurring Templates
+  /recurring-templates/{id}:
+    delete:
+      description: Deletes a recurring template and all its projections
+      parameters:
+      - description: Template ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+      security:
+      - BearerAuth: []
+      summary: Delete a recurring template
+      tags:
+      - Recurring Templates
+    get:
+      description: Retrieves a single recurring template by ID
+      parameters:
+      - description: Template ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.TemplateResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+      security:
+      - BearerAuth: []
+      summary: Get a recurring template
+      tags:
+      - Recurring Templates
+    put:
+      consumes:
+      - application/json
+      description: Updates a recurring template and recalculates projections
+      parameters:
+      - description: Template ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Updated template data
+        in: body
+        name: template
+        required: true
+        schema:
+          $ref: '#/definitions/handler.UpdateTemplateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.TemplateResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+      security:
+      - BearerAuth: []
+      summary: Update a recurring template
+      tags:
+      - Recurring Templates
+  /settlements:
+    post:
+      consumes:
+      - application/json
+      description: Atomically settles CC transactions and creates a transfer transaction
+        from source bank account
+      parameters:
+      - description: Settlement request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.SettlementRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/handler.SettlementResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+      security:
+      - BearerAuth: []
+      summary: Create settlement
+      tags:
+      - settlements
   /transactions:
     get:
       consumes:
@@ -985,6 +1345,10 @@ paths:
         in: query
         name: accountId
         type: integer
+      - description: Filter by month (YYYY-MM format, overrides startDate/endDate)
+        in: query
+        name: month
+        type: string
       - description: Start date (YYYY-MM-DD)
         in: query
         name: startDate
@@ -996,6 +1360,10 @@ paths:
       - description: Transaction type (income or expense)
         in: query
         name: type
+        type: string
+      - description: Filter by CC status (pending, billed, or settled)
+        in: query
+        name: ccStatus
         type: string
       - default: 1
         description: Page number
@@ -1131,6 +1499,90 @@ paths:
       summary: Update a transaction
       tags:
       - transactions
+  /transactions/{id}/amount:
+    patch:
+      consumes:
+      - application/json
+      description: Update only the amount field of a transaction (for overdue items)
+      parameters:
+      - description: Transaction ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: New amount
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.UpdateAmountRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.TransactionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+      security:
+      - BearerAuth: []
+      summary: Update transaction amount
+      tags:
+      - transactions
+  /transactions/{id}/toggle-billed:
+    patch:
+      consumes:
+      - application/json
+      description: Toggle the billed status of a CC transaction (pending <-> billed)
+      parameters:
+      - description: Transaction ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.TransactionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+      security:
+      - BearerAuth: []
+      summary: Toggle CC transaction billed status
+      tags:
+      - transactions
   /transactions/{id}/toggle-paid:
     patch:
       consumes:
@@ -1164,6 +1616,120 @@ paths:
       security:
       - BearerAuth: []
       summary: Toggle transaction paid status
+      tags:
+      - transactions
+  /transactions/batch-toggle-billed:
+    post:
+      consumes:
+      - application/json
+      description: Toggle multiple CC transactions from pending to billed in a single
+        request
+      parameters:
+      - description: Transaction IDs to toggle
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.BatchToggleBilledRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.BatchToggleBilledResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+      security:
+      - BearerAuth: []
+      summary: Batch toggle CC transactions to billed status
+      tags:
+      - transactions
+  /transactions/cc-metrics:
+    get:
+      description: Get CC metrics (pending, billed, month total) for the current or
+        specified month
+      parameters:
+      - description: Month in YYYY-MM format (defaults to current month)
+        in: query
+        name: month
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.CCMetricsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+      security:
+      - BearerAuth: []
+      summary: Get CC metrics
+      tags:
+      - transactions
+  /transactions/deferred-to-settle:
+    get:
+      description: Returns all billed, deferred CC transactions that need settlement,
+        grouped by month
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handler.DeferredGroup'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+      security:
+      - BearerAuth: []
+      summary: Get deferred transactions to settle
+      tags:
+      - transactions
+  /transactions/overdue:
+    get:
+      description: Returns CC transactions that are billed but overdue (2+ months),
+        grouped by month
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handler.OverdueGroupResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ProblemDetails'
+      security:
+      - BearerAuth: []
+      summary: Get overdue CC transactions
       tags:
       - transactions
 securityDefinitions:

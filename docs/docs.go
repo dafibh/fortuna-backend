@@ -482,46 +482,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/cc/payable/breakdown": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Returns all unpaid CC transactions grouped by this_month/next_month and account",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "cc"
-                ],
-                "summary": "Get CC payable breakdown",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/handler.CCPayableBreakdownResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/handler.ProblemDetails"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/handler.ProblemDetails"
-                        }
-                    }
-                }
-            }
-        },
         "/cc/payments": {
             "post": {
                 "security": [
@@ -572,6 +532,60 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    }
+                }
+            }
+        },
+        "/dashboard/future-spending": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get aggregated spending data for future months including projections",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "dashboard"
+                ],
+                "summary": "Get future spending data",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Number of months to include (1-24, default 12)",
+                        "name": "months",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.FutureSpendingData"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/handler.ProblemDetails"
                         }
@@ -809,6 +823,301 @@ const docTemplate = `{
                 }
             }
         },
+        "/recurring-templates": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves all recurring templates for the workspace",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Recurring Templates"
+                ],
+                "summary": "List all recurring templates",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.TemplateListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Creates a new recurring template with projection generation",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Recurring Templates"
+                ],
+                "summary": "Create a recurring template",
+                "parameters": [
+                    {
+                        "description": "Template data",
+                        "name": "template",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.CreateTemplateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/handler.TemplateResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    }
+                }
+            }
+        },
+        "/recurring-templates/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves a single recurring template by ID",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Recurring Templates"
+                ],
+                "summary": "Get a recurring template",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Template ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.TemplateResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates a recurring template and recalculates projections",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Recurring Templates"
+                ],
+                "summary": "Update a recurring template",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Template ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Updated template data",
+                        "name": "template",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.UpdateTemplateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.TemplateResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deletes a recurring template and all its projections",
+                "tags": [
+                    "Recurring Templates"
+                ],
+                "summary": "Delete a recurring template",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Template ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    }
+                }
+            }
+        },
+        "/settlements": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Atomically settles CC transactions and creates a transfer transaction from source bank account",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "settlements"
+                ],
+                "summary": "Create settlement",
+                "parameters": [
+                    {
+                        "description": "Settlement request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.SettlementRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/handler.SettlementResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    }
+                }
+            }
+        },
         "/transactions": {
             "get": {
                 "security": [
@@ -836,6 +1145,12 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
+                        "description": "Filter by month (YYYY-MM format, overrides startDate/endDate)",
+                        "name": "month",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "Start date (YYYY-MM-DD)",
                         "name": "startDate",
                         "in": "query"
@@ -850,6 +1165,12 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Transaction type (income or expense)",
                         "name": "type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by CC status (pending, billed, or settled)",
+                        "name": "ccStatus",
                         "in": "query"
                     },
                     {
@@ -931,6 +1252,182 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    }
+                }
+            }
+        },
+        "/transactions/batch-toggle-billed": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Toggle multiple CC transactions from pending to billed in a single request",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "transactions"
+                ],
+                "summary": "Batch toggle CC transactions to billed status",
+                "parameters": [
+                    {
+                        "description": "Transaction IDs to toggle",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.BatchToggleBilledRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.BatchToggleBilledResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    }
+                }
+            }
+        },
+        "/transactions/cc-metrics": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get CC metrics (pending, billed, month total) for the current or specified month",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "transactions"
+                ],
+                "summary": "Get CC metrics",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Month in YYYY-MM format (defaults to current month)",
+                        "name": "month",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.CCMetricsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    }
+                }
+            }
+        },
+        "/transactions/deferred-to-settle": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns all billed, deferred CC transactions that need settlement, grouped by month",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "transactions"
+                ],
+                "summary": "Get deferred transactions to settle",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/handler.DeferredGroup"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    }
+                }
+            }
+        },
+        "/transactions/overdue": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns CC transactions that are billed but overdue (2+ months), grouped by month",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "transactions"
+                ],
+                "summary": "Get overdue CC transactions",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/handler.OverdueGroupResponse"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/handler.ProblemDetails"
                         }
@@ -1052,6 +1549,137 @@ const docTemplate = `{
                 }
             }
         },
+        "/transactions/{id}/amount": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update only the amount field of a transaction (for overdue items)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "transactions"
+                ],
+                "summary": "Update transaction amount",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Transaction ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New amount",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.UpdateAmountRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.TransactionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    }
+                }
+            }
+        },
+        "/transactions/{id}/toggle-billed": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Toggle the billed status of a CC transaction (pending \u003c-\u003e billed)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "transactions"
+                ],
+                "summary": "Toggle CC transaction billed status",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Transaction ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.TransactionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ProblemDetails"
+                        }
+                    }
+                }
+            }
+        },
         "/transactions/{id}/toggle-paid": {
             "patch": {
                 "security": [
@@ -1129,6 +1757,34 @@ const docTemplate = `{
                 }
             }
         },
+        "domain.AccountAmount": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.CategoryAmount": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
         "domain.CreateAPITokenResponse": {
             "type": "object",
             "properties": {
@@ -1149,6 +1805,40 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "warning": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.FutureSpendingData": {
+            "type": "object",
+            "properties": {
+                "months": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.MonthSpendingResponse"
+                    }
+                }
+            }
+        },
+        "domain.MonthSpendingResponse": {
+            "type": "object",
+            "properties": {
+                "byAccount": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.AccountAmount"
+                    }
+                },
+                "byCategory": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.CategoryAmount"
+                    }
+                },
+                "month": {
+                    "type": "string"
+                },
+                "total": {
                     "type": "string"
                 }
             }
@@ -1230,6 +1920,31 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.BatchToggleBilledRequest": {
+            "type": "object",
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "handler.BatchToggleBilledResponse": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "updated": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.TransactionResponse"
+                    }
+                }
+            }
+        },
         "handler.BudgetProgressResponse": {
             "type": "object",
             "properties": {
@@ -1256,6 +1971,23 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.CCMetricsResponse": {
+            "type": "object",
+            "properties": {
+                "outstanding": {
+                    "description": "Sum of billed CC transactions with deferred intent (balance to settle)",
+                    "type": "string"
+                },
+                "pending": {
+                    "description": "Sum of pending CC transactions",
+                    "type": "string"
+                },
+                "purchases": {
+                    "description": "Sum of all CC transactions (pending + billed + settled)",
+                    "type": "string"
+                }
+            }
+        },
         "handler.CCOutstandingResponse": {
             "type": "object",
             "properties": {
@@ -1269,92 +2001,6 @@ const docTemplate = `{
                     }
                 },
                 "totalOutstanding": {
-                    "type": "string"
-                }
-            }
-        },
-        "handler.CCPayableBreakdownResponse": {
-            "type": "object",
-            "properties": {
-                "grandTotal": {
-                    "type": "string"
-                },
-                "nextMonth": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/handler.CCPayableByAccountEntry"
-                    }
-                },
-                "nextMonthTotal": {
-                    "type": "string"
-                },
-                "thisMonth": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/handler.CCPayableByAccountEntry"
-                    }
-                },
-                "thisMonthTotal": {
-                    "type": "string"
-                }
-            }
-        },
-        "handler.CCPayableByAccountEntry": {
-            "type": "object",
-            "properties": {
-                "accountId": {
-                    "type": "integer"
-                },
-                "accountName": {
-                    "type": "string"
-                },
-                "total": {
-                    "type": "string"
-                },
-                "transactions": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/handler.CCPayableTransactionEntry"
-                    }
-                }
-            }
-        },
-        "handler.CCPayableResponse": {
-            "type": "object",
-            "properties": {
-                "nextMonth": {
-                    "type": "string"
-                },
-                "thisMonth": {
-                    "type": "string"
-                },
-                "total": {
-                    "type": "string"
-                }
-            }
-        },
-        "handler.CCPayableTransactionEntry": {
-            "type": "object",
-            "properties": {
-                "accountId": {
-                    "type": "integer"
-                },
-                "accountName": {
-                    "type": "string"
-                },
-                "amount": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "settlementIntent": {
-                    "type": "string"
-                },
-                "transactionDate": {
                     "type": "string"
                 }
             }
@@ -1412,7 +2058,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.CreateTransactionRequest": {
+        "handler.CreateTemplateRequest": {
             "type": "object",
             "properties": {
                 "accountId": {
@@ -1424,8 +2070,34 @@ const docTemplate = `{
                 "categoryId": {
                     "type": "integer"
                 },
-                "ccSettlementIntent": {
+                "description": {
                     "type": "string"
+                },
+                "endDate": {
+                    "type": "string"
+                },
+                "frequency": {
+                    "type": "string"
+                },
+                "linkTransactionId": {
+                    "type": "integer"
+                },
+                "startDate": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.CreateTransactionRequest": {
+            "type": "object",
+            "properties": {
+                "accountId": {
+                    "type": "integer"
+                },
+                "amount": {
+                    "type": "string"
+                },
+                "categoryId": {
+                    "type": "integer"
                 },
                 "date": {
                     "type": "string"
@@ -1439,6 +2111,10 @@ const docTemplate = `{
                 "notes": {
                     "type": "string"
                 },
+                "settlementIntent": {
+                    "description": "v2: \"immediate\" or \"deferred\"",
+                    "type": "string"
+                },
                 "type": {
                     "type": "string"
                 }
@@ -1447,9 +2123,6 @@ const docTemplate = `{
         "handler.DashboardSummaryResponse": {
             "type": "object",
             "properties": {
-                "ccPayable": {
-                    "$ref": "#/definitions/handler.CCPayableResponse"
-                },
                 "dailyBudget": {
                     "type": "string"
                 },
@@ -1476,6 +2149,31 @@ const docTemplate = `{
                 },
                 "totalBalance": {
                     "type": "string"
+                }
+            }
+        },
+        "handler.DeferredGroup": {
+            "type": "object",
+            "properties": {
+                "itemCount": {
+                    "type": "integer"
+                },
+                "month": {
+                    "description": "\"2026-01\"",
+                    "type": "string"
+                },
+                "monthLabel": {
+                    "description": "\"January\"",
+                    "type": "string"
+                },
+                "totalAmount": {
+                    "type": "string"
+                },
+                "transactions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.TransactionResponse"
+                    }
                 }
             }
         },
@@ -1618,6 +2316,35 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.OverdueGroupResponse": {
+            "type": "object",
+            "properties": {
+                "itemCount": {
+                    "type": "integer"
+                },
+                "month": {
+                    "description": "\"2025-11\"",
+                    "type": "string"
+                },
+                "monthLabel": {
+                    "description": "\"November 2025\"",
+                    "type": "string"
+                },
+                "monthsOverdue": {
+                    "description": "Number of months overdue",
+                    "type": "integer"
+                },
+                "totalAmount": {
+                    "type": "string"
+                },
+                "transactions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.TransactionResponse"
+                    }
+                }
+            }
+        },
         "handler.PaginatedTransactionsResponse": {
             "type": "object",
             "properties": {
@@ -1709,7 +2436,52 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.TransactionResponse": {
+        "handler.SettlementRequest": {
+            "type": "object",
+            "properties": {
+                "sourceAccountId": {
+                    "type": "integer"
+                },
+                "targetCcAccountId": {
+                    "type": "integer"
+                },
+                "transactionIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "handler.SettlementResponse": {
+            "type": "object",
+            "properties": {
+                "settledAt": {
+                    "type": "string"
+                },
+                "settledCount": {
+                    "type": "integer"
+                },
+                "totalAmount": {
+                    "type": "string"
+                },
+                "transferId": {
+                    "type": "integer"
+                }
+            }
+        },
+        "handler.TemplateListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.TemplateResponse"
+                    }
+                }
+            }
+        },
+        "handler.TemplateResponse": {
             "type": "object",
             "properties": {
                 "accountId": {
@@ -1721,10 +2493,53 @@ const docTemplate = `{
                 "categoryId": {
                     "type": "integer"
                 },
+                "createdAt": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "endDate": {
+                    "type": "string"
+                },
+                "frequency": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "startDate": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "workspaceId": {
+                    "type": "integer"
+                }
+            }
+        },
+        "handler.TransactionResponse": {
+            "type": "object",
+            "properties": {
+                "accountId": {
+                    "type": "integer"
+                },
+                "amount": {
+                    "type": "string"
+                },
+                "billedAt": {
+                    "description": "Timestamp when marked as billed",
+                    "type": "string"
+                },
+                "categoryId": {
+                    "type": "integer"
+                },
                 "categoryName": {
                     "type": "string"
                 },
-                "ccSettlementIntent": {
+                "ccState": {
+                    "description": "CC Lifecycle fields",
                     "type": "string"
                 },
                 "createdAt": {
@@ -1733,7 +2548,15 @@ const docTemplate = `{
                 "id": {
                     "type": "integer"
                 },
+                "isModified": {
+                    "description": "true if projected instance differs from template",
+                    "type": "boolean"
+                },
                 "isPaid": {
+                    "type": "boolean"
+                },
+                "isProjected": {
+                    "description": "true if this is a projected (not yet actual) transaction",
                     "type": "boolean"
                 },
                 "name": {
@@ -1742,7 +2565,20 @@ const docTemplate = `{
                 "notes": {
                     "type": "string"
                 },
-                "recurringTransactionId": {
+                "settledAt": {
+                    "description": "Timestamp when settled",
+                    "type": "string"
+                },
+                "settlementIntent": {
+                    "description": "\"immediate\" or \"deferred\"",
+                    "type": "string"
+                },
+                "source": {
+                    "description": "Recurring/Projection fields",
+                    "type": "string"
+                },
+                "templateId": {
+                    "description": "ID of recurring template that generated this",
                     "type": "integer"
                 },
                 "transactionDate": {
@@ -1798,6 +2634,40 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.UpdateAmountRequest": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.UpdateTemplateRequest": {
+            "type": "object",
+            "properties": {
+                "accountId": {
+                    "type": "integer"
+                },
+                "amount": {
+                    "type": "string"
+                },
+                "categoryId": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "endDate": {
+                    "type": "string"
+                },
+                "frequency": {
+                    "type": "string"
+                },
+                "startDate": {
                     "type": "string"
                 }
             }
