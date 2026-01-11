@@ -220,6 +220,14 @@ WHERE t.workspace_id = $1
     AND a.deleted_at IS NULL
 ORDER BY t.cc_settlement_intent, a.name, t.transaction_date DESC;
 
+-- name: GetTransactionsByIDs :many
+-- Get multiple transactions by their IDs
+SELECT * FROM transactions
+WHERE workspace_id = $1
+  AND id = ANY($2::int[])
+  AND deleted_at IS NULL
+ORDER BY id;
+
 -- ========================================
 -- CC Lifecycle Operations (v2)
 -- ========================================
@@ -338,3 +346,12 @@ WHERE workspace_id = $1
   AND template_id = $2
   AND is_projected = false
   AND deleted_at IS NULL;
+
+-- name: GetDeferredForSettlement :many
+-- Get all billed, deferred transactions that need settlement (ordered by date)
+SELECT * FROM transactions
+WHERE workspace_id = $1
+  AND cc_state = 'billed'
+  AND settlement_intent = 'deferred'
+  AND deleted_at IS NULL
+ORDER BY transaction_date ASC;

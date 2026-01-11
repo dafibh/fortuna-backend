@@ -6,7 +6,7 @@ import (
 )
 
 // RegisterRoutes sets up all API routes
-func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateLimiter *middleware.RateLimiter, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler, recurringHandler *RecurringHandler, recurringTemplateHandler *RecurringTemplateHandler, loanProviderHandler *LoanProviderHandler, loanHandler *LoanHandler, loanPaymentHandler *LoanPaymentHandler, wishlistHandler *WishlistHandler, wishlistItemHandler *WishlistItemHandler, wishlistPriceHandler *WishlistPriceHandler, wishlistNoteHandler *WishlistNoteHandler, imageHandler *ImageHandler, wsHandler *WebSocketHandler, apiTokenHandler *APITokenHandler) {
+func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateLimiter *middleware.RateLimiter, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler, recurringHandler *RecurringHandler, recurringTemplateHandler *RecurringTemplateHandler, loanProviderHandler *LoanProviderHandler, loanHandler *LoanHandler, loanPaymentHandler *LoanPaymentHandler, wishlistHandler *WishlistHandler, wishlistItemHandler *WishlistItemHandler, wishlistPriceHandler *WishlistPriceHandler, wishlistNoteHandler *WishlistNoteHandler, imageHandler *ImageHandler, wsHandler *WebSocketHandler, apiTokenHandler *APITokenHandler, settlementHandler *SettlementHandler) {
 	// WebSocket route (auth via query param token)
 	e.GET("/ws", wsHandler.HandleWS)
 
@@ -49,6 +49,7 @@ func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateL
 	transactions.PATCH("/:id/settlement-intent", transactionHandler.UpdateSettlementIntent)
 	transactions.POST("/transfers", transactionHandler.CreateTransfer)
 	transactions.POST("/batch-toggle-billed", transactionHandler.BatchToggleBilled)
+	transactions.GET("/deferred-to-settle", transactionHandler.GetDeferredToSettle)
 
 	// Month routes (dual auth with rate limiting)
 	months := api.Group("/months")
@@ -84,6 +85,11 @@ func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateL
 	cc.Use(dualAuth.Authenticate(), middleware.RateLimitMiddleware(rateLimiter))
 	cc.GET("/payable/breakdown", ccHandler.GetPayableBreakdown)
 	cc.POST("/payments", ccHandler.CreateCCPayment)
+
+	// Settlement routes (dual auth with rate limiting)
+	settlements := api.Group("/settlements")
+	settlements.Use(dualAuth.Authenticate(), middleware.RateLimitMiddleware(rateLimiter))
+	settlements.POST("", settlementHandler.Create)
 
 	// Recurring Transactions routes (v1 - dual auth with rate limiting)
 	recurring := api.Group("/recurring-transactions")

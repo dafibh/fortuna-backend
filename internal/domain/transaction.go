@@ -224,4 +224,9 @@ type TransactionRepository interface {
 	DeleteProjectionsByTemplate(workspaceID int32, templateID int32) error
 	DeleteProjectionsBeyondDate(workspaceID int32, templateID int32, date time.Time) error
 	OrphanActualsByTemplate(workspaceID int32, templateID int32) error
+
+	// Settlement operations (v2)
+	GetByIDs(workspaceID int32, ids []int32) ([]*Transaction, error)
+	BulkSettle(workspaceID int32, ids []int32) ([]*Transaction, error)
+	GetDeferredForSettlement(workspaceID int32) ([]*Transaction, error)
 }

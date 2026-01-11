@@ -99,6 +99,8 @@ type Querier interface {
 	GetCategoryTransactions(ctx context.Context, arg GetCategoryTransactionsParams) ([]GetCategoryTransactionsRow, error)
 	GetCompletedLoansWithStats(ctx context.Context, workspaceID int32) ([]GetCompletedLoansWithStatsRow, error)
 	GetCurrentPricesByItem(ctx context.Context, arg GetCurrentPricesByItemParams) ([]GetCurrentPricesByItemRow, error)
+	// Get all billed, deferred transactions that need settlement (ordered by date)
+	GetDeferredForSettlement(ctx context.Context, workspaceID int32) ([]Transaction, error)
 	GetExclusionsByTemplate(ctx context.Context, arg GetExclusionsByTemplateParams) ([]ProjectionExclusion, error)
 	GetFirstItemImage(ctx context.Context, arg GetFirstItemImageParams) (pgtype.Text, error)
 	GetLatestMonth(ctx context.Context, workspaceID int32) (Month, error)
@@ -133,6 +135,8 @@ type Querier interface {
 	// Returns total spending per category for a specific month
 	GetSpendingByCategory(ctx context.Context, arg GetSpendingByCategoryParams) ([]GetSpendingByCategoryRow, error)
 	GetTransactionByID(ctx context.Context, arg GetTransactionByIDParams) (Transaction, error)
+	// Get multiple transactions by their IDs
+	GetTransactionsByIDs(ctx context.Context, arg GetTransactionsByIDsParams) ([]Transaction, error)
 	GetTransactionsByWorkspace(ctx context.Context, arg GetTransactionsByWorkspaceParams) ([]Transaction, error)
 	// Returns transactions with category name joined for display
 	GetTransactionsWithCategory(ctx context.Context, arg GetTransactionsWithCategoryParams) ([]GetTransactionsWithCategoryRow, error)

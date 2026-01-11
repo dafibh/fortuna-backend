@@ -360,6 +360,9 @@ type MockTransactionRepository struct {
 	OrphanActualsByTemplateFn         func(workspaceID int32, templateID int32) error
 	GetCCMetricsFn                    func(workspaceID int32, startDate, endDate time.Time) (*domain.CCMetrics, error)
 	BatchToggleToBilledFn             func(workspaceID int32, ids []int32) ([]*domain.Transaction, error)
+	GetByIDsFn                        func(workspaceID int32, ids []int32) ([]*domain.Transaction, error)
+	BulkSettleFn                      func(workspaceID int32, ids []int32) ([]*domain.Transaction, error)
+	GetDeferredForSettlementFn        func(workspaceID int32) ([]*domain.Transaction, error)
 }
 
 // NewMockTransactionRepository creates a new MockTransactionRepository
@@ -895,6 +898,59 @@ func (m *MockTransactionRepository) BatchToggleToBilled(workspaceID int32, ids [
 	}
 	// Default: return empty slice
 	return []*domain.Transaction{}, nil
+}
+
+// GetByIDs retrieves multiple transactions by their IDs
+func (m *MockTransactionRepository) GetByIDs(workspaceID int32, ids []int32) ([]*domain.Transaction, error) {
+	if m.GetByIDsFn != nil {
+		return m.GetByIDsFn(workspaceID, ids)
+	}
+	// Default: find transactions by IDs
+	var result []*domain.Transaction
+	for _, id := range ids {
+		if tx, ok := m.Transactions[id]; ok && tx.WorkspaceID == workspaceID {
+			result = append(result, tx)
+		}
+	}
+	return result, nil
+}
+
+// BulkSettle updates multiple transactions to settled state
+func (m *MockTransactionRepository) BulkSettle(workspaceID int32, ids []int32) ([]*domain.Transaction, error) {
+	if m.BulkSettleFn != nil {
+		return m.BulkSettleFn(workspaceID, ids)
+	}
+	// Default: update transactions to settled state
+	var result []*domain.Transaction
+	settledState := domain.CCStateSettled
+	now := time.Now()
+	for _, id := range ids {
+		if tx, ok := m.Transactions[id]; ok && tx.WorkspaceID == workspaceID {
+			tx.CCState = &settledState
+			tx.SettledAt = &now
+			result = append(result, tx)
+		}
+	}
+	return result, nil
+}
+
+// GetDeferredForSettlement retrieves all billed+deferred transactions that need settlement
+func (m *MockTransactionRepository) GetDeferredForSettlement(workspaceID int32) ([]*domain.Transaction, error) {
+	if m.GetDeferredForSettlementFn != nil {
+		return m.GetDeferredForSettlementFn(workspaceID)
+	}
+	// Default: find billed+deferred transactions
+	billedState := domain.CCStateBilled
+	deferredIntent := domain.SettlementIntentDeferred
+	var result []*domain.Transaction
+	for _, tx := range m.Transactions {
+		if tx.WorkspaceID == workspaceID &&
+			tx.CCState != nil && *tx.CCState == billedState &&
+			tx.SettlementIntent != nil && *tx.SettlementIntent == deferredIntent {
+			result = append(result, tx)
+		}
+	}
+	return result, nil
 }
 
 // MockMonthRepository is a mock implementation of domain.MonthRepository

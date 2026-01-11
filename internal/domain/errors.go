@@ -40,6 +40,13 @@ var (
 	ErrTooManyAPITokens             = errors.New("maximum number of API tokens reached")
 	ErrNotCCTransaction             = errors.New("transaction is not a credit card transaction")
 	ErrInvalidCCStateTransition     = errors.New("invalid CC state transition")
+
+	// Settlement errors
+	ErrTransactionsNotFound   = errors.New("one or more transactions not found")
+	ErrTransactionNotBilled   = errors.New("transaction must be billed to settle")
+	ErrTransactionNotDeferred = errors.New("transaction must have deferred settlement intent to settle")
+	ErrInvalidTargetAccount   = errors.New("target account must be a credit card")
+	ErrEmptySettlement        = errors.New("at least one transaction must be selected for settlement")
 )
 
 // Validation constants

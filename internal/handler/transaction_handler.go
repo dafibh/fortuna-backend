@@ -988,3 +988,79 @@ func (h *TransactionHandler) BatchToggleBilled(c echo.Context) error {
 	log.Info().Int32("workspace_id", workspaceID).Int("count", len(transactions)).Msg("Batch toggle billed completed")
 	return c.JSON(http.StatusOK, response)
 }
+
+// DeferredGroup represents a group of deferred transactions by month
+type DeferredGroup struct {
+	Month        string                `json:"month"`        // "2026-01"
+	MonthLabel   string                `json:"monthLabel"`   // "January"
+	TotalAmount  string                `json:"totalAmount"`
+	ItemCount    int                   `json:"itemCount"`
+	Transactions []TransactionResponse `json:"transactions"`
+}
+
+// GetDeferredToSettle returns all billed+deferred transactions grouped by month
+// @Summary Get deferred transactions to settle
+// @Description Returns all billed, deferred CC transactions that need settlement, grouped by month
+// @Tags transactions
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {array} DeferredGroup
+// @Failure 401 {object} ProblemDetails
+// @Failure 500 {object} ProblemDetails
+// @Router /transactions/deferred-to-settle [get]
+func (h *TransactionHandler) GetDeferredToSettle(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	transactions, err := h.transactionService.GetDeferredForSettlement(workspaceID)
+	if err != nil {
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Msg("Failed to get deferred transactions")
+		return NewInternalError(c, "Failed to get deferred transactions")
+	}
+
+	// Group transactions by month
+	groups := groupTransactionsByMonth(transactions)
+
+	return c.JSON(http.StatusOK, groups)
+}
+
+// groupTransactionsByMonth groups transactions by their transaction month
+func groupTransactionsByMonth(transactions []*domain.Transaction) []DeferredGroup {
+	// Map to group transactions by year-month
+	monthGroups := make(map[string]*DeferredGroup)
+	monthOrder := []string{} // Track order of months
+
+	for _, tx := range transactions {
+		yearMonth := tx.TransactionDate.Format("2006-01")
+		monthLabel := tx.TransactionDate.Format("January")
+
+		if _, exists := monthGroups[yearMonth]; !exists {
+			monthGroups[yearMonth] = &DeferredGroup{
+				Month:        yearMonth,
+				MonthLabel:   monthLabel,
+				TotalAmount:  "0.00",
+				ItemCount:    0,
+				Transactions: []TransactionResponse{},
+			}
+			monthOrder = append(monthOrder, yearMonth)
+		}
+
+		group := monthGroups[yearMonth]
+		group.Transactions = append(group.Transactions, toTransactionResponse(tx))
+		group.ItemCount++
+
+		// Update total
+		currentTotal, _ := decimal.NewFromString(group.TotalAmount)
+		group.TotalAmount = currentTotal.Add(tx.Amount).StringFixed(2)
+	}
+
+	// Convert map to slice in order
+	result := make([]DeferredGroup, 0, len(monthOrder))
+	for _, ym := range monthOrder {
+		result = append(result, *monthGroups[ym])
+	}
+
+	return result
+}

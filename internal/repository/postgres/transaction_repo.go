@@ -975,3 +975,57 @@ func (r *TransactionRepository) BatchToggleToBilled(workspaceID int32, ids []int
 	}
 	return transactions, nil
 }
+
+// GetByIDs retrieves multiple transactions by their IDs
+func (r *TransactionRepository) GetByIDs(workspaceID int32, ids []int32) ([]*domain.Transaction, error) {
+	ctx := context.Background()
+
+	rows, err := r.queries.GetTransactionsByIDs(ctx, sqlc.GetTransactionsByIDsParams{
+		WorkspaceID: workspaceID,
+		Column2:     ids,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	transactions := make([]*domain.Transaction, len(rows))
+	for i, row := range rows {
+		transactions[i] = sqlcTransactionToDomain(row)
+	}
+	return transactions, nil
+}
+
+// BulkSettle updates multiple transactions to settled state
+func (r *TransactionRepository) BulkSettle(workspaceID int32, ids []int32) ([]*domain.Transaction, error) {
+	ctx := context.Background()
+
+	rows, err := r.queries.BulkSettleTransactions(ctx, sqlc.BulkSettleTransactionsParams{
+		Column1:     ids,
+		WorkspaceID: workspaceID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	transactions := make([]*domain.Transaction, len(rows))
+	for i, row := range rows {
+		transactions[i] = sqlcTransactionToDomain(row)
+	}
+	return transactions, nil
+}
+
+// GetDeferredForSettlement retrieves all billed+deferred transactions that need settlement
+func (r *TransactionRepository) GetDeferredForSettlement(workspaceID int32) ([]*domain.Transaction, error) {
+	ctx := context.Background()
+
+	rows, err := r.queries.GetDeferredForSettlement(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+
+	transactions := make([]*domain.Transaction, len(rows))
+	for i, row := range rows {
+		transactions[i] = sqlcTransactionToDomain(row)
+	}
+	return transactions, nil
+}

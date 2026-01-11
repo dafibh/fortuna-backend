@@ -533,6 +533,61 @@ func (q *Queries) GetCCPayableSummary(ctx context.Context, workspaceID int32) ([
 	return items, nil
 }
 
+const getDeferredForSettlement = `-- name: GetDeferredForSettlement :many
+SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, recurring_transaction_id, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected FROM transactions
+WHERE workspace_id = $1
+  AND cc_state = 'billed'
+  AND settlement_intent = 'deferred'
+  AND deleted_at IS NULL
+ORDER BY transaction_date ASC
+`
+
+// Get all billed, deferred transactions that need settlement (ordered by date)
+func (q *Queries) GetDeferredForSettlement(ctx context.Context, workspaceID int32) ([]Transaction, error) {
+	rows, err := q.db.Query(ctx, getDeferredForSettlement, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Transaction{}
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.AccountID,
+			&i.Name,
+			&i.Amount,
+			&i.Type,
+			&i.TransactionDate,
+			&i.IsPaid,
+			&i.CcSettlementIntent,
+			&i.Notes,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.TransferPairID,
+			&i.CategoryID,
+			&i.IsCcPayment,
+			&i.RecurringTransactionID,
+			&i.CcState,
+			&i.BilledAt,
+			&i.SettledAt,
+			&i.SettlementIntent,
+			&i.Source,
+			&i.TemplateID,
+			&i.IsProjected,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getMonthlyTransactionSummaries = `-- name: GetMonthlyTransactionSummaries :many
 SELECT
     EXTRACT(YEAR FROM transaction_date)::INTEGER AS year,
@@ -842,6 +897,65 @@ func (q *Queries) GetTransactionByID(ctx context.Context, arg GetTransactionByID
 		&i.IsProjected,
 	)
 	return i, err
+}
+
+const getTransactionsByIDs = `-- name: GetTransactionsByIDs :many
+SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, recurring_transaction_id, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected FROM transactions
+WHERE workspace_id = $1
+  AND id = ANY($2::int[])
+  AND deleted_at IS NULL
+ORDER BY id
+`
+
+type GetTransactionsByIDsParams struct {
+	WorkspaceID int32   `json:"workspace_id"`
+	Column2     []int32 `json:"column_2"`
+}
+
+// Get multiple transactions by their IDs
+func (q *Queries) GetTransactionsByIDs(ctx context.Context, arg GetTransactionsByIDsParams) ([]Transaction, error) {
+	rows, err := q.db.Query(ctx, getTransactionsByIDs, arg.WorkspaceID, arg.Column2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Transaction{}
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.AccountID,
+			&i.Name,
+			&i.Amount,
+			&i.Type,
+			&i.TransactionDate,
+			&i.IsPaid,
+			&i.CcSettlementIntent,
+			&i.Notes,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.TransferPairID,
+			&i.CategoryID,
+			&i.IsCcPayment,
+			&i.RecurringTransactionID,
+			&i.CcState,
+			&i.BilledAt,
+			&i.SettledAt,
+			&i.SettlementIntent,
+			&i.Source,
+			&i.TemplateID,
+			&i.IsProjected,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getTransactionsByWorkspace = `-- name: GetTransactionsByWorkspace :many

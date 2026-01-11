@@ -115,6 +115,7 @@ func main() {
 	budgetCategoryService := service.NewBudgetCategoryService(budgetCategoryRepo)
 	budgetAllocationService := service.NewBudgetAllocationService(budgetAllocationRepo, budgetCategoryRepo)
 	ccService := service.NewCCService(transactionRepo, accountRepo)
+	settlementService := service.NewSettlementService(transactionRepo, accountRepo)
 	recurringService := service.NewRecurringService(recurringRepo, transactionRepo, accountRepo, budgetCategoryRepo)
 	recurringTemplateRepo := postgres.NewRecurringTemplateRepository(pool)
 	recurringTemplateService := service.NewRecurringTemplateService(recurringTemplateRepo, transactionRepo, accountRepo, budgetCategoryRepo)
@@ -181,6 +182,7 @@ func main() {
 	budgetCategoryHandler := handler.NewBudgetCategoryHandler(budgetCategoryService)
 	budgetHandler := handler.NewBudgetHandler(budgetAllocationService)
 	ccHandler := handler.NewCCHandler(ccService)
+	settlementHandler := handler.NewSettlementHandler(settlementService)
 	recurringHandler := handler.NewRecurringHandler(recurringService)
 	recurringTemplateHandler := handler.NewRecurringTemplateHandler(recurringTemplateService)
 	loanProviderHandler := handler.NewLoanProviderHandler(loanProviderService)
@@ -247,7 +249,7 @@ func main() {
 	e.GET("/api/docs/*", echoSwagger.WrapHandler)
 
 	// Register API routes
-	handler.RegisterRoutes(e, dualAuthMiddleware, rateLimiter, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler, dashboardHandler, budgetCategoryHandler, budgetHandler, ccHandler, recurringHandler, recurringTemplateHandler, loanProviderHandler, loanHandler, loanPaymentHandler, wishlistHandler, wishlistItemHandler, wishlistPriceHandler, wishlistNoteHandler, imageHandler, wsHandler, apiTokenHandler)
+	handler.RegisterRoutes(e, dualAuthMiddleware, rateLimiter, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler, dashboardHandler, budgetCategoryHandler, budgetHandler, ccHandler, recurringHandler, recurringTemplateHandler, loanProviderHandler, loanHandler, loanPaymentHandler, wishlistHandler, wishlistItemHandler, wishlistPriceHandler, wishlistNoteHandler, imageHandler, wsHandler, apiTokenHandler, settlementHandler)
 
 	// Start server in goroutine
 	go func() {

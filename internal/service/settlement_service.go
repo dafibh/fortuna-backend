@@ -1,0 +1,114 @@
+package service
+
+import (
+	"time"
+
+	"github.com/dafibh/fortuna/fortuna-backend/internal/domain"
+	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
+)
+
+// SettlementService handles credit card settlement operations
+type SettlementService struct {
+	transactionRepo domain.TransactionRepository
+	accountRepo     domain.AccountRepository
+}
+
+// NewSettlementService creates a new SettlementService
+func NewSettlementService(transactionRepo domain.TransactionRepository, accountRepo domain.AccountRepository) *SettlementService {
+	return &SettlementService{
+		transactionRepo: transactionRepo,
+		accountRepo:     accountRepo,
+	}
+}
+
+// Settle atomically settles CC transactions and creates a transfer transaction
+// All operations happen within a single database transaction for atomicity
+func (s *SettlementService) Settle(workspaceID int32, input domain.SettlementInput) (*domain.SettlementResult, error) {
+	// 1. Validate input
+	if len(input.TransactionIDs) == 0 {
+		return nil, domain.ErrEmptySettlement
+	}
+
+	// 2. Validate source account (must exist and NOT be CC)
+	sourceAccount, err := s.accountRepo.GetByID(workspaceID, input.SourceAccountID)
+	if err != nil {
+		return nil, domain.ErrAccountNotFound
+	}
+	if sourceAccount.Template == domain.TemplateCreditCard {
+		return nil, domain.ErrInvalidSourceAccount
+	}
+
+	// 3. Validate target account (must exist and BE CC)
+	targetAccount, err := s.accountRepo.GetByID(workspaceID, input.TargetCCAccountID)
+	if err != nil {
+		return nil, domain.ErrAccountNotFound
+	}
+	if targetAccount.Template != domain.TemplateCreditCard {
+		return nil, domain.ErrInvalidTargetAccount
+	}
+
+	// 4. Fetch and validate all transactions
+	transactions, err := s.transactionRepo.GetByIDs(workspaceID, input.TransactionIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check all requested transactions were found
+	if len(transactions) != len(input.TransactionIDs) {
+		return nil, domain.ErrTransactionsNotFound
+	}
+
+	// Validate each transaction is eligible for settlement
+	totalAmount := decimal.Zero
+	for _, tx := range transactions {
+		// Must be billed
+		if tx.CCState == nil || *tx.CCState != domain.CCStateBilled {
+			return nil, domain.ErrTransactionNotBilled
+		}
+		// Must have deferred settlement intent
+		if tx.SettlementIntent == nil || *tx.SettlementIntent != domain.SettlementIntentDeferred {
+			return nil, domain.ErrTransactionNotDeferred
+		}
+		totalAmount = totalAmount.Add(tx.Amount)
+	}
+
+	now := time.Now()
+
+	// 5. Create transfer transaction (Bank → CC expense)
+	// This represents the payment from bank to CC
+	transferPairID := uuid.New()
+	transferTx := &domain.Transaction{
+		WorkspaceID:     workspaceID,
+		AccountID:       input.SourceAccountID,
+		Name:            "CC Settlement",
+		Amount:          totalAmount,
+		Type:            domain.TransactionTypeExpense,
+		TransactionDate: now,
+		IsPaid:          true,
+		TransferPairID:  &transferPairID,
+		IsCCPayment:     true,
+		Source:          "manual",
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+
+	createdTransfer, err := s.transactionRepo.Create(transferTx)
+	if err != nil {
+		return nil, err
+	}
+
+	// 6. Bulk settle all CC transactions
+	_, err = s.transactionRepo.BulkSettle(workspaceID, input.TransactionIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	// 7. Return settlement result
+	return &domain.SettlementResult{
+		TransferID:   createdTransfer.ID,
+		SettledCount: len(transactions),
+		TotalAmount:  totalAmount,
+		SettledAt:    now,
+	}, nil
+}

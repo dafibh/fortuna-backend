@@ -748,3 +748,8 @@ func (s *TransactionService) BatchToggleToBilled(workspaceID int32, ids []int32)
 
 	return transactions, nil
 }
+
+// GetDeferredForSettlement returns all billed+deferred transactions that need settlement
+func (s *TransactionService) GetDeferredForSettlement(workspaceID int32) ([]*domain.Transaction, error) {
+	return s.transactionRepo.GetDeferredForSettlement(workspaceID)
+}
