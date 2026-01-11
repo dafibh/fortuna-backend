@@ -80,14 +80,15 @@ func (s *RecurringTemplateServiceImpl) CreateTemplate(workspaceID int32, input d
 
 	// Create the template
 	template := &domain.RecurringTemplate{
-		WorkspaceID: workspaceID,
-		Description: input.Description,
-		Amount:      input.Amount,
-		CategoryID:  input.CategoryID,
-		AccountID:   input.AccountID,
-		Frequency:   input.Frequency,
-		StartDate:   input.StartDate,
-		EndDate:     input.EndDate,
+		WorkspaceID:      workspaceID,
+		Description:      input.Description,
+		Amount:           input.Amount,
+		CategoryID:       input.CategoryID,
+		AccountID:        input.AccountID,
+		Frequency:        input.Frequency,
+		StartDate:        input.StartDate,
+		EndDate:          input.EndDate,
+		SettlementIntent: input.SettlementIntent,
 	}
 
 	created, err := s.templateRepo.Create(template)
