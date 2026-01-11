@@ -699,6 +699,13 @@ func (s *TransactionService) GetImmediateForSettlement(workspaceID int32, month 
 	return s.transactionRepo.GetImmediateForSettlement(workspaceID, startOfMonth, endOfMonth)
 }
 
+// GetPendingDeferredCC returns pending (not yet billed) deferred CC transactions for a month
+func (s *TransactionService) GetPendingDeferredCC(workspaceID int32, month time.Time) ([]*domain.Transaction, error) {
+	startOfMonth := time.Date(month.Year(), month.Month(), 1, 0, 0, 0, 0, time.UTC)
+	endOfMonth := startOfMonth.AddDate(0, 1, 0)
+	return s.transactionRepo.GetPendingDeferredCC(workspaceID, startOfMonth, endOfMonth)
+}
+
 // UpdateAmount updates only the amount field of a transaction
 // This is used for overdue items where only amount adjustment (for interest/fees) is allowed
 func (s *TransactionService) UpdateAmount(workspaceID int32, id int32, amount decimal.Decimal) (*domain.Transaction, error) {

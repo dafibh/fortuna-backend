@@ -363,6 +363,7 @@ type MockTransactionRepository struct {
 	BulkSettleFn                      func(workspaceID int32, ids []int32) ([]*domain.Transaction, error)
 	GetDeferredForSettlementFn        func(workspaceID int32) ([]*domain.Transaction, error)
 	GetImmediateForSettlementFn       func(workspaceID int32, startDate, endDate time.Time) ([]*domain.Transaction, error)
+	GetPendingDeferredCCFn            func(workspaceID int32, startDate, endDate time.Time) ([]*domain.Transaction, error)
 	AtomicSettleFn                    func(transferTx *domain.Transaction, settleIDs []int32) (*domain.Transaction, int, error)
 	GetOverdueCCFn                    func(workspaceID int32) ([]*domain.Transaction, error)
 }
@@ -981,6 +982,26 @@ func (m *MockTransactionRepository) GetImmediateForSettlement(workspaceID int32,
 		if tx.WorkspaceID == workspaceID &&
 			tx.CCState != nil && *tx.CCState == billedState &&
 			tx.SettlementIntent != nil && *tx.SettlementIntent == immediateIntent &&
+			!tx.TransactionDate.Before(startDate) && tx.TransactionDate.Before(endDate) {
+			result = append(result, tx)
+		}
+	}
+	return result, nil
+}
+
+// GetPendingDeferredCC retrieves pending (not yet billed) deferred CC transactions
+func (m *MockTransactionRepository) GetPendingDeferredCC(workspaceID int32, startDate, endDate time.Time) ([]*domain.Transaction, error) {
+	if m.GetPendingDeferredCCFn != nil {
+		return m.GetPendingDeferredCCFn(workspaceID, startDate, endDate)
+	}
+	// Default: find pending+deferred transactions within date range
+	pendingState := domain.CCStatePending
+	deferredIntent := domain.SettlementIntentDeferred
+	var result []*domain.Transaction
+	for _, tx := range m.Transactions {
+		if tx.WorkspaceID == workspaceID &&
+			tx.CCState != nil && *tx.CCState == pendingState &&
+			tx.SettlementIntent != nil && *tx.SettlementIntent == deferredIntent &&
 			!tx.TransactionDate.Before(startDate) && tx.TransactionDate.Before(endDate) {
 			result = append(result, tx)
 		}

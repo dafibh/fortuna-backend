@@ -80,6 +80,16 @@ func (s *DashboardService) getActualSummary(workspaceID int32, year, month int) 
 		return nil, err
 	}
 
+	// 2b. Adjust total balance to exclude deferred CC transactions for this month
+	// Deferred CC transactions are obligations for NEXT month, not this month
+	// The account balance calculation includes all CC transactions, so we add back deferred ones
+	deferredCCForMonth, err := s.transactionRepo.SumDeferredCCByDateRange(
+		workspaceID, monthData.StartDate, monthData.EndDate)
+	if err != nil {
+		return nil, err
+	}
+	totalBalance = totalBalance.Add(deferredCCForMonth)
+
 	// 3. Calculate in-hand balance (starting + income - paid expenses only)
 	paidExpenses, err := s.transactionRepo.SumPaidExpensesByDateRange(
 		workspaceID, monthData.StartDate, monthData.EndDate)
@@ -313,10 +323,32 @@ func (s *DashboardService) GetFutureSpending(workspaceID int32, months int) (*do
 	// Aggregate by month
 	monthlyData := make(map[string]*domain.MonthSpending)
 
+	// Build a map of CC account IDs for quick lookup
+	ccAccountIDs := make(map[int32]bool)
+	for _, acc := range accounts {
+		if acc.Template == domain.TemplateCreditCard {
+			ccAccountIDs[acc.ID] = true
+		}
+	}
+
+	// Track deferred CC by their target month (next month from transaction date)
+	// Key: target month (YYYY-MM), Value: list of deferred transactions for that month
+	deferredByTargetMonth := make(map[string][]*domain.Transaction)
+
 	// Process regular transactions
+	// EXCLUDE deferred CC transactions - they'll be added to next month
 	for _, txn := range transactions {
 		// Only count expenses
 		if txn.Type != domain.TransactionTypeExpense {
+			continue
+		}
+
+		// Skip deferred CC transactions - they belong to next month's spending
+		if ccAccountIDs[txn.AccountID] && txn.SettlementIntent != nil && *txn.SettlementIntent == domain.SettlementIntentDeferred {
+			// Calculate the target month (next month from transaction date)
+			targetMonth := time.Date(txn.TransactionDate.Year(), txn.TransactionDate.Month()+1, 1, 0, 0, 0, 0, time.UTC)
+			targetMonthKey := targetMonth.Format("2006-01")
+			deferredByTargetMonth[targetMonthKey] = append(deferredByTargetMonth[targetMonthKey], txn)
 			continue
 		}
 
@@ -340,7 +372,8 @@ func (s *DashboardService) GetFutureSpending(workspaceID int32, months int) (*do
 		m.ByAccount[txn.AccountID] = m.ByAccount[txn.AccountID].Add(amount)
 	}
 
-	// Add deferred CC to the current month (they're carried forward)
+	// Add deferred CC from PREVIOUS months to CURRENT month (they're due this month)
+	// Note: GetDeferredForSettlement returns deferred CC from previous months that are now due
 	currentMonthKey := startDate.Format("2006-01")
 	if _, exists := monthlyData[currentMonthKey]; !exists {
 		monthlyData[currentMonthKey] = &domain.MonthSpending{
@@ -358,6 +391,27 @@ func (s *DashboardService) GetFutureSpending(workspaceID int32, months int) (*do
 			m.ByCategory[*txn.CategoryID] = m.ByCategory[*txn.CategoryID].Add(amount)
 		}
 		m.ByAccount[txn.AccountID] = m.ByAccount[txn.AccountID].Add(amount)
+	}
+
+	// Add deferred CC from the current date range to their target months (next month)
+	for targetMonthKey, deferredTxns := range deferredByTargetMonth {
+		if _, exists := monthlyData[targetMonthKey]; !exists {
+			monthlyData[targetMonthKey] = &domain.MonthSpending{
+				Month:      targetMonthKey,
+				Total:      decimal.Zero,
+				ByCategory: make(map[int32]decimal.Decimal),
+				ByAccount:  make(map[int32]decimal.Decimal),
+			}
+		}
+		for _, txn := range deferredTxns {
+			m := monthlyData[targetMonthKey]
+			amount := txn.Amount.Abs()
+			m.Total = m.Total.Add(amount)
+			if txn.CategoryID != nil {
+				m.ByCategory[*txn.CategoryID] = m.ByCategory[*txn.CategoryID].Add(amount)
+			}
+			m.ByAccount[txn.AccountID] = m.ByAccount[txn.AccountID].Add(amount)
+		}
 	}
 
 	// Build category name map (from transactions that have category names)

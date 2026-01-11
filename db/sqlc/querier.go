@@ -82,10 +82,11 @@ type Querier interface {
 	GetBudgetCategoryByName(ctx context.Context, arg GetBudgetCategoryByNameParams) (BudgetCategory, error)
 	// Get CC metrics (pending, outstanding, purchases) for a month range
 	// Simplified: pending = billed_at IS NULL, billed = billed_at IS NOT NULL AND is_paid = false, settled = is_paid = true
-	// purchases = CC expenses this month (only expenses, income is payments against balance)
+	// purchases = CC expenses this month (EXCLUDES deferred - those are next month's obligations)
+	// pending = not yet billed transactions (current month + deferred from previous months)
 	// outstanding = billed transactions to settle this month:
-	//   1. deferred intent from previous months
-	//   2. immediate intent from current month
+	//   1. deferred intent from previous months (billed)
+	//   2. immediate intent from current month (billed)
 	GetCCMetrics(ctx context.Context, arg GetCCMetricsParams) (GetCCMetricsRow, error)
 	// Get total outstanding balance across all CC accounts (sum of unpaid expenses)
 	GetCCOutstandingSummary(ctx context.Context, workspaceID int32) (GetCCOutstandingSummaryRow, error)
@@ -119,6 +120,9 @@ type Querier interface {
 	GetOverdueCC(ctx context.Context, workspaceID int32) ([]GetOverdueCCRow, error)
 	// Get pending CC transactions (billed_at IS NULL) for a specific month range
 	GetPendingCCByMonth(ctx context.Context, arg GetPendingCCByMonthParams) ([]GetPendingCCByMonthRow, error)
+	// Get pending (not yet billed) deferred CC transactions for visibility
+	// These are transactions that will need to be paid next month once billed
+	GetPendingDeferredCC(ctx context.Context, arg GetPendingDeferredCCParams) ([]GetPendingDeferredCCRow, error)
 	// Get outstanding balance for each CC account
 	GetPerAccountOutstanding(ctx context.Context, workspaceID int32) ([]GetPerAccountOutstandingRow, error)
 	GetPriceHistoryByPlatform(ctx context.Context, arg GetPriceHistoryByPlatformParams) ([]WishlistItemPrice, error)

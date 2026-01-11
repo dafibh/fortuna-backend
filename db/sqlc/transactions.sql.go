@@ -424,19 +424,22 @@ func (q *Queries) GetBilledCCByMonth(ctx context.Context, arg GetBilledCCByMonth
 
 const getCCMetrics = `-- name: GetCCMetrics :one
 SELECT
-    COALESCE(SUM(CASE WHEN t.billed_at IS NULL AND t.is_paid = false AND t.transaction_date >= $2 AND t.transaction_date < $3 THEN t.amount ELSE 0 END), 0)::NUMERIC(12,2) as pending_total,
+    COALESCE(SUM(CASE WHEN t.billed_at IS NULL AND t.is_paid = false AND (
+        (t.transaction_date >= $2 AND t.transaction_date < $3) OR
+        (t.settlement_intent = 'deferred' AND t.transaction_date < $2)
+    ) THEN t.amount ELSE 0 END), 0)::NUMERIC(12,2) as pending_total,
     COALESCE(SUM(CASE WHEN t.billed_at IS NOT NULL AND t.is_paid = false AND (
         (t.settlement_intent = 'deferred' AND t.transaction_date < $2) OR
         (t.settlement_intent = 'immediate' AND t.transaction_date >= $2 AND t.transaction_date < $3)
     ) THEN t.amount ELSE 0 END), 0)::NUMERIC(12,2) as outstanding_total,
-    COALESCE(SUM(CASE WHEN t.type = 'expense' AND t.transaction_date >= $2 AND t.transaction_date < $3 THEN t.amount ELSE 0 END), 0)::NUMERIC(12,2) as purchases_total
+    COALESCE(SUM(CASE WHEN t.type = 'expense' AND t.transaction_date >= $2 AND t.transaction_date < $3 AND COALESCE(t.settlement_intent, 'immediate') != 'deferred' THEN t.amount ELSE 0 END), 0)::NUMERIC(12,2) as purchases_total
 FROM transactions t
 JOIN accounts a ON t.account_id = a.id
 WHERE t.workspace_id = $1
   AND a.template = 'credit_card'
   AND (
     (t.transaction_date >= $2 AND t.transaction_date < $3) OR
-    (t.billed_at IS NOT NULL AND t.is_paid = false AND t.settlement_intent = 'deferred' AND t.transaction_date < $2)
+    (t.is_paid = false AND t.settlement_intent = 'deferred' AND t.transaction_date < $2)
   )
   AND t.deleted_at IS NULL
 `
@@ -455,10 +458,11 @@ type GetCCMetricsRow struct {
 
 // Get CC metrics (pending, outstanding, purchases) for a month range
 // Simplified: pending = billed_at IS NULL, billed = billed_at IS NOT NULL AND is_paid = false, settled = is_paid = true
-// purchases = CC expenses this month (only expenses, income is payments against balance)
+// purchases = CC expenses this month (EXCLUDES deferred - those are next month's obligations)
+// pending = not yet billed transactions (current month + deferred from previous months)
 // outstanding = billed transactions to settle this month:
-//  1. deferred intent from previous months
-//  2. immediate intent from current month
+//  1. deferred intent from previous months (billed)
+//  2. immediate intent from current month (billed)
 func (q *Queries) GetCCMetrics(ctx context.Context, arg GetCCMetricsParams) (GetCCMetricsRow, error) {
 	row := q.db.QueryRow(ctx, getCCMetrics, arg.WorkspaceID, arg.TransactionDate, arg.TransactionDate_2)
 	var i GetCCMetricsRow
@@ -867,6 +871,110 @@ func (q *Queries) GetPendingCCByMonth(ctx context.Context, arg GetPendingCCByMon
 	items := []GetPendingCCByMonthRow{}
 	for rows.Next() {
 		var i GetPendingCCByMonthRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.AccountID,
+			&i.Name,
+			&i.Amount,
+			&i.Type,
+			&i.TransactionDate,
+			&i.IsPaid,
+			&i.Notes,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.TransferPairID,
+			&i.CategoryID,
+			&i.IsCcPayment,
+			&i.BilledAt,
+			&i.SettlementIntent,
+			&i.Source,
+			&i.TemplateID,
+			&i.IsProjected,
+			&i.ID_2,
+			&i.WorkspaceID_2,
+			&i.Name_2,
+			&i.AccountType,
+			&i.Template,
+			&i.InitialBalance,
+			&i.CreatedAt_2,
+			&i.UpdatedAt_2,
+			&i.DeletedAt_2,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getPendingDeferredCC = `-- name: GetPendingDeferredCC :many
+SELECT t.id, t.workspace_id, account_id, t.name, amount, type, transaction_date, is_paid, notes, t.created_at, t.updated_at, t.deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, a.id, a.workspace_id, a.name, account_type, template, initial_balance, a.created_at, a.updated_at, a.deleted_at FROM transactions t
+JOIN accounts a ON t.account_id = a.id
+WHERE t.workspace_id = $1
+  AND a.template = 'credit_card'
+  AND t.billed_at IS NULL
+  AND t.is_paid = false
+  AND t.settlement_intent = 'deferred'
+  AND t.transaction_date >= $2
+  AND t.transaction_date < $3
+  AND t.deleted_at IS NULL
+ORDER BY t.transaction_date ASC
+`
+
+type GetPendingDeferredCCParams struct {
+	WorkspaceID       int32       `json:"workspace_id"`
+	TransactionDate   pgtype.Date `json:"transaction_date"`
+	TransactionDate_2 pgtype.Date `json:"transaction_date_2"`
+}
+
+type GetPendingDeferredCCRow struct {
+	ID               int32              `json:"id"`
+	WorkspaceID      int32              `json:"workspace_id"`
+	AccountID        int32              `json:"account_id"`
+	Name             string             `json:"name"`
+	Amount           pgtype.Numeric     `json:"amount"`
+	Type             string             `json:"type"`
+	TransactionDate  pgtype.Date        `json:"transaction_date"`
+	IsPaid           bool               `json:"is_paid"`
+	Notes            pgtype.Text        `json:"notes"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt        pgtype.Timestamptz `json:"deleted_at"`
+	TransferPairID   pgtype.UUID        `json:"transfer_pair_id"`
+	CategoryID       pgtype.Int4        `json:"category_id"`
+	IsCcPayment      bool               `json:"is_cc_payment"`
+	BilledAt         pgtype.Timestamptz `json:"billed_at"`
+	SettlementIntent pgtype.Text        `json:"settlement_intent"`
+	Source           pgtype.Text        `json:"source"`
+	TemplateID       pgtype.Int4        `json:"template_id"`
+	IsProjected      pgtype.Bool        `json:"is_projected"`
+	ID_2             int32              `json:"id_2"`
+	WorkspaceID_2    int32              `json:"workspace_id_2"`
+	Name_2           string             `json:"name_2"`
+	AccountType      string             `json:"account_type"`
+	Template         string             `json:"template"`
+	InitialBalance   pgtype.Numeric     `json:"initial_balance"`
+	CreatedAt_2      pgtype.Timestamptz `json:"created_at_2"`
+	UpdatedAt_2      pgtype.Timestamptz `json:"updated_at_2"`
+	DeletedAt_2      pgtype.Timestamptz `json:"deleted_at_2"`
+}
+
+// Get pending (not yet billed) deferred CC transactions for visibility
+// These are transactions that will need to be paid next month once billed
+func (q *Queries) GetPendingDeferredCC(ctx context.Context, arg GetPendingDeferredCCParams) ([]GetPendingDeferredCCRow, error) {
+	rows, err := q.db.Query(ctx, getPendingDeferredCC, arg.WorkspaceID, arg.TransactionDate, arg.TransactionDate_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetPendingDeferredCCRow{}
+	for rows.Next() {
+		var i GetPendingDeferredCCRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.WorkspaceID,

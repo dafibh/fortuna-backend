@@ -999,6 +999,71 @@ func (h *TransactionHandler) GetImmediateToSettle(c echo.Context) error {
 	return c.JSON(http.StatusOK, group)
 }
 
+// PendingDeferredGroup represents pending deferred CC transactions for a month
+type PendingDeferredGroup struct {
+	Month        string                `json:"month"`        // "2026-01"
+	MonthLabel   string                `json:"monthLabel"`   // "January"
+	TotalAmount  string                `json:"totalAmount"`
+	ItemCount    int                   `json:"itemCount"`
+	Transactions []TransactionResponse `json:"transactions"`
+}
+
+// GetPendingDeferred returns pending (not yet billed) deferred CC transactions
+// @Summary Get pending deferred CC transactions
+// @Description Returns pending CC transactions with deferred intent (Pay Next Month) for visibility
+// @Tags transactions
+// @Produce json
+// @Param month query string false "Month in YYYY-MM format (defaults to current month)"
+// @Security BearerAuth
+// @Success 200 {object} PendingDeferredGroup
+// @Failure 401 {object} ProblemDetails
+// @Failure 500 {object} ProblemDetails
+// @Router /transactions/pending-deferred [get]
+func (h *TransactionHandler) GetPendingDeferred(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	// Parse month parameter (default to current month)
+	monthStr := c.QueryParam("month")
+	var month time.Time
+	if monthStr != "" {
+		parsed, err := time.Parse("2006-01", monthStr)
+		if err != nil {
+			return NewValidationError(c, "Invalid month format. Use YYYY-MM", nil)
+		}
+		month = parsed
+	} else {
+		now := time.Now()
+		month = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	}
+
+	transactions, err := h.transactionService.GetPendingDeferredCC(workspaceID, month)
+	if err != nil {
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Msg("Failed to get pending deferred transactions")
+		return NewInternalError(c, "Failed to get pending deferred transactions")
+	}
+
+	// Calculate total
+	total := decimal.Zero
+	txResponses := make([]TransactionResponse, len(transactions))
+	for i, tx := range transactions {
+		total = total.Add(tx.Amount)
+		txResponses[i] = toTransactionResponse(tx)
+	}
+
+	group := PendingDeferredGroup{
+		Month:        month.Format("2006-01"),
+		MonthLabel:   month.Format("January"),
+		TotalAmount:  total.StringFixed(2),
+		ItemCount:    len(transactions),
+		Transactions: txResponses,
+	}
+
+	return c.JSON(http.StatusOK, group)
+}
+
 // OverdueGroupResponse represents an overdue group in API responses
 type OverdueGroupResponse struct {
 	Month         string                `json:"month"`         // "2025-11"

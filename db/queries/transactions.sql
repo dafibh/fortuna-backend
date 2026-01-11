@@ -294,24 +294,28 @@ RETURNING *;
 -- name: GetCCMetrics :one
 -- Get CC metrics (pending, outstanding, purchases) for a month range
 -- Simplified: pending = billed_at IS NULL, billed = billed_at IS NOT NULL AND is_paid = false, settled = is_paid = true
--- purchases = CC expenses this month (only expenses, income is payments against balance)
+-- purchases = CC expenses this month (EXCLUDES deferred - those are next month's obligations)
+-- pending = not yet billed transactions (current month + deferred from previous months)
 -- outstanding = billed transactions to settle this month:
---   1. deferred intent from previous months
---   2. immediate intent from current month
+--   1. deferred intent from previous months (billed)
+--   2. immediate intent from current month (billed)
 SELECT
-    COALESCE(SUM(CASE WHEN t.billed_at IS NULL AND t.is_paid = false AND t.transaction_date >= $2 AND t.transaction_date < $3 THEN t.amount ELSE 0 END), 0)::NUMERIC(12,2) as pending_total,
+    COALESCE(SUM(CASE WHEN t.billed_at IS NULL AND t.is_paid = false AND (
+        (t.transaction_date >= $2 AND t.transaction_date < $3) OR
+        (t.settlement_intent = 'deferred' AND t.transaction_date < $2)
+    ) THEN t.amount ELSE 0 END), 0)::NUMERIC(12,2) as pending_total,
     COALESCE(SUM(CASE WHEN t.billed_at IS NOT NULL AND t.is_paid = false AND (
         (t.settlement_intent = 'deferred' AND t.transaction_date < $2) OR
         (t.settlement_intent = 'immediate' AND t.transaction_date >= $2 AND t.transaction_date < $3)
     ) THEN t.amount ELSE 0 END), 0)::NUMERIC(12,2) as outstanding_total,
-    COALESCE(SUM(CASE WHEN t.type = 'expense' AND t.transaction_date >= $2 AND t.transaction_date < $3 THEN t.amount ELSE 0 END), 0)::NUMERIC(12,2) as purchases_total
+    COALESCE(SUM(CASE WHEN t.type = 'expense' AND t.transaction_date >= $2 AND t.transaction_date < $3 AND COALESCE(t.settlement_intent, 'immediate') != 'deferred' THEN t.amount ELSE 0 END), 0)::NUMERIC(12,2) as purchases_total
 FROM transactions t
 JOIN accounts a ON t.account_id = a.id
 WHERE t.workspace_id = $1
   AND a.template = 'credit_card'
   AND (
     (t.transaction_date >= $2 AND t.transaction_date < $3) OR
-    (t.billed_at IS NOT NULL AND t.is_paid = false AND t.settlement_intent = 'deferred' AND t.transaction_date < $2)
+    (t.is_paid = false AND t.settlement_intent = 'deferred' AND t.transaction_date < $2)
   )
   AND t.deleted_at IS NULL;
 
@@ -374,6 +378,21 @@ WHERE t.workspace_id = $1
   AND t.billed_at IS NOT NULL
   AND t.is_paid = false
   AND t.settlement_intent = 'immediate'
+  AND t.transaction_date >= $2
+  AND t.transaction_date < $3
+  AND t.deleted_at IS NULL
+ORDER BY t.transaction_date ASC;
+
+-- name: GetPendingDeferredCC :many
+-- Get pending (not yet billed) deferred CC transactions for visibility
+-- These are transactions that will need to be paid next month once billed
+SELECT * FROM transactions t
+JOIN accounts a ON t.account_id = a.id
+WHERE t.workspace_id = $1
+  AND a.template = 'credit_card'
+  AND t.billed_at IS NULL
+  AND t.is_paid = false
+  AND t.settlement_intent = 'deferred'
   AND t.transaction_date >= $2
   AND t.transaction_date < $3
   AND t.deleted_at IS NULL
