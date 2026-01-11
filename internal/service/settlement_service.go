@@ -22,8 +22,9 @@ func NewSettlementService(transactionRepo domain.TransactionRepository, accountR
 	}
 }
 
-// Settle atomically settles CC transactions and creates a transfer transaction
-// All operations happen within a single database transaction for atomicity
+// Settle atomically settles CC transactions and creates a transfer transaction.
+// All operations happen within a single database transaction for atomicity.
+// If any operation fails, all changes are rolled back.
 func (s *SettlementService) Settle(workspaceID int32, input domain.SettlementInput) (*domain.SettlementResult, error) {
 	// 1. Validate input
 	if len(input.TransactionIDs) == 0 {
@@ -75,7 +76,7 @@ func (s *SettlementService) Settle(workspaceID int32, input domain.SettlementInp
 
 	now := time.Now()
 
-	// 5. Create transfer transaction (Bank → CC expense)
+	// 5. Prepare transfer transaction (Bank → CC expense)
 	// This represents the payment from bank to CC
 	transferPairID := uuid.New()
 	transferTx := &domain.Transaction{
@@ -93,21 +94,22 @@ func (s *SettlementService) Settle(workspaceID int32, input domain.SettlementInp
 		UpdatedAt:       now,
 	}
 
-	createdTransfer, err := s.transactionRepo.Create(transferTx)
+	// 6. Atomically create transfer and settle CC transactions
+	// This ensures all-or-nothing behavior: if any operation fails, all changes are rolled back
+	createdTransfer, settledCount, err := s.transactionRepo.AtomicSettle(transferTx, input.TransactionIDs)
 	if err != nil {
 		return nil, err
 	}
 
-	// 6. Bulk settle all CC transactions
-	_, err = s.transactionRepo.BulkSettle(workspaceID, input.TransactionIDs)
-	if err != nil {
-		return nil, err
+	// 7. Verify all transactions were settled (count check for extra safety)
+	if settledCount != len(input.TransactionIDs) {
+		return nil, domain.ErrTransactionsNotFound
 	}
 
-	// 7. Return settlement result
+	// 8. Return settlement result
 	return &domain.SettlementResult{
 		TransferID:   createdTransfer.ID,
-		SettledCount: len(transactions),
+		SettledCount: settledCount,
 		TotalAmount:  totalAmount,
 		SettledAt:    now,
 	}, nil

@@ -363,6 +363,7 @@ type MockTransactionRepository struct {
 	GetByIDsFn                        func(workspaceID int32, ids []int32) ([]*domain.Transaction, error)
 	BulkSettleFn                      func(workspaceID int32, ids []int32) ([]*domain.Transaction, error)
 	GetDeferredForSettlementFn        func(workspaceID int32) ([]*domain.Transaction, error)
+	AtomicSettleFn                    func(transferTx *domain.Transaction, settleIDs []int32) (*domain.Transaction, int, error)
 }
 
 // NewMockTransactionRepository creates a new MockTransactionRepository
@@ -951,6 +952,33 @@ func (m *MockTransactionRepository) GetDeferredForSettlement(workspaceID int32) 
 		}
 	}
 	return result, nil
+}
+
+// AtomicSettle creates a transfer transaction and settles CC transactions atomically
+func (m *MockTransactionRepository) AtomicSettle(transferTx *domain.Transaction, settleIDs []int32) (*domain.Transaction, int, error) {
+	if m.AtomicSettleFn != nil {
+		return m.AtomicSettleFn(transferTx, settleIDs)
+	}
+	// Default: create transfer and settle transactions
+	transferTx.ID = m.NextID
+	m.NextID++
+	transferTx.CreatedAt = time.Now()
+	transferTx.UpdatedAt = time.Now()
+	m.Transactions[transferTx.ID] = transferTx
+	m.ByWorkspace[transferTx.WorkspaceID] = append(m.ByWorkspace[transferTx.WorkspaceID], transferTx)
+
+	// Settle all transactions
+	settledState := domain.CCStateSettled
+	now := time.Now()
+	settledCount := 0
+	for _, id := range settleIDs {
+		if tx, ok := m.Transactions[id]; ok && tx.WorkspaceID == transferTx.WorkspaceID {
+			tx.CCState = &settledState
+			tx.SettledAt = &now
+			settledCount++
+		}
+	}
+	return transferTx, settledCount, nil
 }
 
 // MockMonthRepository is a mock implementation of domain.MonthRepository

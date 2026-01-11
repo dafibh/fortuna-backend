@@ -430,14 +430,14 @@ func TestSettlementService_Settle_CreatesTransferTransaction(t *testing.T) {
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
 
-	// Track created transactions
+	// Track created transactions via AtomicSettle
 	var createdTransfer *domain.Transaction
-	transactionRepo.CreateFn = func(tx *domain.Transaction) (*domain.Transaction, error) {
-		tx.ID = 100
-		tx.CreatedAt = time.Now()
-		tx.UpdatedAt = time.Now()
-		createdTransfer = tx
-		return tx, nil
+	transactionRepo.AtomicSettleFn = func(transferTx *domain.Transaction, settleIDs []int32) (*domain.Transaction, int, error) {
+		transferTx.ID = 100
+		transferTx.CreatedAt = time.Now()
+		transferTx.UpdatedAt = time.Now()
+		createdTransfer = transferTx
+		return transferTx, len(settleIDs), nil
 	}
 
 	// Create accounts
@@ -486,5 +486,110 @@ func TestSettlementService_Settle_CreatesTransferTransaction(t *testing.T) {
 	}
 	if result.TransferID != 100 {
 		t.Errorf("expected transfer ID 100, got %d", result.TransferID)
+	}
+}
+
+func TestSettlementService_Settle_AtomicRollbackOnFailure(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+
+	// Simulate AtomicSettle failure - this should roll back both create and settle
+	atomicSettleCalled := false
+	transactionRepo.AtomicSettleFn = func(transferTx *domain.Transaction, settleIDs []int32) (*domain.Transaction, int, error) {
+		atomicSettleCalled = true
+		// Simulate database error during atomic operation
+		return nil, 0, domain.ErrTransactionsNotFound
+	}
+
+	// Create accounts
+	bankAccount := &domain.Account{ID: 1, WorkspaceID: 1, Template: domain.TemplateBank}
+	accountRepo.AddAccount(bankAccount)
+	ccAccount := &domain.Account{ID: 2, WorkspaceID: 1, Template: domain.TemplateCreditCard}
+	accountRepo.AddAccount(ccAccount)
+
+	// Create billed transactions
+	billedState := domain.CCStateBilled
+	deferredIntent := domain.SettlementIntentDeferred
+	tx := &domain.Transaction{
+		ID:               1,
+		WorkspaceID:      1,
+		AccountID:        2,
+		Amount:           decimal.NewFromFloat(50.00),
+		CCState:          &billedState,
+		SettlementIntent: &deferredIntent,
+	}
+	transactionRepo.AddTransaction(tx)
+
+	service := NewSettlementService(transactionRepo, accountRepo)
+
+	input := domain.SettlementInput{
+		TransactionIDs:    []int32{1},
+		SourceAccountID:   1,
+		TargetCCAccountID: 2,
+	}
+	_, err := service.Settle(1, input)
+
+	// Verify atomic operation was called
+	if !atomicSettleCalled {
+		t.Error("expected AtomicSettle to be called")
+	}
+
+	// Verify error is returned
+	if err != domain.ErrTransactionsNotFound {
+		t.Errorf("expected ErrTransactionsNotFound, got %v", err)
+	}
+}
+
+func TestSettlementService_Settle_PartialSettleCountMismatch(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+
+	// Simulate AtomicSettle returning fewer settled transactions than requested
+	transactionRepo.AtomicSettleFn = func(transferTx *domain.Transaction, settleIDs []int32) (*domain.Transaction, int, error) {
+		transferTx.ID = 100
+		// Return fewer settled than requested (simulating partial failure that was caught)
+		return transferTx, len(settleIDs) - 1, nil
+	}
+
+	// Create accounts
+	bankAccount := &domain.Account{ID: 1, WorkspaceID: 1, Template: domain.TemplateBank}
+	accountRepo.AddAccount(bankAccount)
+	ccAccount := &domain.Account{ID: 2, WorkspaceID: 1, Template: domain.TemplateCreditCard}
+	accountRepo.AddAccount(ccAccount)
+
+	// Create billed transactions
+	billedState := domain.CCStateBilled
+	deferredIntent := domain.SettlementIntentDeferred
+	tx1 := &domain.Transaction{
+		ID:               1,
+		WorkspaceID:      1,
+		AccountID:        2,
+		Amount:           decimal.NewFromFloat(50.00),
+		CCState:          &billedState,
+		SettlementIntent: &deferredIntent,
+	}
+	tx2 := &domain.Transaction{
+		ID:               2,
+		WorkspaceID:      1,
+		AccountID:        2,
+		Amount:           decimal.NewFromFloat(30.00),
+		CCState:          &billedState,
+		SettlementIntent: &deferredIntent,
+	}
+	transactionRepo.AddTransaction(tx1)
+	transactionRepo.AddTransaction(tx2)
+
+	service := NewSettlementService(transactionRepo, accountRepo)
+
+	input := domain.SettlementInput{
+		TransactionIDs:    []int32{1, 2},
+		SourceAccountID:   1,
+		TargetCCAccountID: 2,
+	}
+	_, err := service.Settle(1, input)
+
+	// Verify count mismatch is detected
+	if err != domain.ErrTransactionsNotFound {
+		t.Errorf("expected ErrTransactionsNotFound for count mismatch, got %v", err)
 	}
 }

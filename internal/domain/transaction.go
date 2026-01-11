@@ -229,4 +229,8 @@ type TransactionRepository interface {
 	GetByIDs(workspaceID int32, ids []int32) ([]*Transaction, error)
 	BulkSettle(workspaceID int32, ids []int32) ([]*Transaction, error)
 	GetDeferredForSettlement(workspaceID int32) ([]*Transaction, error)
+
+	// AtomicSettle creates a transfer transaction and settles CC transactions atomically
+	// within a single database transaction. If any operation fails, all changes are rolled back.
+	AtomicSettle(transferTx *Transaction, settleIDs []int32) (*Transaction, int, error)
 }

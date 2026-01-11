@@ -1029,3 +1029,45 @@ func (r *TransactionRepository) GetDeferredForSettlement(workspaceID int32) ([]*
 	}
 	return transactions, nil
 }
+
+// AtomicSettle creates a transfer transaction and settles CC transactions atomically
+// within a single database transaction. If any operation fails, all changes are rolled back.
+func (r *TransactionRepository) AtomicSettle(transferTx *domain.Transaction, settleIDs []int32) (*domain.Transaction, int, error) {
+	ctx := context.Background()
+
+	// Start a transaction
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := r.queries.WithTx(tx)
+
+	// 1. Create transfer transaction
+	createdTransfer, err := r.createTransactionWithTx(ctx, qtx, transferTx)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 2. Bulk settle all CC transactions
+	rows, err := qtx.BulkSettleTransactions(ctx, sqlc.BulkSettleTransactionsParams{
+		Column1:     settleIDs,
+		WorkspaceID: transferTx.WorkspaceID,
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 3. Verify all requested transactions were settled
+	if len(rows) != len(settleIDs) {
+		return nil, 0, domain.ErrTransactionsNotFound
+	}
+
+	// 4. Commit the transaction
+	if err := tx.Commit(ctx); err != nil {
+		return nil, 0, err
+	}
+
+	return createdTransfer, len(rows), nil
+}
