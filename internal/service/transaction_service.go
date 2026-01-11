@@ -848,5 +848,16 @@ func calculateMonthsOverdue(billedAt *time.Time) int {
 
 	now := time.Now()
 	months := (now.Year()-billedAt.Year())*12 + int(now.Month()) - int(billedAt.Month())
+
+	// Account for day of month: if we haven't reached the billed day yet this month,
+	// subtract 1 from the count (e.g., billed Jan 31, today Feb 1 = 0 months, not 1)
+	if now.Day() < billedAt.Day() {
+		months--
+	}
+
+	// Ensure non-negative (shouldn't happen for overdue items, but safety check)
+	if months < 0 {
+		return 0
+	}
 	return months
 }

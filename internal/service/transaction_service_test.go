@@ -2527,3 +2527,36 @@ func TestGetOverdue_CalculatesMonthsOverdue(t *testing.T) {
 		t.Errorf("Expected MonthsOverdue >= 3, got %d", groups[0].MonthsOverdue)
 	}
 }
+
+func TestCalculateMonthsOverdue_AccountsForDayOfMonth(t *testing.T) {
+	// Test edge case: billed on Jan 31, today is Feb 1 = should be 0 months, not 1
+	// This tests the day-of-month correction in calculateMonthsOverdue
+
+	// Create a date that's on the 28th of 2 months ago
+	now := time.Now()
+	billedAt := time.Date(now.Year(), now.Month()-2, 28, 0, 0, 0, 0, time.UTC)
+
+	// If current day is before 28th, months overdue should be 1 (not 2)
+	// If current day is on or after 28th, months overdue should be 2
+	months := calculateMonthsOverdue(&billedAt)
+
+	if now.Day() < 28 {
+		// We haven't reached the billed day yet this month
+		if months != 1 {
+			t.Errorf("Expected 1 month overdue (day not reached), got %d", months)
+		}
+	} else {
+		// We've passed the billed day this month
+		if months != 2 {
+			t.Errorf("Expected 2 months overdue (day reached), got %d", months)
+		}
+	}
+}
+
+func TestCalculateMonthsOverdue_NilBilledAt(t *testing.T) {
+	// Test nil BilledAt returns 0
+	months := calculateMonthsOverdue(nil)
+	if months != 0 {
+		t.Errorf("Expected 0 months for nil BilledAt, got %d", months)
+	}
+}
