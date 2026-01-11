@@ -432,13 +432,14 @@ func (h *TransactionHandler) ToggleBilled(c echo.Context) error {
 
 // UpdateTransactionRequest represents the request body for updating a transaction
 type UpdateTransactionRequest struct {
-	AccountID  int32   `json:"accountId"`
-	Name       string  `json:"name"`
-	Amount     string  `json:"amount"`
-	Type       string  `json:"type"`
-	Date       string  `json:"date"`
-	Notes      *string `json:"notes,omitempty"`
-	CategoryID *int32  `json:"categoryId,omitempty"`
+	AccountID        int32   `json:"accountId"`
+	Name             string  `json:"name"`
+	Amount           string  `json:"amount"`
+	Type             string  `json:"type"`
+	Date             string  `json:"date"`
+	Notes            *string `json:"notes,omitempty"`
+	CategoryID       *int32  `json:"categoryId,omitempty"`
+	SettlementIntent *string `json:"settlementIntent,omitempty"` // "immediate" or "deferred"
 }
 
 // UpdateTransaction godoc
@@ -494,14 +495,27 @@ func (h *TransactionHandler) UpdateTransaction(c echo.Context) error {
 		})
 	}
 
+	// Parse settlement intent if provided
+	var settlementIntent *domain.SettlementIntent
+	if req.SettlementIntent != nil && *req.SettlementIntent != "" {
+		intent := domain.SettlementIntent(*req.SettlementIntent)
+		if intent != domain.SettlementIntentImmediate && intent != domain.SettlementIntentDeferred {
+			return NewValidationError(c, "Invalid settlementIntent", []ValidationError{
+				{Field: "settlementIntent", Message: "Must be one of: immediate, deferred"},
+			})
+		}
+		settlementIntent = &intent
+	}
+
 	input := service.UpdateTransactionInput{
-		AccountID:       req.AccountID,
-		Name:            req.Name,
-		Amount:          amount,
-		Type:            domain.TransactionType(req.Type),
-		TransactionDate: transactionDate,
-		Notes:           req.Notes,
-		CategoryID:      req.CategoryID,
+		AccountID:        req.AccountID,
+		Name:             req.Name,
+		Amount:           amount,
+		Type:             domain.TransactionType(req.Type),
+		TransactionDate:  transactionDate,
+		Notes:            req.Notes,
+		CategoryID:       req.CategoryID,
+		SettlementIntent: settlementIntent,
 	}
 
 	transaction, err := h.transactionService.UpdateTransaction(workspaceID, int32(id), input)

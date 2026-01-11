@@ -121,26 +121,20 @@ func (s *TransactionService) CreateTransaction(workspaceID int32, input CreateTr
 	// Handle CC lifecycle fields
 	var ccState *domain.CCState
 	var v2SettlementIntent *domain.SettlementIntent
-	var settledAt *time.Time
 	if account.Template == domain.TemplateCreditCard {
 		// Determine settlement intent: use provided or default to deferred
+		// Settlement intent is just a plan for when to pay (this month vs next month)
+		// It does NOT affect the actual CC state - all CC transactions start as pending
 		intent := domain.SettlementIntentDeferred
 		if input.SettlementIntent != nil {
 			intent = *input.SettlementIntent
 		}
 		v2SettlementIntent = &intent
 
-		if intent == domain.SettlementIntentImmediate {
-			// Immediate settlement: mark as settled with timestamp
-			state := domain.CCStateSettled
-			ccState = &state
-			now := time.Now()
-			settledAt = &now
-		} else {
-			// Deferred: start as pending
-			state := domain.CCStatePending
-			ccState = &state
-		}
+		// All CC transactions start as pending regardless of settlement intent
+		// The actual settlement happens through the settlement flow (pending → billed → settled)
+		state := domain.CCStatePending
+		ccState = &state
 	}
 	// For non-CC accounts, all CC lifecycle fields remain nil
 
@@ -153,10 +147,10 @@ func (s *TransactionService) CreateTransaction(workspaceID int32, input CreateTr
 	}
 
 	transaction := &domain.Transaction{
-		WorkspaceID:        workspaceID,
-		AccountID:          input.AccountID,
-		Name:               name,
-		Amount:             input.Amount,
+		WorkspaceID:      workspaceID,
+		AccountID:        input.AccountID,
+		Name:             name,
+		Amount:           input.Amount,
 		Type:             input.Type,
 		TransactionDate:  transactionDate,
 		IsPaid:           isPaid,
@@ -164,7 +158,6 @@ func (s *TransactionService) CreateTransaction(workspaceID int32, input CreateTr
 		CategoryID:       input.CategoryID,
 		CCState:          ccState,
 		SettlementIntent: v2SettlementIntent,
-		SettledAt:        settledAt,
 	}
 
 	created, err := s.transactionRepo.Create(transaction)
@@ -267,13 +260,14 @@ func (s *TransactionService) ToggleBilled(workspaceID int32, id int32) (*domain.
 
 // UpdateTransactionInput holds the input for updating a transaction
 type UpdateTransactionInput struct {
-	Name            string
-	Amount          decimal.Decimal
-	Type            domain.TransactionType
-	TransactionDate time.Time
-	AccountID       int32
-	Notes           *string
-	CategoryID      *int32
+	Name             string
+	Amount           decimal.Decimal
+	Type             domain.TransactionType
+	TransactionDate  time.Time
+	AccountID        int32
+	Notes            *string
+	CategoryID       *int32
+	SettlementIntent *domain.SettlementIntent // Only for CC transactions
 }
 
 // UpdateTransaction updates an existing transaction with validation
@@ -324,13 +318,14 @@ func (s *TransactionService) UpdateTransaction(workspaceID int32, id int32, inpu
 	}
 
 	updated, err := s.transactionRepo.Update(workspaceID, id, &domain.UpdateTransactionData{
-		Name:            name,
-		Amount:          input.Amount,
-		Type:            input.Type,
-		TransactionDate: input.TransactionDate,
-		AccountID:       input.AccountID,
-		Notes:           notes,
-		CategoryID:      input.CategoryID,
+		Name:             name,
+		Amount:           input.Amount,
+		Type:             input.Type,
+		TransactionDate:  input.TransactionDate,
+		AccountID:        input.AccountID,
+		Notes:            notes,
+		CategoryID:       input.CategoryID,
+		SettlementIntent: input.SettlementIntent,
 	})
 	if err != nil {
 		return nil, err

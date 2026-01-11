@@ -1771,7 +1771,7 @@ func TestCreateTransaction_NonCCAccount_NullCCFields(t *testing.T) {
 	}
 }
 
-func TestCreateTransaction_CCAccount_ImmediateIntent_SettledWithTimestamp(t *testing.T) {
+func TestCreateTransaction_CCAccount_ImmediateIntent_StartsAsPending(t *testing.T) {
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
@@ -1791,28 +1791,27 @@ func TestCreateTransaction_CCAccount_ImmediateIntent_SettledWithTimestamp(t *tes
 	immediateIntent := domain.SettlementIntentImmediate
 	input := CreateTransactionInput{
 		AccountID:        accountID,
-		Name:             "Immediate Settlement Purchase",
+		Name:             "Pay This Month Purchase",
 		Amount:           decimal.NewFromFloat(50.00),
 		Type:             domain.TransactionTypeExpense,
 		SettlementIntent: &immediateIntent,
 	}
 
-	beforeCreate := time.Now()
 	transaction, err := transactionService.CreateTransaction(workspaceID, input)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
-	afterCreate := time.Now()
 
-	// CC with immediate intent should be settled
+	// CC transactions should always start as pending, regardless of settlement intent
+	// Settlement intent is just a plan for when to pay, not the actual state
 	if transaction.CCState == nil {
 		t.Fatal("Expected CCState to be set")
 	}
-	if *transaction.CCState != domain.CCStateSettled {
-		t.Errorf("Expected CCState 'settled' for immediate intent, got %s", *transaction.CCState)
+	if *transaction.CCState != domain.CCStatePending {
+		t.Errorf("Expected CCState 'pending' (all CC transactions start as pending), got %s", *transaction.CCState)
 	}
 
-	// SettlementIntent should be immediate
+	// SettlementIntent should be immediate (stored as metadata for when user plans to pay)
 	if transaction.SettlementIntent == nil {
 		t.Fatal("Expected SettlementIntent to be set")
 	}
@@ -1820,17 +1819,14 @@ func TestCreateTransaction_CCAccount_ImmediateIntent_SettledWithTimestamp(t *tes
 		t.Errorf("Expected SettlementIntent 'immediate', got %s", *transaction.SettlementIntent)
 	}
 
-	// SettledAt should be set with current timestamp
-	if transaction.SettledAt == nil {
-		t.Fatal("Expected SettledAt to be set for immediate settlement")
-	}
-	if transaction.SettledAt.Before(beforeCreate) || transaction.SettledAt.After(afterCreate) {
-		t.Errorf("Expected SettledAt to be between %v and %v, got %v", beforeCreate, afterCreate, transaction.SettledAt)
+	// SettledAt should be nil (settlement happens through the settlement flow, not on creation)
+	if transaction.SettledAt != nil {
+		t.Errorf("Expected SettledAt to be nil for new CC transaction, got %v", transaction.SettledAt)
 	}
 
-	// BilledAt should be nil (skipped billed state)
+	// BilledAt should be nil (billing happens through the billing flow)
 	if transaction.BilledAt != nil {
-		t.Errorf("Expected BilledAt to be nil for immediate settlement, got %v", transaction.BilledAt)
+		t.Errorf("Expected BilledAt to be nil for new CC transaction, got %v", transaction.BilledAt)
 	}
 }
 
