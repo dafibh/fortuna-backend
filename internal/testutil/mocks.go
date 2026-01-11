@@ -598,6 +598,11 @@ func (m *MockTransactionRepository) SoftDeleteTransferPair(workspaceID int32, pa
 }
 
 // GetAccountTransactionSummaries returns aggregated transaction data for balance calculations
+// Mirrors the SQL logic:
+// - SumIncome: paid income only
+// - SumExpenses: paid expenses only (for regular accounts)
+// - SumUnpaidExpenses: unpaid expenses
+// - SumAllExpenses: all expenses regardless of isPaid (for CC accounts)
 func (m *MockTransactionRepository) GetAccountTransactionSummaries(workspaceID int32) ([]*domain.TransactionSummary, error) {
 	if m.GetAccountTransactionSummariesFn != nil {
 		return m.GetAccountTransactionSummariesFn(workspaceID)
@@ -615,10 +620,18 @@ func (m *MockTransactionRepository) GetAccountTransactionSummaries(workspaceID i
 			summaryMap[tx.AccountID] = summary
 		}
 		if tx.Type == domain.TransactionTypeIncome {
-			summary.SumIncome = summary.SumIncome.Add(tx.Amount)
+			// Only count paid income
+			if tx.IsPaid {
+				summary.SumIncome = summary.SumIncome.Add(tx.Amount)
+			}
 		} else if tx.Type == domain.TransactionTypeExpense {
-			summary.SumExpenses = summary.SumExpenses.Add(tx.Amount)
-			if !tx.IsPaid {
+			// SumAllExpenses = all expenses (for CC accounts)
+			summary.SumAllExpenses = summary.SumAllExpenses.Add(tx.Amount)
+			if tx.IsPaid {
+				// SumExpenses = paid expenses only (for regular accounts)
+				summary.SumExpenses = summary.SumExpenses.Add(tx.Amount)
+			} else {
+				// SumUnpaidExpenses = unpaid expenses
 				summary.SumUnpaidExpenses = summary.SumUnpaidExpenses.Add(tx.Amount)
 			}
 		}

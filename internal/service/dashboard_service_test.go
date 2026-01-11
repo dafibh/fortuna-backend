@@ -157,8 +157,8 @@ func TestDashboardService_GetSummary(t *testing.T) {
 					UpdatedAt:       startDate,
 				})
 			},
-			// Total: 5000 - 500 - 200 = 4300
-			wantTotalBalance: "4300.00",
+			// Total = 5000 - 500 (paid only for bank accounts) = 4500
+			wantTotalBalance: "4500.00",
 			// In-hand = 5000 + 0 - 500 (only paid) = 4500
 			wantInHandBalance: "4500.00",
 			// Disposable = In-hand - unpaid = 4500 - 200 = 4300

@@ -59,13 +59,17 @@ func (s *CalculationService) CalculateAccountBalances(workspaceID int32) (map[in
 
 		if summary != nil {
 			// calculated_balance = initial + income - expenses
-			result.CalculatedBalance = account.InitialBalance.
-				Add(summary.SumIncome).
-				Sub(summary.SumExpenses)
-
-			// CC outstanding = unpaid expenses
+			// For CC accounts, use ALL expenses (isPaid means "settled with bank", not "purchase happened")
+			// For regular accounts, only count paid expenses
 			if account.Template == domain.TemplateCreditCard {
+				result.CalculatedBalance = account.InitialBalance.
+					Add(summary.SumIncome).
+					Sub(summary.SumAllExpenses)
 				result.CCOutstanding = summary.SumUnpaidExpenses
+			} else {
+				result.CalculatedBalance = account.InitialBalance.
+					Add(summary.SumIncome).
+					Sub(summary.SumExpenses)
 			}
 		} else {
 			// No transactions, balance = initial
@@ -106,12 +110,17 @@ func (s *CalculationService) CalculateAccountBalance(workspaceID, accountID int3
 	}
 
 	if summary != nil {
-		result.CalculatedBalance = account.InitialBalance.
-			Add(summary.SumIncome).
-			Sub(summary.SumExpenses)
-
+		// For CC accounts, use ALL expenses (isPaid means "settled with bank", not "purchase happened")
+		// For regular accounts, only count paid expenses
 		if account.Template == domain.TemplateCreditCard {
+			result.CalculatedBalance = account.InitialBalance.
+				Add(summary.SumIncome).
+				Sub(summary.SumAllExpenses)
 			result.CCOutstanding = summary.SumUnpaidExpenses
+		} else {
+			result.CalculatedBalance = account.InitialBalance.
+				Add(summary.SumIncome).
+				Sub(summary.SumExpenses)
 		}
 	} else {
 		result.CalculatedBalance = account.InitialBalance

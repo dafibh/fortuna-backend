@@ -130,8 +130,9 @@ type UpdateTransactionData struct {
 type TransactionSummary struct {
 	AccountID         int32
 	SumIncome         decimal.Decimal
-	SumExpenses       decimal.Decimal
+	SumExpenses       decimal.Decimal // Paid expenses only (for regular accounts)
 	SumUnpaidExpenses decimal.Decimal
+	SumAllExpenses    decimal.Decimal // All expenses regardless of isPaid (for CC accounts)
 }
 
 // MonthlyTransactionSummary holds income/expense totals for a specific month

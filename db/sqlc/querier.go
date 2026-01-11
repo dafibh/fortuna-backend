@@ -62,7 +62,8 @@ type Querier interface {
 	GetAPITokensByWorkspace(ctx context.Context, workspaceID int32) ([]ApiToken, error)
 	GetAccountByID(ctx context.Context, arg GetAccountByIDParams) (Account, error)
 	GetAccountByIDIncludeDeleted(ctx context.Context, arg GetAccountByIDIncludeDeletedParams) (Account, error)
-	// Only count paid transactions for balance calculations
+	// For regular accounts: only count paid transactions
+	// For CC accounts: count all expenses (isPaid means settled, not whether purchase happened)
 	GetAccountTransactionSummaries(ctx context.Context, workspaceID int32) ([]GetAccountTransactionSummariesRow, error)
 	GetAccountsByWorkspace(ctx context.Context, workspaceID int32) ([]Account, error)
 	GetAccountsByWorkspaceAll(ctx context.Context, workspaceID int32) ([]Account, error)

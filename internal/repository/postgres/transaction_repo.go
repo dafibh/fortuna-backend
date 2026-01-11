@@ -490,6 +490,7 @@ func (r *TransactionRepository) GetAccountTransactionSummaries(workspaceID int32
 			SumIncome:         interfaceToDecimal(row.SumIncome),
 			SumExpenses:       interfaceToDecimal(row.SumExpenses),
 			SumUnpaidExpenses: interfaceToDecimal(row.SumUnpaidExpenses),
+			SumAllExpenses:    interfaceToDecimal(row.SumAllExpenses),
 		}
 	}
 

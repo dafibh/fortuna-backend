@@ -277,7 +277,8 @@ SELECT
     account_id,
     COALESCE(SUM(CASE WHEN type = 'income' AND is_paid = true THEN amount ELSE 0 END), 0) AS sum_income,
     COALESCE(SUM(CASE WHEN type = 'expense' AND is_paid = true THEN amount ELSE 0 END), 0) AS sum_expenses,
-    COALESCE(SUM(CASE WHEN type = 'expense' AND is_paid = false THEN amount ELSE 0 END), 0) AS sum_unpaid_expenses
+    COALESCE(SUM(CASE WHEN type = 'expense' AND is_paid = false THEN amount ELSE 0 END), 0) AS sum_unpaid_expenses,
+    COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) AS sum_all_expenses
 FROM transactions
 WHERE workspace_id = $1 AND deleted_at IS NULL
 GROUP BY account_id
@@ -288,9 +289,11 @@ type GetAccountTransactionSummariesRow struct {
 	SumIncome         interface{} `json:"sum_income"`
 	SumExpenses       interface{} `json:"sum_expenses"`
 	SumUnpaidExpenses interface{} `json:"sum_unpaid_expenses"`
+	SumAllExpenses    interface{} `json:"sum_all_expenses"`
 }
 
-// Only count paid transactions for balance calculations
+// For regular accounts: only count paid transactions
+// For CC accounts: count all expenses (isPaid means settled, not whether purchase happened)
 func (q *Queries) GetAccountTransactionSummaries(ctx context.Context, workspaceID int32) ([]GetAccountTransactionSummariesRow, error) {
 	rows, err := q.db.Query(ctx, getAccountTransactionSummaries, workspaceID)
 	if err != nil {
@@ -305,6 +308,7 @@ func (q *Queries) GetAccountTransactionSummaries(ctx context.Context, workspaceI
 			&i.SumIncome,
 			&i.SumExpenses,
 			&i.SumUnpaidExpenses,
+			&i.SumAllExpenses,
 		); err != nil {
 			return nil, err
 		}
