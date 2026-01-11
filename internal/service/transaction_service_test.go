@@ -9,6 +9,11 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+// int32PtrTx returns a pointer to the given int32 value (test helper)
+func int32PtrTx(v int32) *int32 {
+	return &v
+}
+
 func TestCreateTransaction_Success(t *testing.T) {
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
@@ -1520,7 +1525,7 @@ func TestGetTransactions_OnAccessProjectionGeneration(t *testing.T) {
 		WorkspaceID: workspaceID,
 		Description: "Monthly Bill",
 		Amount:      decimal.NewFromInt(100),
-		CategoryID:  1,
+		CategoryID:  int32PtrTx(1),
 		AccountID:   1,
 		Frequency:   "monthly",
 		StartDate:   startDate,
@@ -1568,7 +1573,7 @@ func TestGetTransactions_NoProjectionsForPastDates(t *testing.T) {
 		WorkspaceID: workspaceID,
 		Description: "Monthly Bill",
 		Amount:      decimal.NewFromInt(100),
-		CategoryID:  1,
+		CategoryID:  int32PtrTx(1),
 		AccountID:   1,
 		Frequency:   "monthly",
 		StartDate:   startDate,
@@ -1616,7 +1621,7 @@ func TestGetTransactions_RespectsTemplateEndDate(t *testing.T) {
 		WorkspaceID: workspaceID,
 		Description: "Short Term Bill",
 		Amount:      decimal.NewFromInt(100),
-		CategoryID:  1,
+		CategoryID:  int32PtrTx(1),
 		AccountID:   1,
 		Frequency:   "monthly",
 		StartDate:   startDate,

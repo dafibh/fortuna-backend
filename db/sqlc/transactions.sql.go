@@ -259,6 +259,7 @@ DELETE FROM transactions
 WHERE workspace_id = $1
   AND template_id = $2
   AND is_projected = true
+  AND is_paid = false
 `
 
 type DeleteProjectionsByTemplateParams struct {
@@ -266,7 +267,8 @@ type DeleteProjectionsByTemplateParams struct {
 	TemplateID  pgtype.Int4 `json:"template_id"`
 }
 
-// Delete all projected transactions for a template (used when deleting template)
+// Delete unpaid projected transactions for a template (used when deleting template)
+// Paid projections are preserved and orphaned instead
 func (q *Queries) DeleteProjectionsByTemplate(ctx context.Context, arg DeleteProjectionsByTemplateParams) error {
 	_, err := q.db.Exec(ctx, deleteProjectionsByTemplate, arg.WorkspaceID, arg.TemplateID)
 	return err

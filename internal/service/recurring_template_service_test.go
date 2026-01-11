@@ -11,6 +11,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// int32Ptr returns a pointer to the given int32 value (test helper)
+func int32Ptr(v int32) *int32 {
+	return &v
+}
+
 func TestCreateTemplate_ValidInput(t *testing.T) {
 	templateRepo := testutil.NewMockRecurringTemplateRepository()
 	transactionRepo := testutil.NewMockTransactionRepository()
@@ -35,7 +40,7 @@ func TestCreateTemplate_ValidInput(t *testing.T) {
 		WorkspaceID: workspaceID,
 		Description: "Monthly Rent",
 		Amount:      decimal.NewFromInt(1500),
-		CategoryID:  1,
+		CategoryID:  int32Ptr(1),
 		AccountID:   1,
 		Frequency:   "monthly",
 		StartDate:   time.Now().AddDate(0, 0, 1),
@@ -47,7 +52,8 @@ func TestCreateTemplate_ValidInput(t *testing.T) {
 	assert.NotNil(t, template)
 	assert.Equal(t, "Monthly Rent", template.Description)
 	assert.True(t, template.Amount.Equal(decimal.NewFromInt(1500)))
-	assert.Equal(t, int32(1), template.CategoryID)
+	assert.NotNil(t, template.CategoryID)
+	assert.Equal(t, int32(1), *template.CategoryID)
 	assert.Equal(t, int32(1), template.AccountID)
 	assert.Equal(t, "monthly", template.Frequency)
 }
@@ -63,7 +69,7 @@ func TestCreateTemplate_InvalidInput_EmptyDescription(t *testing.T) {
 	input := domain.CreateRecurringTemplateInput{
 		Description: "",
 		Amount:      decimal.NewFromInt(100),
-		CategoryID:  1,
+		CategoryID:  int32Ptr(1),
 		AccountID:   1,
 		Frequency:   "monthly",
 		StartDate:   time.Now(),
@@ -86,7 +92,7 @@ func TestCreateTemplate_InvalidInput_NegativeAmount(t *testing.T) {
 	input := domain.CreateRecurringTemplateInput{
 		Description: "Test",
 		Amount:      decimal.NewFromInt(-100),
-		CategoryID:  1,
+		CategoryID:  int32Ptr(1),
 		AccountID:   1,
 		Frequency:   "monthly",
 		StartDate:   time.Now(),
@@ -109,7 +115,7 @@ func TestCreateTemplate_InvalidInput_InvalidFrequency(t *testing.T) {
 	input := domain.CreateRecurringTemplateInput{
 		Description: "Test",
 		Amount:      decimal.NewFromInt(100),
-		CategoryID:  1,
+		CategoryID:  int32Ptr(1),
 		AccountID:   1,
 		Frequency:   "weekly", // Not supported in MVP
 		StartDate:   time.Now(),
@@ -134,7 +140,7 @@ func TestCreateTemplate_AccountNotFound(t *testing.T) {
 	input := domain.CreateRecurringTemplateInput{
 		Description: "Test",
 		Amount:      decimal.NewFromInt(100),
-		CategoryID:  1,
+		CategoryID:  int32Ptr(1),
 		AccountID:   999, // Non-existent
 		Frequency:   "monthly",
 		StartDate:   time.Now(),
@@ -326,7 +332,7 @@ func TestUpdateTemplate_ValidInput(t *testing.T) {
 		WorkspaceID: workspaceID,
 		Description: "Original",
 		Amount:      decimal.NewFromInt(100),
-		CategoryID:  1,
+		CategoryID:  int32Ptr(1),
 		AccountID:   1,
 		Frequency:   "monthly",
 		StartDate:   time.Now(),
@@ -337,7 +343,7 @@ func TestUpdateTemplate_ValidInput(t *testing.T) {
 	input := domain.UpdateRecurringTemplateInput{
 		Description: "Updated",
 		Amount:      decimal.NewFromInt(200),
-		CategoryID:  1,
+		CategoryID:  int32Ptr(1),
 		AccountID:   1,
 		Frequency:   "monthly",
 		StartDate:   time.Now(),
@@ -361,7 +367,7 @@ func TestUpdateTemplate_NotFound(t *testing.T) {
 	input := domain.UpdateRecurringTemplateInput{
 		Description: "Test",
 		Amount:      decimal.NewFromInt(100),
-		CategoryID:  1,
+		CategoryID:  int32Ptr(1),
 		AccountID:   1,
 		Frequency:   "monthly",
 		StartDate:   time.Now(),
@@ -400,7 +406,7 @@ func TestCreateTemplate_GeneratesProjections(t *testing.T) {
 		WorkspaceID: workspaceID,
 		Description: "Monthly Bill",
 		Amount:      decimal.NewFromInt(100),
-		CategoryID:  1,
+		CategoryID:  int32Ptr(1),
 		AccountID:   1,
 		Frequency:   "monthly",
 		StartDate:   startDate,
@@ -451,7 +457,7 @@ func TestCreateTemplate_MonthEndEdgeCase(t *testing.T) {
 		WorkspaceID: workspaceID,
 		Description: "End of Month Bill",
 		Amount:      decimal.NewFromInt(100),
-		CategoryID:  1,
+		CategoryID:  int32Ptr(1),
 		AccountID:   1,
 		Frequency:   "monthly",
 		StartDate:   startDate,
@@ -498,7 +504,7 @@ func TestCreateTemplate_EndDateLimitsProjections(t *testing.T) {
 		WorkspaceID: workspaceID,
 		Description: "Short-term Bill",
 		Amount:      decimal.NewFromInt(100),
-		CategoryID:  1,
+		CategoryID:  int32Ptr(1),
 		AccountID:   1,
 		Frequency:   "monthly",
 		StartDate:   startDate,
@@ -529,7 +535,7 @@ func TestCreateTemplate_EndDateBeforeStartDate_Fails(t *testing.T) {
 	input := domain.CreateRecurringTemplateInput{
 		Description: "Invalid Template",
 		Amount:      decimal.NewFromInt(100),
-		CategoryID:  1,
+		CategoryID:  int32Ptr(1),
 		AccountID:   1,
 		Frequency:   "monthly",
 		StartDate:   startDate,
@@ -554,7 +560,7 @@ func TestUpdateTemplate_EndDateBeforeStartDate_Fails(t *testing.T) {
 		WorkspaceID: workspaceID,
 		Description: "Test",
 		Amount:      decimal.NewFromInt(100),
-		CategoryID:  1,
+		CategoryID:  int32Ptr(1),
 		AccountID:   1,
 		Frequency:   "monthly",
 		StartDate:   time.Now(),
@@ -568,7 +574,7 @@ func TestUpdateTemplate_EndDateBeforeStartDate_Fails(t *testing.T) {
 	input := domain.UpdateRecurringTemplateInput{
 		Description: "Test",
 		Amount:      decimal.NewFromInt(100),
-		CategoryID:  1,
+		CategoryID:  int32Ptr(1),
 		AccountID:   1,
 		Frequency:   "monthly",
 		StartDate:   startDate,
@@ -604,7 +610,7 @@ func TestCreateTemplate_LinkTransactionNotFound_Fails(t *testing.T) {
 		WorkspaceID:       workspaceID,
 		Description:       "Test",
 		Amount:            decimal.NewFromInt(100),
-		CategoryID:        1,
+		CategoryID:        int32Ptr(1),
 		AccountID:         1,
 		Frequency:         "monthly",
 		StartDate:         time.Now().AddDate(0, 1, 0),
@@ -672,7 +678,7 @@ func TestCreateTemplate_IdempotentProjections(t *testing.T) {
 		WorkspaceID: workspaceID,
 		Description: "Test Bill",
 		Amount:      decimal.NewFromInt(100),
-		CategoryID:  1,
+		CategoryID:  int32Ptr(1),
 		AccountID:   1,
 		Frequency:   "monthly",
 		StartDate:   startDate,

@@ -29,12 +29,13 @@ func NewRecurringTemplateHandler(service domain.RecurringTemplateService) *Recur
 type CreateTemplateRequest struct {
 	Description       string  `json:"description"`
 	Amount            string  `json:"amount"`
-	CategoryID        int32   `json:"categoryId"`
+	CategoryID        *int32  `json:"categoryId,omitempty"`                     // Optional category
 	AccountID         int32   `json:"accountId"`
 	Frequency         string  `json:"frequency"`
 	StartDate         string  `json:"startDate"`
 	EndDate           *string `json:"endDate,omitempty"`
-	SettlementIntent  *string `json:"settlementIntent,omitempty"` // For CC accounts: "immediate" or "deferred"
+	Notes             *string `json:"notes,omitempty"`                          // Optional notes
+	SettlementIntent  *string `json:"settlementIntent,omitempty"`               // For CC accounts: "immediate" or "deferred"
 	LinkTransactionID *int32  `json:"linkTransactionId,omitempty"`
 }
 
@@ -42,11 +43,12 @@ type CreateTemplateRequest struct {
 type UpdateTemplateRequest struct {
 	Description      string  `json:"description"`
 	Amount           string  `json:"amount"`
-	CategoryID       int32   `json:"categoryId"`
+	CategoryID       *int32  `json:"categoryId,omitempty"`       // Optional category
 	AccountID        int32   `json:"accountId"`
 	Frequency        string  `json:"frequency"`
 	StartDate        string  `json:"startDate"`
 	EndDate          *string `json:"endDate,omitempty"`
+	Notes            *string `json:"notes,omitempty"`            // Optional notes
 	SettlementIntent *string `json:"settlementIntent,omitempty"` // For CC accounts: "immediate" or "deferred"
 }
 
@@ -56,11 +58,12 @@ type TemplateResponse struct {
 	WorkspaceID      int32   `json:"workspaceId"`
 	Description      string  `json:"description"`
 	Amount           string  `json:"amount"`
-	CategoryID       int32   `json:"categoryId"`
+	CategoryID       *int32  `json:"categoryId,omitempty"`       // Optional category
 	AccountID        int32   `json:"accountId"`
 	Frequency        string  `json:"frequency"`
 	StartDate        string  `json:"startDate"`
 	EndDate          *string `json:"endDate,omitempty"`
+	Notes            *string `json:"notes,omitempty"`            // Optional notes
 	SettlementIntent *string `json:"settlementIntent,omitempty"` // For CC accounts: "immediate" or "deferred"
 	CreatedAt        string  `json:"createdAt"`
 	UpdatedAt        string  `json:"updatedAt"`
@@ -118,6 +121,7 @@ func (h *RecurringTemplateHandler) CreateTemplate(c echo.Context) error {
 		AccountID:         req.AccountID,
 		Frequency:         req.Frequency,
 		StartDate:         startDate,
+		Notes:             req.Notes,
 		LinkTransactionID: req.LinkTransactionID,
 	}
 
@@ -269,6 +273,7 @@ func (h *RecurringTemplateHandler) UpdateTemplate(c echo.Context) error {
 		AccountID:   req.AccountID,
 		Frequency:   req.Frequency,
 		StartDate:   startDate,
+		Notes:       req.Notes,
 	}
 
 	// Parse optional end date
@@ -386,6 +391,7 @@ func toTemplateResponse(t *domain.RecurringTemplate) TemplateResponse {
 		AccountID:   t.AccountID,
 		Frequency:   t.Frequency,
 		StartDate:   t.StartDate.Format("2006-01-02"),
+		Notes:       t.Notes,
 		CreatedAt:   t.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:   t.UpdatedAt.Format(time.RFC3339),
 	}

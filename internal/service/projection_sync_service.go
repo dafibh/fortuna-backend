@@ -181,13 +181,14 @@ func (s *ProjectionSyncService) generateUpToMonth(template *domain.RecurringTemp
 			Name:            template.Description,
 			Amount:          template.Amount,
 			Type:            domain.TransactionTypeExpense,
-			CategoryID:      &template.CategoryID,
+			CategoryID:      template.CategoryID,
 			AccountID:       template.AccountID,
 			TransactionDate: actualDate,
 			Source:          "recurring",
 			TemplateID:      &template.ID,
 			IsProjected:     true,
 			IsPaid:          false,
+			Notes:           template.Notes,
 		}
 
 		if _, err := s.transactionRepo.Create(transaction); err != nil {

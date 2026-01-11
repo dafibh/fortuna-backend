@@ -40,6 +40,18 @@ func (r *RecurringTemplateRepository) Create(template *domain.RecurringTemplate)
 		endDate = pgtype.Date{Time: *template.EndDate, Valid: true}
 	}
 
+	var categoryID pgtype.Int4
+	if template.CategoryID != nil {
+		categoryID.Int32 = *template.CategoryID
+		categoryID.Valid = true
+	}
+
+	var notes pgtype.Text
+	if template.Notes != nil {
+		notes.String = *template.Notes
+		notes.Valid = true
+	}
+
 	var settlementIntent pgtype.Text
 	if template.SettlementIntent != nil {
 		settlementIntent.String = string(*template.SettlementIntent)
@@ -50,11 +62,12 @@ func (r *RecurringTemplateRepository) Create(template *domain.RecurringTemplate)
 		WorkspaceID:      template.WorkspaceID,
 		Description:      template.Description,
 		Amount:           amount,
-		CategoryID:       template.CategoryID,
+		CategoryID:       categoryID,
 		AccountID:        template.AccountID,
 		Frequency:        template.Frequency,
 		StartDate:        startDate,
 		EndDate:          endDate,
+		Notes:            notes,
 		SettlementIntent: settlementIntent,
 	})
 	if err != nil {
@@ -80,6 +93,18 @@ func (r *RecurringTemplateRepository) Update(workspaceID int32, id int32, input 
 		endDate = pgtype.Date{Time: *input.EndDate, Valid: true}
 	}
 
+	var categoryID pgtype.Int4
+	if input.CategoryID != nil {
+		categoryID.Int32 = *input.CategoryID
+		categoryID.Valid = true
+	}
+
+	var notes pgtype.Text
+	if input.Notes != nil {
+		notes.String = *input.Notes
+		notes.Valid = true
+	}
+
 	var settlementIntent pgtype.Text
 	if input.SettlementIntent != nil {
 		settlementIntent.String = string(*input.SettlementIntent)
@@ -91,11 +116,12 @@ func (r *RecurringTemplateRepository) Update(workspaceID int32, id int32, input 
 		WorkspaceID:      workspaceID,
 		Description:      input.Description,
 		Amount:           amount,
-		CategoryID:       input.CategoryID,
+		CategoryID:       categoryID,
 		AccountID:        input.AccountID,
 		Frequency:        input.Frequency,
 		StartDate:        startDate,
 		EndDate:          endDate,
+		Notes:            notes,
 		SettlementIntent: settlementIntent,
 	})
 	if err != nil {
@@ -200,7 +226,6 @@ func sqlcRecurringTemplateToDomain(t sqlc.RecurringTemplate) *domain.RecurringTe
 		WorkspaceID: t.WorkspaceID,
 		Description: t.Description,
 		Amount:      pgNumericToDecimal(t.Amount),
-		CategoryID:  t.CategoryID,
 		AccountID:   t.AccountID,
 		Frequency:   t.Frequency,
 		StartDate:   t.StartDate.Time,
@@ -208,9 +233,19 @@ func sqlcRecurringTemplateToDomain(t sqlc.RecurringTemplate) *domain.RecurringTe
 		UpdatedAt:   t.UpdatedAt.Time,
 	}
 
+	if t.CategoryID.Valid {
+		categoryID := t.CategoryID.Int32
+		template.CategoryID = &categoryID
+	}
+
 	if t.EndDate.Valid {
 		endDate := t.EndDate.Time
 		template.EndDate = &endDate
+	}
+
+	if t.Notes.Valid {
+		notes := t.Notes.String
+		template.Notes = &notes
 	}
 
 	if t.SettlementIntent.Valid {

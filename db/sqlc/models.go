@@ -119,7 +119,7 @@ type RecurringTemplate struct {
 	WorkspaceID int32              `json:"workspace_id"`
 	Description string             `json:"description"`
 	Amount      pgtype.Numeric     `json:"amount"`
-	CategoryID  int32              `json:"category_id"`
+	CategoryID  pgtype.Int4        `json:"category_id"`
 	AccountID   int32              `json:"account_id"`
 	Frequency   string             `json:"frequency"`
 	StartDate   pgtype.Date        `json:"start_date"`
@@ -128,6 +128,7 @@ type RecurringTemplate struct {
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 	// Default settlement intent for CC transactions: immediate (pay this month) or deferred (pay next month)
 	SettlementIntent pgtype.Text `json:"settlement_intent"`
+	Notes            pgtype.Text `json:"notes"`
 }
 
 type Transaction struct {

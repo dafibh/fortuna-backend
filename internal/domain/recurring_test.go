@@ -7,6 +7,11 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+// int32Ptr returns a pointer to the given int32 value (test helper)
+func int32Ptr(v int32) *int32 {
+	return &v
+}
+
 func TestRecurringTemplateEndDateNullable(t *testing.T) {
 	// Verify EndDate can be nil (runs forever)
 	template := RecurringTemplate{
@@ -14,7 +19,7 @@ func TestRecurringTemplateEndDateNullable(t *testing.T) {
 		WorkspaceID: 1,
 		Description: "Test Template",
 		Amount:      decimal.NewFromInt(100),
-		CategoryID:  1,
+		CategoryID:  int32Ptr(1),
 		AccountID:   1,
 		Frequency:   "monthly",
 		StartDate:   time.Now(),
@@ -34,7 +39,7 @@ func TestRecurringTemplateWithEndDate(t *testing.T) {
 		WorkspaceID: 1,
 		Description: "Test Template",
 		Amount:      decimal.NewFromInt(100),
-		CategoryID:  1,
+		CategoryID:  int32Ptr(1),
 		AccountID:   1,
 		Frequency:   "monthly",
 		StartDate:   time.Now(),
@@ -55,7 +60,7 @@ func TestCreateRecurringTemplateInputValidation(t *testing.T) {
 		WorkspaceID: 1,
 		Description: "Monthly Rent",
 		Amount:      decimal.NewFromInt(1500),
-		CategoryID:  5,
+		CategoryID:  int32Ptr(5),
 		AccountID:   2,
 		Frequency:   "monthly",
 		StartDate:   time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
@@ -78,7 +83,7 @@ func TestUpdateRecurringTemplateInputValidation(t *testing.T) {
 	input := UpdateRecurringTemplateInput{
 		Description: "Updated Rent",
 		Amount:      decimal.NewFromInt(1600),
-		CategoryID:  5,
+		CategoryID:  int32Ptr(5),
 		AccountID:   2,
 		Frequency:   "monthly",
 		StartDate:   time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),

@@ -333,11 +333,13 @@ WHERE workspace_id = $1
 ORDER BY transaction_date;
 
 -- name: DeleteProjectionsByTemplate :exec
--- Delete all projected transactions for a template (used when deleting template)
+-- Delete unpaid projected transactions for a template (used when deleting template)
+-- Paid projections are preserved and orphaned instead
 DELETE FROM transactions
 WHERE workspace_id = $1
   AND template_id = $2
-  AND is_projected = true;
+  AND is_projected = true
+  AND is_paid = false;
 
 -- name: DeleteProjectionsBeyondDate :exec
 -- Delete projections beyond a specific date (used when changing template end_date)

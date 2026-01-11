@@ -15,20 +15,21 @@ const createRecurringTemplate = `-- name: CreateRecurringTemplate :one
 
 INSERT INTO recurring_templates (
     workspace_id, description, amount, category_id, account_id,
-    frequency, start_date, end_date, settlement_intent
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, workspace_id, description, amount, category_id, account_id, frequency, start_date, end_date, created_at, updated_at, settlement_intent
+    frequency, start_date, end_date, notes, settlement_intent
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING id, workspace_id, description, amount, category_id, account_id, frequency, start_date, end_date, created_at, updated_at, settlement_intent, notes
 `
 
 type CreateRecurringTemplateParams struct {
 	WorkspaceID      int32          `json:"workspace_id"`
 	Description      string         `json:"description"`
 	Amount           pgtype.Numeric `json:"amount"`
-	CategoryID       int32          `json:"category_id"`
+	CategoryID       pgtype.Int4    `json:"category_id"`
 	AccountID        int32          `json:"account_id"`
 	Frequency        string         `json:"frequency"`
 	StartDate        pgtype.Date    `json:"start_date"`
 	EndDate          pgtype.Date    `json:"end_date"`
+	Notes            pgtype.Text    `json:"notes"`
 	SettlementIntent pgtype.Text    `json:"settlement_intent"`
 }
 
@@ -43,6 +44,7 @@ func (q *Queries) CreateRecurringTemplate(ctx context.Context, arg CreateRecurri
 		arg.Frequency,
 		arg.StartDate,
 		arg.EndDate,
+		arg.Notes,
 		arg.SettlementIntent,
 	)
 	var i RecurringTemplate
@@ -59,6 +61,7 @@ func (q *Queries) CreateRecurringTemplate(ctx context.Context, arg CreateRecurri
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.SettlementIntent,
+		&i.Notes,
 	)
 	return i, err
 }
@@ -79,7 +82,7 @@ func (q *Queries) DeleteRecurringTemplate(ctx context.Context, arg DeleteRecurri
 }
 
 const getActiveRecurringTemplates = `-- name: GetActiveRecurringTemplates :many
-SELECT id, workspace_id, description, amount, category_id, account_id, frequency, start_date, end_date, created_at, updated_at, settlement_intent FROM recurring_templates
+SELECT id, workspace_id, description, amount, category_id, account_id, frequency, start_date, end_date, created_at, updated_at, settlement_intent, notes FROM recurring_templates
 WHERE workspace_id = $1
   AND (end_date IS NULL OR end_date >= CURRENT_DATE)
 ORDER BY start_date
@@ -107,6 +110,7 @@ func (q *Queries) GetActiveRecurringTemplates(ctx context.Context, workspaceID i
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.SettlementIntent,
+			&i.Notes,
 		); err != nil {
 			return nil, err
 		}
@@ -119,7 +123,7 @@ func (q *Queries) GetActiveRecurringTemplates(ctx context.Context, workspaceID i
 }
 
 const getAllActiveTemplates = `-- name: GetAllActiveTemplates :many
-SELECT id, workspace_id, description, amount, category_id, account_id, frequency, start_date, end_date, created_at, updated_at, settlement_intent FROM recurring_templates
+SELECT id, workspace_id, description, amount, category_id, account_id, frequency, start_date, end_date, created_at, updated_at, settlement_intent, notes FROM recurring_templates
 WHERE end_date IS NULL OR end_date >= CURRENT_DATE
 ORDER BY workspace_id, id
 `
@@ -147,6 +151,7 @@ func (q *Queries) GetAllActiveTemplates(ctx context.Context) ([]RecurringTemplat
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.SettlementIntent,
+			&i.Notes,
 		); err != nil {
 			return nil, err
 		}
@@ -159,7 +164,7 @@ func (q *Queries) GetAllActiveTemplates(ctx context.Context) ([]RecurringTemplat
 }
 
 const getRecurringTemplateByID = `-- name: GetRecurringTemplateByID :one
-SELECT id, workspace_id, description, amount, category_id, account_id, frequency, start_date, end_date, created_at, updated_at, settlement_intent FROM recurring_templates
+SELECT id, workspace_id, description, amount, category_id, account_id, frequency, start_date, end_date, created_at, updated_at, settlement_intent, notes FROM recurring_templates
 WHERE id = $1 AND workspace_id = $2
 `
 
@@ -184,12 +189,13 @@ func (q *Queries) GetRecurringTemplateByID(ctx context.Context, arg GetRecurring
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.SettlementIntent,
+		&i.Notes,
 	)
 	return i, err
 }
 
 const listRecurringTemplatesByWorkspace = `-- name: ListRecurringTemplatesByWorkspace :many
-SELECT id, workspace_id, description, amount, category_id, account_id, frequency, start_date, end_date, created_at, updated_at, settlement_intent FROM recurring_templates
+SELECT id, workspace_id, description, amount, category_id, account_id, frequency, start_date, end_date, created_at, updated_at, settlement_intent, notes FROM recurring_templates
 WHERE workspace_id = $1
 ORDER BY created_at DESC
 `
@@ -216,6 +222,7 @@ func (q *Queries) ListRecurringTemplatesByWorkspace(ctx context.Context, workspa
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.SettlementIntent,
+			&i.Notes,
 		); err != nil {
 			return nil, err
 		}
@@ -230,9 +237,9 @@ func (q *Queries) ListRecurringTemplatesByWorkspace(ctx context.Context, workspa
 const updateRecurringTemplate = `-- name: UpdateRecurringTemplate :one
 UPDATE recurring_templates
 SET description = $3, amount = $4, category_id = $5, account_id = $6,
-    frequency = $7, start_date = $8, end_date = $9, settlement_intent = $10, updated_at = NOW()
+    frequency = $7, start_date = $8, end_date = $9, notes = $10, settlement_intent = $11, updated_at = NOW()
 WHERE id = $1 AND workspace_id = $2
-RETURNING id, workspace_id, description, amount, category_id, account_id, frequency, start_date, end_date, created_at, updated_at, settlement_intent
+RETURNING id, workspace_id, description, amount, category_id, account_id, frequency, start_date, end_date, created_at, updated_at, settlement_intent, notes
 `
 
 type UpdateRecurringTemplateParams struct {
@@ -240,11 +247,12 @@ type UpdateRecurringTemplateParams struct {
 	WorkspaceID      int32          `json:"workspace_id"`
 	Description      string         `json:"description"`
 	Amount           pgtype.Numeric `json:"amount"`
-	CategoryID       int32          `json:"category_id"`
+	CategoryID       pgtype.Int4    `json:"category_id"`
 	AccountID        int32          `json:"account_id"`
 	Frequency        string         `json:"frequency"`
 	StartDate        pgtype.Date    `json:"start_date"`
 	EndDate          pgtype.Date    `json:"end_date"`
+	Notes            pgtype.Text    `json:"notes"`
 	SettlementIntent pgtype.Text    `json:"settlement_intent"`
 }
 
@@ -259,6 +267,7 @@ func (q *Queries) UpdateRecurringTemplate(ctx context.Context, arg UpdateRecurri
 		arg.Frequency,
 		arg.StartDate,
 		arg.EndDate,
+		arg.Notes,
 		arg.SettlementIntent,
 	)
 	var i RecurringTemplate
@@ -275,6 +284,7 @@ func (q *Queries) UpdateRecurringTemplate(ctx context.Context, arg UpdateRecurri
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.SettlementIntent,
+		&i.Notes,
 	)
 	return i, err
 }

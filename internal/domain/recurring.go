@@ -12,11 +12,12 @@ type RecurringTemplate struct {
 	WorkspaceID      int32             `json:"workspaceId"`
 	Description      string            `json:"description"`
 	Amount           decimal.Decimal   `json:"amount"`
-	CategoryID       int32             `json:"categoryId"`
+	CategoryID       *int32            `json:"categoryId"`       // Optional category
 	AccountID        int32             `json:"accountId"`
-	Frequency        string            `json:"frequency"` // 'monthly' for MVP
+	Frequency        string            `json:"frequency"`        // 'monthly' for MVP
 	StartDate        time.Time         `json:"startDate"`
 	EndDate          *time.Time        `json:"endDate"`          // NULL means runs forever
+	Notes            *string           `json:"notes"`            // Optional notes for generated transactions
 	SettlementIntent *SettlementIntent `json:"settlementIntent"` // For CC accounts: 'immediate' or 'deferred'
 	CreatedAt        time.Time         `json:"createdAt"`
 	UpdatedAt        time.Time         `json:"updatedAt"`
@@ -27,11 +28,12 @@ type CreateRecurringTemplateInput struct {
 	WorkspaceID       int32
 	Description       string
 	Amount            decimal.Decimal
-	CategoryID        int32
+	CategoryID        *int32            // Optional category
 	AccountID         int32
 	Frequency         string
 	StartDate         time.Time
 	EndDate           *time.Time
+	Notes             *string           // Optional notes for generated transactions
 	SettlementIntent  *SettlementIntent // For CC accounts: 'immediate' or 'deferred'
 	LinkTransactionID *int32            // Optional: link an existing transaction to this template
 }
@@ -40,11 +42,12 @@ type CreateRecurringTemplateInput struct {
 type UpdateRecurringTemplateInput struct {
 	Description      string
 	Amount           decimal.Decimal
-	CategoryID       int32
+	CategoryID       *int32            // Optional category
 	AccountID        int32
 	Frequency        string
 	StartDate        time.Time
 	EndDate          *time.Time
+	Notes            *string           // Optional notes for generated transactions
 	SettlementIntent *SettlementIntent // For CC accounts: 'immediate' or 'deferred'
 }
 

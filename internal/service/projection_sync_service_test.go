@@ -11,6 +11,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// int32Ptr returns a pointer to the given int32 value (test helper)
+func int32PtrSync(v int32) *int32 {
+	return &v
+}
+
 func TestSyncAllActive_NoTemplates(t *testing.T) {
 	templateRepo := testutil.NewMockRecurringTemplateRepository()
 	transactionRepo := testutil.NewMockTransactionRepository()
@@ -35,7 +40,7 @@ func TestSyncAllActive_CreatesProjections(t *testing.T) {
 		WorkspaceID: workspaceID,
 		Description: "Monthly Rent",
 		Amount:      decimal.NewFromInt(1500),
-		CategoryID:  1,
+		CategoryID:  int32PtrSync(1),
 		AccountID:   1,
 		Frequency:   "monthly",
 		StartDate:   startDate,
@@ -76,7 +81,7 @@ func TestSyncAllActive_RespectsEndDate(t *testing.T) {
 		WorkspaceID: workspaceID,
 		Description: "Short Term Bill",
 		Amount:      decimal.NewFromInt(100),
-		CategoryID:  1,
+		CategoryID:  int32PtrSync(1),
 		AccountID:   1,
 		Frequency:   "monthly",
 		StartDate:   startDate,
@@ -111,7 +116,7 @@ func TestSyncAllActive_DeletesProjectionsBeyondEndDate(t *testing.T) {
 		WorkspaceID: workspaceID,
 		Description: "Bill",
 		Amount:      decimal.NewFromInt(100),
-		CategoryID:  1,
+		CategoryID:  int32PtrSync(1),
 		AccountID:   1,
 		Frequency:   "monthly",
 		StartDate:   startDate,
@@ -160,7 +165,7 @@ func TestSyncAllActive_IdempotentDoesNotCreateDuplicates(t *testing.T) {
 		WorkspaceID: workspaceID,
 		Description: "Monthly Bill",
 		Amount:      decimal.NewFromInt(100),
-		CategoryID:  1,
+		CategoryID:  int32PtrSync(1),
 		AccountID:   1,
 		Frequency:   "monthly",
 		StartDate:   startDate,
@@ -198,7 +203,7 @@ func TestSyncAllActive_MultipleWorkspaces(t *testing.T) {
 		WorkspaceID: 1,
 		Description: "Workspace 1 Bill",
 		Amount:      decimal.NewFromInt(100),
-		CategoryID:  1,
+		CategoryID:  int32PtrSync(1),
 		AccountID:   1,
 		Frequency:   "monthly",
 		StartDate:   startDate,
@@ -208,7 +213,7 @@ func TestSyncAllActive_MultipleWorkspaces(t *testing.T) {
 		WorkspaceID: 2,
 		Description: "Workspace 2 Bill",
 		Amount:      decimal.NewFromInt(200),
-		CategoryID:  1,
+		CategoryID:  int32PtrSync(1),
 		AccountID:   1,
 		Frequency:   "monthly",
 		StartDate:   startDate,
@@ -241,7 +246,7 @@ func TestSyncAllActive_GracefulErrorHandling(t *testing.T) {
 		WorkspaceID: 1,
 		Description: "Valid Bill",
 		Amount:      decimal.NewFromInt(100),
-		CategoryID:  1,
+		CategoryID:  int32PtrSync(1),
 		AccountID:   1,
 		Frequency:   "monthly",
 		StartDate:   startDate,

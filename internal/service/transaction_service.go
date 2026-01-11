@@ -584,13 +584,14 @@ func (s *TransactionService) generateProjectionsUpTo(workspaceID int32, template
 			Name:            template.Description,
 			Amount:          template.Amount,
 			Type:            domain.TransactionTypeExpense,
-			CategoryID:      &template.CategoryID,
+			CategoryID:      template.CategoryID,
 			AccountID:       template.AccountID,
 			TransactionDate: actualDate,
 			Source:          "recurring",
 			TemplateID:      &template.ID,
 			IsProjected:     true,
 			IsPaid:          false,
+			Notes:           template.Notes,
 		}
 
 		if _, err := s.transactionRepo.Create(transaction); err != nil {
@@ -652,9 +653,10 @@ func (s *TransactionService) EnrichWithModificationStatus(workspaceID int32, tra
 		}
 
 		// Check if transaction differs from template
+		categoryDiffers := (tx.CategoryID == nil) != (template.CategoryID == nil) ||
+			(tx.CategoryID != nil && template.CategoryID != nil && *tx.CategoryID != *template.CategoryID)
 		tx.IsModified = !tx.Amount.Equal(template.Amount) ||
-			(tx.CategoryID != nil && *tx.CategoryID != template.CategoryID) ||
-			(tx.CategoryID == nil && template.CategoryID != 0) ||
+			categoryDiffers ||
 			tx.Name != template.Description
 	}
 }

@@ -64,10 +64,12 @@ func (s *RecurringTemplateServiceImpl) CreateTemplate(workspaceID int32, input d
 		return nil, domain.ErrAccountNotFound
 	}
 
-	// Validate category exists and belongs to workspace
-	_, err = s.categoryRepo.GetByID(workspaceID, input.CategoryID)
-	if err != nil {
-		return nil, domain.ErrBudgetCategoryNotFound
+	// Validate category exists and belongs to workspace (if provided)
+	if input.CategoryID != nil {
+		_, err = s.categoryRepo.GetByID(workspaceID, *input.CategoryID)
+		if err != nil {
+			return nil, domain.ErrBudgetCategoryNotFound
+		}
 	}
 
 	// If linkTransactionID provided, validate transaction exists and belongs to workspace BEFORE creating template
@@ -88,6 +90,7 @@ func (s *RecurringTemplateServiceImpl) CreateTemplate(workspaceID int32, input d
 		Frequency:        input.Frequency,
 		StartDate:        input.StartDate,
 		EndDate:          input.EndDate,
+		Notes:            input.Notes,
 		SettlementIntent: input.SettlementIntent,
 	}
 
@@ -164,10 +167,12 @@ func (s *RecurringTemplateServiceImpl) UpdateTemplate(workspaceID int32, id int3
 		return nil, domain.ErrAccountNotFound
 	}
 
-	// Validate category exists and belongs to workspace
-	_, err = s.categoryRepo.GetByID(workspaceID, input.CategoryID)
-	if err != nil {
-		return nil, domain.ErrBudgetCategoryNotFound
+	// Validate category exists and belongs to workspace (if provided)
+	if input.CategoryID != nil {
+		_, err = s.categoryRepo.GetByID(workspaceID, *input.CategoryID)
+		if err != nil {
+			return nil, domain.ErrBudgetCategoryNotFound
+		}
 	}
 
 	// Update the template
@@ -238,9 +243,7 @@ func (s *RecurringTemplateServiceImpl) validateCreateInput(input domain.CreateRe
 	if input.Amount.LessThanOrEqual(decimal.Zero) {
 		return domain.ErrInvalidAmount
 	}
-	if input.CategoryID <= 0 {
-		return domain.ErrBudgetCategoryNotFound
-	}
+	// CategoryID is optional, validation happens in CreateTemplate if provided
 	if input.AccountID <= 0 {
 		return domain.ErrAccountNotFound
 	}
@@ -265,9 +268,7 @@ func (s *RecurringTemplateServiceImpl) validateUpdateInput(input domain.UpdateRe
 	if input.Amount.LessThanOrEqual(decimal.Zero) {
 		return domain.ErrInvalidAmount
 	}
-	if input.CategoryID <= 0 {
-		return domain.ErrBudgetCategoryNotFound
-	}
+	// CategoryID is optional, validation happens in UpdateTemplate if provided
 	if input.AccountID <= 0 {
 		return domain.ErrAccountNotFound
 	}
@@ -377,7 +378,7 @@ func (s *RecurringTemplateServiceImpl) generateProjections(workspaceID int32, te
 			Name:             template.Description,
 			Amount:           template.Amount,
 			Type:             domain.TransactionTypeExpense, // Default to expense
-			CategoryID:       &template.CategoryID,
+			CategoryID:       template.CategoryID,
 			AccountID:        template.AccountID,
 			TransactionDate:  actualDate,
 			Source:           "recurring",
@@ -385,6 +386,7 @@ func (s *RecurringTemplateServiceImpl) generateProjections(workspaceID int32, te
 			IsProjected:      true,
 			IsPaid:           false, // CCState computed from isPaid and billedAt (both nil = pending)
 			SettlementIntent: settlementIntent,
+			Notes:            template.Notes,
 		}
 
 		if _, err := s.transactionRepo.Create(transaction); err != nil {
@@ -431,13 +433,14 @@ func (s *RecurringTemplateServiceImpl) recalculateProjections(workspaceID int32,
 			Type:             domain.TransactionTypeExpense,
 			TransactionDate:  proj.TransactionDate,
 			AccountID:        newTemplate.AccountID,
-			CategoryID:       &newTemplate.CategoryID,
+			CategoryID:       newTemplate.CategoryID,
 			Source:           "recurring",
 			TemplateID:       &newTemplate.ID,
 			IsProjected:      true,
 			IsPaid:           proj.IsPaid, // Preserve current isPaid status
 			BilledAt:         proj.BilledAt, // Preserve current billedAt
 			SettlementIntent: settlementIntent,
+			Notes:            newTemplate.Notes,
 		}
 		if _, err := s.transactionRepo.Update(workspaceID, proj.ID, updateData); err != nil {
 			return err
@@ -461,7 +464,11 @@ func (s *RecurringTemplateServiceImpl) isUserEdited(projection *domain.Transacti
 	if !projection.Amount.Equal(template.Amount) {
 		return true
 	}
-	if projection.CategoryID == nil || *projection.CategoryID != template.CategoryID {
+	// Compare nullable CategoryID
+	if (projection.CategoryID == nil) != (template.CategoryID == nil) {
+		return true
+	}
+	if projection.CategoryID != nil && template.CategoryID != nil && *projection.CategoryID != *template.CategoryID {
 		return true
 	}
 	if projection.AccountID != template.AccountID {
@@ -549,7 +556,7 @@ func (s *RecurringTemplateServiceImpl) generateProjectionsWithSkips(workspaceID 
 			Name:             template.Description,
 			Amount:           template.Amount,
 			Type:             domain.TransactionTypeExpense,
-			CategoryID:       &template.CategoryID,
+			CategoryID:       template.CategoryID,
 			AccountID:        template.AccountID,
 			TransactionDate:  actualDate,
 			Source:           "recurring",
@@ -557,6 +564,7 @@ func (s *RecurringTemplateServiceImpl) generateProjectionsWithSkips(workspaceID 
 			IsProjected:      true,
 			IsPaid:           false, // CCState computed from isPaid and billedAt
 			SettlementIntent: settlementIntent,
+			Notes:            template.Notes,
 		}
 
 		if _, err := s.transactionRepo.Create(transaction); err != nil {

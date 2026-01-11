@@ -49,7 +49,8 @@ type Querier interface {
 	DeleteLoanProvider(ctx context.Context, arg DeleteLoanProviderParams) error
 	// Delete projections beyond a specific date (used when changing template end_date)
 	DeleteProjectionsBeyondDate(ctx context.Context, arg DeleteProjectionsBeyondDateParams) error
-	// Delete all projected transactions for a template (used when deleting template)
+	// Delete unpaid projected transactions for a template (used when deleting template)
+	// Paid projections are preserved and orphaned instead
 	DeleteProjectionsByTemplate(ctx context.Context, arg DeleteProjectionsByTemplateParams) error
 	DeleteRecurringTemplate(ctx context.Context, arg DeleteRecurringTemplateParams) error
 	DeleteWishlist(ctx context.Context, arg DeleteWishlistParams) error
