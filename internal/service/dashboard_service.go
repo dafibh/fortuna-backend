@@ -90,7 +90,9 @@ func (s *DashboardService) getActualSummary(workspaceID int32, year, month int) 
 	inHandBalance := monthData.StartingBalance.Add(monthData.TotalIncome).Sub(paidExpenses)
 
 	// 4. Calculate unpaid expenses for disposable income
-	unpaidExpenses, err := s.transactionRepo.SumUnpaidExpensesByDateRange(
+	// Use SumUnpaidExpensesForDisposable which EXCLUDES deferred CC transactions
+	// (deferred CC transactions are obligations for next month, not this month)
+	unpaidExpenses, err := s.transactionRepo.SumUnpaidExpensesForDisposable(
 		workspaceID, monthData.StartDate, monthData.EndDate)
 	if err != nil {
 		return nil, err
@@ -141,7 +143,19 @@ func (s *DashboardService) getProjection(workspaceID int32, year, month int) (*d
 		return nil, err
 	}
 
-	// Build projection details with loan payments
+	// Get deferred CC from previous month(s) - these are obligations for this projected month
+	// Calculate the previous month's date range
+	prevMonthDate := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.Local).AddDate(0, -1, 0)
+	prevMonthStart := time.Date(prevMonthDate.Year(), prevMonthDate.Month(), 1, 0, 0, 0, 0, time.Local)
+	prevMonthEnd := time.Date(prevMonthDate.Year(), prevMonthDate.Month()+1, 0, 0, 0, 0, 0, time.Local)
+
+	deferredFromPrevMonth, err := s.transactionRepo.SumDeferredCCByDateRange(
+		workspaceID, prevMonthStart, prevMonthEnd)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build projection details with loan payments and deferred CC
 	projection := &domain.ProjectionDetails{
 		RecurringIncome:   decimal.Zero,
 		RecurringExpenses: decimal.Zero,
@@ -149,8 +163,11 @@ func (s *DashboardService) getProjection(workspaceID int32, year, month int) (*d
 		Note:              "Recurring transactions not yet configured",
 	}
 
-	// Projected closing = starting - loan payments (MVP - no recurring yet)
-	closingBalance := startingBalance.Sub(unpaidLoanPayments)
+	// Total obligations = loan payments + deferred CC from previous month
+	totalObligations := unpaidLoanPayments.Add(deferredFromPrevMonth)
+
+	// Projected closing = starting - total obligations (MVP - no recurring yet)
+	closingBalance := startingBalance.Sub(totalObligations)
 
 	// Build month boundaries
 	startDate := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.Local)
@@ -159,8 +176,8 @@ func (s *DashboardService) getProjection(workspaceID int32, year, month int) (*d
 	// For future months, days remaining = total days in month
 	daysRemaining := endDate.Day()
 
-	// Disposable = starting - loan payments (no unpaid expenses in future)
-	disposableIncome := startingBalance.Sub(unpaidLoanPayments)
+	// Disposable = starting - total obligations (loan payments + deferred CC)
+	disposableIncome := startingBalance.Sub(totalObligations)
 
 	// Calculate daily budget based on disposable income
 	dailyBudget := decimal.Zero
@@ -174,7 +191,7 @@ func (s *DashboardService) getProjection(workspaceID int32, year, month int) (*d
 		TotalBalance:          startingBalance,
 		InHandBalance:         startingBalance,
 		DisposableIncome:      disposableIncome,
-		UnpaidExpenses:        decimal.Zero,
+		UnpaidExpenses:        deferredFromPrevMonth, // Show deferred CC as unpaid expenses in projection
 		UnpaidLoanPayments:    unpaidLoanPayments,
 		DaysRemaining:         daysRemaining,
 		DailyBudget:           dailyBudget,

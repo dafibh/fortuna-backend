@@ -348,9 +348,11 @@ type MockTransactionRepository struct {
 	SoftDeleteTransferPairFn          func(workspaceID int32, pairID uuid.UUID) error
 	GetAccountTransactionSummariesFn  func(workspaceID int32) ([]*domain.TransactionSummary, error)
 	SumByTypeAndDateRangeFn           func(workspaceID int32, startDate, endDate time.Time, txType domain.TransactionType) (decimal.Decimal, error)
-	SumPaidExpensesByDateRangeFn      func(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
-	SumUnpaidExpensesByDateRangeFn    func(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
-	GetRecentlyUsedCategoriesFn       func(workspaceID int32) ([]*domain.RecentCategory, error)
+	SumPaidExpensesByDateRangeFn        func(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
+	SumUnpaidExpensesByDateRangeFn      func(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
+	SumUnpaidExpensesForDisposableFn    func(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
+	SumDeferredCCByDateRangeFn          func(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
+	GetRecentlyUsedCategoriesFn         func(workspaceID int32) ([]*domain.RecentCategory, error)
 	GetProjectionsByTemplateFn        func(workspaceID int32, templateID int32) ([]*domain.Transaction, error)
 	DeleteProjectionsByTemplateFn     func(workspaceID int32, templateID int32) error
 	DeleteProjectionsBeyondDateFn     func(workspaceID int32, templateID int32, date time.Time) error
@@ -741,6 +743,67 @@ func (m *MockTransactionRepository) SumUnpaidExpensesByDateRange(workspaceID int
 			continue
 		}
 		if tx.IsPaid {
+			continue
+		}
+		// Check if transaction date is within range (inclusive)
+		if (tx.TransactionDate.Equal(startDate) || tx.TransactionDate.After(startDate)) &&
+			(tx.TransactionDate.Equal(endDate) || tx.TransactionDate.Before(endDate)) {
+			total = total.Add(tx.Amount)
+		}
+	}
+	return total, nil
+}
+
+// SumUnpaidExpensesForDisposable sums unpaid expenses for disposable income
+// EXCLUDES deferred CC transactions (they're for next month)
+func (m *MockTransactionRepository) SumUnpaidExpensesForDisposable(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error) {
+	if m.SumUnpaidExpensesForDisposableFn != nil {
+		return m.SumUnpaidExpensesForDisposableFn(workspaceID, startDate, endDate)
+	}
+
+	total := decimal.Zero
+	for _, tx := range m.ByWorkspace[workspaceID] {
+		if tx.DeletedAt != nil {
+			continue
+		}
+		if tx.Type != domain.TransactionTypeExpense {
+			continue
+		}
+		if tx.IsPaid {
+			continue
+		}
+		// Exclude deferred CC transactions
+		if tx.SettlementIntent != nil && *tx.SettlementIntent == domain.SettlementIntentDeferred {
+			continue
+		}
+		// Check if transaction date is within range (inclusive)
+		if (tx.TransactionDate.Equal(startDate) || tx.TransactionDate.After(startDate)) &&
+			(tx.TransactionDate.Equal(endDate) || tx.TransactionDate.Before(endDate)) {
+			total = total.Add(tx.Amount)
+		}
+	}
+	return total, nil
+}
+
+// SumDeferredCCByDateRange sums deferred CC expenses within a date range
+func (m *MockTransactionRepository) SumDeferredCCByDateRange(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error) {
+	if m.SumDeferredCCByDateRangeFn != nil {
+		return m.SumDeferredCCByDateRangeFn(workspaceID, startDate, endDate)
+	}
+
+	total := decimal.Zero
+	for _, tx := range m.ByWorkspace[workspaceID] {
+		if tx.DeletedAt != nil {
+			continue
+		}
+		if tx.Type != domain.TransactionTypeExpense {
+			continue
+		}
+		if tx.IsPaid {
+			continue
+		}
+		// Only include deferred CC transactions
+		if tx.SettlementIntent == nil || *tx.SettlementIntent != domain.SettlementIntentDeferred {
 			continue
 		}
 		// Check if transaction date is within range (inclusive)

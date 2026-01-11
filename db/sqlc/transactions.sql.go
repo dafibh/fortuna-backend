@@ -1459,6 +1459,35 @@ func (q *Queries) SoftDeleteTransferPair(ctx context.Context, arg SoftDeleteTran
 	return result.RowsAffected(), nil
 }
 
+const sumDeferredCCByDateRange = `-- name: SumDeferredCCByDateRange :one
+SELECT COALESCE(SUM(t.amount), 0)::NUMERIC(12,2) as total
+FROM transactions t
+JOIN accounts a ON t.account_id = a.id
+WHERE t.workspace_id = $1
+  AND t.transaction_date >= $2
+  AND t.transaction_date <= $3
+  AND t.type = 'expense'
+  AND t.is_paid = false
+  AND t.settlement_intent = 'deferred'
+  AND a.template = 'credit_card'
+  AND t.deleted_at IS NULL
+`
+
+type SumDeferredCCByDateRangeParams struct {
+	WorkspaceID       int32       `json:"workspace_id"`
+	TransactionDate   pgtype.Date `json:"transaction_date"`
+	TransactionDate_2 pgtype.Date `json:"transaction_date_2"`
+}
+
+// Sum deferred CC expenses within a date range
+// Used for next month projections
+func (q *Queries) SumDeferredCCByDateRange(ctx context.Context, arg SumDeferredCCByDateRangeParams) (pgtype.Numeric, error) {
+	row := q.db.QueryRow(ctx, sumDeferredCCByDateRange, arg.WorkspaceID, arg.TransactionDate, arg.TransactionDate_2)
+	var total pgtype.Numeric
+	err := row.Scan(&total)
+	return total, err
+}
+
 const sumPaidExpensesByDateRange = `-- name: SumPaidExpensesByDateRange :one
 SELECT COALESCE(SUM(amount), 0)::NUMERIC(12,2) as total
 FROM transactions
@@ -1532,9 +1561,39 @@ type SumUnpaidExpensesByDateRangeParams struct {
 	TransactionDate_2 pgtype.Date `json:"transaction_date_2"`
 }
 
-// Sum unpaid expenses within a date range for disposable income calculation
+// Sum unpaid expenses within a date range (ALL unpaid, including deferred CC)
+// Used for balance calculations where all obligations matter
 func (q *Queries) SumUnpaidExpensesByDateRange(ctx context.Context, arg SumUnpaidExpensesByDateRangeParams) (pgtype.Numeric, error) {
 	row := q.db.QueryRow(ctx, sumUnpaidExpensesByDateRange, arg.WorkspaceID, arg.TransactionDate, arg.TransactionDate_2)
+	var total pgtype.Numeric
+	err := row.Scan(&total)
+	return total, err
+}
+
+const sumUnpaidExpensesForDisposable = `-- name: SumUnpaidExpensesForDisposable :one
+SELECT COALESCE(SUM(t.amount), 0)::NUMERIC(12,2) as total
+FROM transactions t
+LEFT JOIN accounts a ON t.account_id = a.id
+WHERE t.workspace_id = $1
+  AND t.transaction_date >= $2
+  AND t.transaction_date <= $3
+  AND t.type = 'expense'
+  AND t.is_paid = false
+  AND t.deleted_at IS NULL
+  AND NOT (a.template = 'credit_card' AND t.settlement_intent = 'deferred')
+`
+
+type SumUnpaidExpensesForDisposableParams struct {
+	WorkspaceID       int32       `json:"workspace_id"`
+	TransactionDate   pgtype.Date `json:"transaction_date"`
+	TransactionDate_2 pgtype.Date `json:"transaction_date_2"`
+}
+
+// Sum unpaid expenses for disposable income calculation
+// EXCLUDES deferred CC transactions (those are for next month)
+// Includes: non-CC unpaid expenses + immediate CC expenses
+func (q *Queries) SumUnpaidExpensesForDisposable(ctx context.Context, arg SumUnpaidExpensesForDisposableParams) (pgtype.Numeric, error) {
+	row := q.db.QueryRow(ctx, sumUnpaidExpensesForDisposable, arg.WorkspaceID, arg.TransactionDate, arg.TransactionDate_2)
 	var total pgtype.Numeric
 	err := row.Scan(&total)
 	return total, err

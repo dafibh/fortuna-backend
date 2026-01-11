@@ -118,7 +118,8 @@ WHERE workspace_id = $1
   AND deleted_at IS NULL;
 
 -- name: SumUnpaidExpensesByDateRange :one
--- Sum unpaid expenses within a date range for disposable income calculation
+-- Sum unpaid expenses within a date range (ALL unpaid, including deferred CC)
+-- Used for balance calculations where all obligations matter
 SELECT COALESCE(SUM(amount), 0)::NUMERIC(12,2) as total
 FROM transactions
 WHERE workspace_id = $1
@@ -127,6 +128,36 @@ WHERE workspace_id = $1
   AND type = 'expense'
   AND is_paid = false
   AND deleted_at IS NULL;
+
+-- name: SumUnpaidExpensesForDisposable :one
+-- Sum unpaid expenses for disposable income calculation
+-- EXCLUDES deferred CC transactions (those are for next month)
+-- Includes: non-CC unpaid expenses + immediate CC expenses
+SELECT COALESCE(SUM(t.amount), 0)::NUMERIC(12,2) as total
+FROM transactions t
+LEFT JOIN accounts a ON t.account_id = a.id
+WHERE t.workspace_id = $1
+  AND t.transaction_date >= $2
+  AND t.transaction_date <= $3
+  AND t.type = 'expense'
+  AND t.is_paid = false
+  AND t.deleted_at IS NULL
+  AND NOT (a.template = 'credit_card' AND t.settlement_intent = 'deferred');
+
+-- name: SumDeferredCCByDateRange :one
+-- Sum deferred CC expenses within a date range
+-- Used for next month projections
+SELECT COALESCE(SUM(t.amount), 0)::NUMERIC(12,2) as total
+FROM transactions t
+JOIN accounts a ON t.account_id = a.id
+WHERE t.workspace_id = $1
+  AND t.transaction_date >= $2
+  AND t.transaction_date <= $3
+  AND t.type = 'expense'
+  AND t.is_paid = false
+  AND t.settlement_intent = 'deferred'
+  AND a.template = 'credit_card'
+  AND t.deleted_at IS NULL;
 
 -- name: GetTransactionsWithCategory :many
 -- Returns transactions with category name joined for display

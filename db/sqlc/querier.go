@@ -173,12 +173,20 @@ type Querier interface {
 	SoftDeleteBudgetCategory(ctx context.Context, arg SoftDeleteBudgetCategoryParams) error
 	SoftDeleteTransaction(ctx context.Context, arg SoftDeleteTransactionParams) (int64, error)
 	SoftDeleteTransferPair(ctx context.Context, arg SoftDeleteTransferPairParams) (int64, error)
+	// Sum deferred CC expenses within a date range
+	// Used for next month projections
+	SumDeferredCCByDateRange(ctx context.Context, arg SumDeferredCCByDateRangeParams) (pgtype.Numeric, error)
 	// Sum paid expenses within a date range for in-hand balance calculation
 	SumPaidExpensesByDateRange(ctx context.Context, arg SumPaidExpensesByDateRangeParams) (pgtype.Numeric, error)
 	// Only count paid transactions
 	SumTransactionsByTypeAndDateRange(ctx context.Context, arg SumTransactionsByTypeAndDateRangeParams) (pgtype.Numeric, error)
-	// Sum unpaid expenses within a date range for disposable income calculation
+	// Sum unpaid expenses within a date range (ALL unpaid, including deferred CC)
+	// Used for balance calculations where all obligations matter
 	SumUnpaidExpensesByDateRange(ctx context.Context, arg SumUnpaidExpensesByDateRangeParams) (pgtype.Numeric, error)
+	// Sum unpaid expenses for disposable income calculation
+	// EXCLUDES deferred CC transactions (those are for next month)
+	// Includes: non-CC unpaid expenses + immediate CC expenses
+	SumUnpaidExpensesForDisposable(ctx context.Context, arg SumUnpaidExpensesForDisposableParams) (pgtype.Numeric, error)
 	SumUnpaidLoanPaymentsByMonth(ctx context.Context, arg SumUnpaidLoanPaymentsByMonthParams) (pgtype.Numeric, error)
 	// ========================================
 	// CC Lifecycle Operations (v2 - Simplified)

@@ -196,6 +196,8 @@ type TransactionRepository interface {
 	GetMonthlyTransactionSummaries(workspaceID int32) ([]*MonthlyTransactionSummary, error)
 	SumPaidExpensesByDateRange(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
 	SumUnpaidExpensesByDateRange(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
+	SumUnpaidExpensesForDisposable(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
+	SumDeferredCCByDateRange(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
 	GetRecentlyUsedCategories(workspaceID int32) ([]*RecentCategory, error)
 	GetCCMetrics(workspaceID int32, startDate, endDate time.Time) (*CCMetrics, error)
 	BatchToggleToBilled(workspaceID int32, ids []int32) ([]*Transaction, error)

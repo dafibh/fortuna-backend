@@ -584,6 +584,38 @@ func (r *TransactionRepository) SumUnpaidExpensesByDateRange(workspaceID int32, 
 	return pgNumericToDecimal(total), nil
 }
 
+// SumUnpaidExpensesForDisposable sums unpaid expenses for disposable income calculation
+// This EXCLUDES deferred CC transactions (they're for next month)
+func (r *TransactionRepository) SumUnpaidExpensesForDisposable(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error) {
+	ctx := context.Background()
+
+	total, err := r.queries.SumUnpaidExpensesForDisposable(ctx, sqlc.SumUnpaidExpensesForDisposableParams{
+		WorkspaceID:       workspaceID,
+		TransactionDate:   pgtype.Date{Time: startDate, Valid: true},
+		TransactionDate_2: pgtype.Date{Time: endDate, Valid: true},
+	})
+	if err != nil {
+		return decimal.Zero, err
+	}
+	return pgNumericToDecimal(total), nil
+}
+
+// SumDeferredCCByDateRange sums deferred CC expenses within a date range
+// Used for next month projections
+func (r *TransactionRepository) SumDeferredCCByDateRange(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error) {
+	ctx := context.Background()
+
+	total, err := r.queries.SumDeferredCCByDateRange(ctx, sqlc.SumDeferredCCByDateRangeParams{
+		WorkspaceID:       workspaceID,
+		TransactionDate:   pgtype.Date{Time: startDate, Valid: true},
+		TransactionDate_2: pgtype.Date{Time: endDate, Valid: true},
+	})
+	if err != nil {
+		return decimal.Zero, err
+	}
+	return pgNumericToDecimal(total), nil
+}
+
 // GetRecentlyUsedCategories returns recently used categories for suggestions
 func (r *TransactionRepository) GetRecentlyUsedCategories(workspaceID int32) ([]*domain.RecentCategory, error) {
 	ctx := context.Background()
