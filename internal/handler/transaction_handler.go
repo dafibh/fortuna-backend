@@ -17,56 +17,52 @@ import (
 // TransactionHandler handles transaction-related HTTP requests
 type TransactionHandler struct {
 	transactionService *service.TransactionService
-	recurringService   *service.RecurringService
 }
 
 // NewTransactionHandler creates a new TransactionHandler
-func NewTransactionHandler(transactionService *service.TransactionService, recurringService *service.RecurringService) *TransactionHandler {
+func NewTransactionHandler(transactionService *service.TransactionService) *TransactionHandler {
 	return &TransactionHandler{
 		transactionService: transactionService,
-		recurringService:   recurringService,
 	}
 }
 
 // CreateTransactionRequest represents the create transaction request body
 type CreateTransactionRequest struct {
-	AccountID          int32   `json:"accountId"`
-	Name               string  `json:"name"`
-	Amount             string  `json:"amount"`
-	Type               string  `json:"type"`
-	Date               *string `json:"date,omitempty"`
-	IsPaid             *bool   `json:"isPaid,omitempty"`
-	CCSettlementIntent *string `json:"ccSettlementIntent,omitempty"`
-	Notes              *string `json:"notes,omitempty"`
-	CategoryID         *int32  `json:"categoryId,omitempty"`
+	AccountID        int32   `json:"accountId"`
+	Name             string  `json:"name"`
+	Amount           string  `json:"amount"`
+	Type             string  `json:"type"`
+	Date             *string `json:"date,omitempty"`
+	IsPaid           *bool   `json:"isPaid,omitempty"`
+	Notes            *string `json:"notes,omitempty"`
+	CategoryID       *int32  `json:"categoryId,omitempty"`
+	SettlementIntent *string `json:"settlementIntent,omitempty"` // v2: "immediate" or "deferred"
 }
 
 // TransactionResponse represents a transaction in API responses
 type TransactionResponse struct {
-	ID                     int32   `json:"id"`
-	WorkspaceID            int32   `json:"workspaceId"`
-	AccountID              int32   `json:"accountId"`
-	Name                   string  `json:"name"`
-	Amount                 string  `json:"amount"`
-	Type                   string  `json:"type"`
-	TransactionDate        string  `json:"transactionDate"`
-	IsPaid                 bool    `json:"isPaid"`
-	CCSettlementIntent     *string `json:"ccSettlementIntent,omitempty"`
-	Notes                  *string `json:"notes,omitempty"`
-	TransferPairID         *string `json:"transferPairId,omitempty"`
-	CategoryID             *int32  `json:"categoryId,omitempty"`
-	CategoryName           *string `json:"categoryName,omitempty"`
-	RecurringTransactionID *int32  `json:"recurringTransactionId,omitempty"`
-	CreatedAt              string  `json:"createdAt"`
-	UpdatedAt              string  `json:"updatedAt"`
+	ID              int32   `json:"id"`
+	WorkspaceID     int32   `json:"workspaceId"`
+	AccountID       int32   `json:"accountId"`
+	Name            string  `json:"name"`
+	Amount          string  `json:"amount"`
+	Type            string  `json:"type"`
+	TransactionDate string  `json:"transactionDate"`
+	IsPaid          bool    `json:"isPaid"`
+	Notes           *string `json:"notes,omitempty"`
+	TransferPairID  *string `json:"transferPairId,omitempty"`
+	CategoryID      *int32  `json:"categoryId,omitempty"`
+	CategoryName    *string `json:"categoryName,omitempty"`
+	CreatedAt       string  `json:"createdAt"`
+	UpdatedAt       string  `json:"updatedAt"`
 
-	// Recurring/Projection fields (v2)
-	Source      string `json:"source"`                // "manual", "recurring", or "import"
-	TemplateID  *int32 `json:"templateId,omitempty"`  // ID of recurring template that generated this
-	IsProjected bool   `json:"isProjected"`           // true if this is a projected (not yet actual) transaction
-	IsModified  bool   `json:"isModified"`            // true if projected instance differs from template
+	// Recurring/Projection fields
+	Source      string `json:"source"`               // "manual", "recurring", or "import"
+	TemplateID  *int32 `json:"templateId,omitempty"` // ID of recurring template that generated this
+	IsProjected bool   `json:"isProjected"`          // true if this is a projected (not yet actual) transaction
+	IsModified  bool   `json:"isModified"`           // true if projected instance differs from template
 
-	// CC Lifecycle fields (v2)
+	// CC Lifecycle fields
 	CCState          *string `json:"ccState,omitempty"`          // "pending", "billed", or "settled"
 	BilledAt         *string `json:"billedAt,omitempty"`         // Timestamp when marked as billed
 	SettledAt        *string `json:"settledAt,omitempty"`        // Timestamp when settled
@@ -138,28 +134,28 @@ func (h *TransactionHandler) CreateTransaction(c echo.Context) error {
 		transactionDate = &parsed
 	}
 
-	// Parse CC settlement intent if provided
-	var ccSettlementIntent *domain.CCSettlementIntent
-	if req.CCSettlementIntent != nil && *req.CCSettlementIntent != "" {
-		intent := domain.CCSettlementIntent(*req.CCSettlementIntent)
-		if intent != domain.CCSettlementThisMonth && intent != domain.CCSettlementNextMonth {
-			return NewValidationError(c, "Invalid ccSettlementIntent", []ValidationError{
-				{Field: "ccSettlementIntent", Message: "Must be one of: this_month, next_month"},
+	// Parse settlement intent if provided (v2)
+	var settlementIntent *domain.SettlementIntent
+	if req.SettlementIntent != nil && *req.SettlementIntent != "" {
+		intent := domain.SettlementIntent(*req.SettlementIntent)
+		if intent != domain.SettlementIntentImmediate && intent != domain.SettlementIntentDeferred {
+			return NewValidationError(c, "Invalid settlementIntent", []ValidationError{
+				{Field: "settlementIntent", Message: "Must be one of: immediate, deferred"},
 			})
 		}
-		ccSettlementIntent = &intent
+		settlementIntent = &intent
 	}
 
 	input := service.CreateTransactionInput{
-		AccountID:          req.AccountID,
-		Name:               req.Name,
-		Amount:             amount,
-		Type:               domain.TransactionType(req.Type),
-		TransactionDate:    transactionDate,
-		IsPaid:             req.IsPaid,
-		CCSettlementIntent: ccSettlementIntent,
-		Notes:              req.Notes,
-		CategoryID:         req.CategoryID,
+		AccountID:        req.AccountID,
+		Name:             req.Name,
+		Amount:           amount,
+		Type:             domain.TransactionType(req.Type),
+		TransactionDate:  transactionDate,
+		IsPaid:           req.IsPaid,
+		Notes:            req.Notes,
+		CategoryID:       req.CategoryID,
+		SettlementIntent: settlementIntent,
 	}
 
 	transaction, err := h.transactionService.CreateTransaction(workspaceID, input)
@@ -330,40 +326,6 @@ func (h *TransactionHandler) GetTransactions(c echo.Context) error {
 		filters.PageSize = pageSize
 	}
 
-	// Lazy generation: if date range includes current month, generate recurring transactions.
-	// Performance note: This adds minimal overhead because:
-	// 1. Idempotency check is a fast indexed query (recurring_transaction_id + year/month)
-	// 2. After first call each month, all templates are skipped (already exist)
-	// 3. Only runs when viewing current month's transactions
-	// For high-volume usage, consider migrating to a cron job (Task 6.2 in story).
-	if h.recurringService != nil {
-		now := time.Now()
-		currentYear, currentMonth := now.Year(), now.Month()
-		includesCurrentMonth := true
-
-		if filters.StartDate != nil {
-			// If start date is after current month end, exclude
-			endOfCurrentMonth := time.Date(currentYear, currentMonth+1, 0, 23, 59, 59, 0, time.UTC)
-			if filters.StartDate.After(endOfCurrentMonth) {
-				includesCurrentMonth = false
-			}
-		}
-		if filters.EndDate != nil {
-			// If end date is before current month start, exclude
-			startOfCurrentMonth := time.Date(currentYear, currentMonth, 1, 0, 0, 0, 0, time.UTC)
-			if filters.EndDate.Before(startOfCurrentMonth) {
-				includesCurrentMonth = false
-			}
-		}
-
-		if includesCurrentMonth {
-			if _, err := h.recurringService.GenerateRecurringTransactions(workspaceID, currentYear, currentMonth); err != nil {
-				// Log but don't fail - recurring generation is non-critical
-				log.Warn().Err(err).Int32("workspace_id", workspaceID).Msg("Failed to generate recurring transactions")
-			}
-		}
-	}
-
 	result, err := h.transactionService.GetTransactions(workspaceID, filters)
 	if err != nil {
 		log.Error().Err(err).Int32("workspace_id", workspaceID).Msg("Failed to get transactions")
@@ -468,69 +430,15 @@ func (h *TransactionHandler) ToggleBilled(c echo.Context) error {
 	return c.JSON(http.StatusOK, toTransactionResponse(transaction))
 }
 
-// UpdateSettlementIntentRequest represents the request body for updating settlement intent
-type UpdateSettlementIntentRequest struct {
-	Intent string `json:"intent"`
-}
-
-// UpdateSettlementIntent handles PATCH /api/v1/transactions/:id/settlement-intent
-func (h *TransactionHandler) UpdateSettlementIntent(c echo.Context) error {
-	workspaceID := middleware.GetWorkspaceID(c)
-	if workspaceID == 0 {
-		return NewUnauthorizedError(c, "Workspace required")
-	}
-
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		return NewValidationError(c, "Invalid transaction ID", nil)
-	}
-
-	var req UpdateSettlementIntentRequest
-	if err := c.Bind(&req); err != nil {
-		return NewValidationError(c, "Invalid request body", nil)
-	}
-
-	if req.Intent == "" {
-		return NewValidationError(c, "Validation failed", []ValidationError{
-			{Field: "intent", Message: "Intent is required"},
-		})
-	}
-
-	intent := domain.CCSettlementIntent(req.Intent)
-	transaction, err := h.transactionService.UpdateSettlementIntent(workspaceID, int32(id), intent)
-	if err != nil {
-		if errors.Is(err, domain.ErrTransactionNotFound) {
-			return NewNotFoundError(c, "Transaction not found")
-		}
-		if errors.Is(err, domain.ErrInvalidSettlementIntent) {
-			return NewValidationError(c, "Validation failed", []ValidationError{
-				{Field: "intent", Message: "Must be one of: this_month, next_month"},
-			})
-		}
-		if errors.Is(err, domain.ErrTransactionAlreadyPaid) {
-			return NewValidationError(c, "Cannot change settlement intent for paid transactions", nil)
-		}
-		if errors.Is(err, domain.ErrSettlementIntentNotApplicable) {
-			return NewValidationError(c, "Settlement intent only applies to credit card transactions", nil)
-		}
-		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("transaction_id", id).Msg("Failed to update settlement intent")
-		return NewInternalError(c, "Failed to update settlement intent")
-	}
-
-	log.Info().Int32("workspace_id", workspaceID).Int32("transaction_id", transaction.ID).Str("intent", string(intent)).Msg("Transaction settlement intent updated")
-	return c.JSON(http.StatusOK, toTransactionResponse(transaction))
-}
-
 // UpdateTransactionRequest represents the request body for updating a transaction
 type UpdateTransactionRequest struct {
-	AccountID          int32   `json:"accountId"`
-	Name               string  `json:"name"`
-	Amount             string  `json:"amount"`
-	Type               string  `json:"type"`
-	Date               string  `json:"date"`
-	CCSettlementIntent *string `json:"ccSettlementIntent,omitempty"`
-	Notes              *string `json:"notes,omitempty"`
-	CategoryID         *int32  `json:"categoryId,omitempty"`
+	AccountID  int32   `json:"accountId"`
+	Name       string  `json:"name"`
+	Amount     string  `json:"amount"`
+	Type       string  `json:"type"`
+	Date       string  `json:"date"`
+	Notes      *string `json:"notes,omitempty"`
+	CategoryID *int32  `json:"categoryId,omitempty"`
 }
 
 // UpdateTransaction godoc
@@ -586,22 +494,14 @@ func (h *TransactionHandler) UpdateTransaction(c echo.Context) error {
 		})
 	}
 
-	// Parse CC settlement intent if provided
-	var ccSettlementIntent *domain.CCSettlementIntent
-	if req.CCSettlementIntent != nil && *req.CCSettlementIntent != "" {
-		intent := domain.CCSettlementIntent(*req.CCSettlementIntent)
-		ccSettlementIntent = &intent
-	}
-
 	input := service.UpdateTransactionInput{
-		AccountID:          req.AccountID,
-		Name:               req.Name,
-		Amount:             amount,
-		Type:               domain.TransactionType(req.Type),
-		TransactionDate:    transactionDate,
-		CCSettlementIntent: ccSettlementIntent,
-		Notes:              req.Notes,
-		CategoryID:         req.CategoryID,
+		AccountID:       req.AccountID,
+		Name:            req.Name,
+		Amount:          amount,
+		Type:            domain.TransactionType(req.Type),
+		TransactionDate: transactionDate,
+		Notes:           req.Notes,
+		CategoryID:      req.CategoryID,
 	}
 
 	transaction, err := h.transactionService.UpdateTransaction(workspaceID, int32(id), input)
@@ -632,11 +532,6 @@ func (h *TransactionHandler) UpdateTransaction(c echo.Context) error {
 		if errors.Is(err, domain.ErrAccountNotFound) {
 			return NewValidationError(c, "Validation failed", []ValidationError{
 				{Field: "accountId", Message: "Account not found"},
-			})
-		}
-		if errors.Is(err, domain.ErrInvalidSettlementIntent) {
-			return NewValidationError(c, "Validation failed", []ValidationError{
-				{Field: "ccSettlementIntent", Message: "Must be one of: this_month, next_month"},
 			})
 		}
 		if errors.Is(err, domain.ErrNotesTooLong) {
@@ -849,10 +744,6 @@ func toTransactionResponse(transaction *domain.Transaction) TransactionResponse 
 		IsProjected: transaction.IsProjected,
 		IsModified:  transaction.IsModified,
 	}
-	if transaction.CCSettlementIntent != nil {
-		intent := string(*transaction.CCSettlementIntent)
-		resp.CCSettlementIntent = &intent
-	}
 	if transaction.Notes != nil {
 		resp.Notes = transaction.Notes
 	}
@@ -865,9 +756,6 @@ func toTransactionResponse(transaction *domain.Transaction) TransactionResponse 
 	}
 	if transaction.CategoryName != nil {
 		resp.CategoryName = transaction.CategoryName
-	}
-	if transaction.RecurringTransactionID != nil {
-		resp.RecurringTransactionID = transaction.RecurringTransactionID
 	}
 	// CC Lifecycle fields (v2)
 	if transaction.CCState != nil {

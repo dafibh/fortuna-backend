@@ -342,7 +342,6 @@ type MockTransactionRepository struct {
 	GetByIDFn                  func(workspaceID int32, id int32) (*domain.Transaction, error)
 	GetByWSFn                  func(workspaceID int32, filters *domain.TransactionFilters) (*domain.PaginatedTransactions, error)
 	TogglePaidFn               func(workspaceID int32, id int32) (*domain.Transaction, error)
-	UpdateSettlementIntentFn   func(workspaceID int32, id int32, intent domain.CCSettlementIntent) (*domain.Transaction, error)
 	UpdateFn                   func(workspaceID int32, id int32, data *domain.UpdateTransactionData) (*domain.Transaction, error)
 	SoftDeleteFn                      func(workspaceID int32, id int32) error
 	CreateTransferPairFn              func(fromTx, toTx *domain.Transaction) (*domain.TransferResult, error)
@@ -351,9 +350,7 @@ type MockTransactionRepository struct {
 	SumByTypeAndDateRangeFn           func(workspaceID int32, startDate, endDate time.Time, txType domain.TransactionType) (decimal.Decimal, error)
 	SumPaidExpensesByDateRangeFn      func(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
 	SumUnpaidExpensesByDateRangeFn    func(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
-	GetCCPayableSummaryFn             func(workspaceID int32) ([]*domain.CCPayableSummaryRow, error)
 	GetRecentlyUsedCategoriesFn       func(workspaceID int32) ([]*domain.RecentCategory, error)
-	GetCCPayableBreakdownFn           func(workspaceID int32) ([]*domain.CCPayableTransaction, error)
 	GetProjectionsByTemplateFn        func(workspaceID int32, templateID int32) ([]*domain.Transaction, error)
 	DeleteProjectionsByTemplateFn     func(workspaceID int32, templateID int32) error
 	DeleteProjectionsBeyondDateFn     func(workspaceID int32, templateID int32, date time.Time) error
@@ -495,26 +492,6 @@ func (m *MockTransactionRepository) TogglePaid(workspaceID int32, id int32) (*do
 	return transaction, nil
 }
 
-// UpdateSettlementIntent updates the CC settlement intent for an unpaid transaction
-func (m *MockTransactionRepository) UpdateSettlementIntent(workspaceID int32, id int32, intent domain.CCSettlementIntent) (*domain.Transaction, error) {
-	if m.UpdateSettlementIntentFn != nil {
-		return m.UpdateSettlementIntentFn(workspaceID, id, intent)
-	}
-	transaction, ok := m.Transactions[id]
-	if !ok || transaction.WorkspaceID != workspaceID {
-		return nil, domain.ErrTransactionNotFound
-	}
-	if transaction.DeletedAt != nil {
-		return nil, domain.ErrTransactionNotFound
-	}
-	// Simulate the SQL constraint: is_paid = false
-	if transaction.IsPaid {
-		return nil, domain.ErrTransactionNotFound
-	}
-	transaction.CCSettlementIntent = &intent
-	return transaction, nil
-}
-
 // Update updates a transaction
 func (m *MockTransactionRepository) Update(workspaceID int32, id int32, data *domain.UpdateTransactionData) (*domain.Transaction, error) {
 	if m.UpdateFn != nil {
@@ -532,7 +509,6 @@ func (m *MockTransactionRepository) Update(workspaceID int32, id int32, data *do
 	transaction.Type = data.Type
 	transaction.TransactionDate = data.TransactionDate
 	transaction.AccountID = data.AccountID
-	transaction.CCSettlementIntent = data.CCSettlementIntent
 	transaction.Notes = data.Notes
 	transaction.CategoryID = data.CategoryID
 	return transaction, nil
@@ -750,48 +726,6 @@ func (m *MockTransactionRepository) SumUnpaidExpensesByDateRange(workspaceID int
 	return total, nil
 }
 
-// GetCCPayableSummary returns unpaid CC transaction totals grouped by settlement intent
-// NOTE: This mock does NOT verify account template like the real SQL query does.
-// The real query joins with accounts table to filter by template='credit_card'.
-// Tests using this mock should be aware of this limitation - use GetCCPayableSummaryFn
-// for tests requiring precise control over the query behavior.
-func (m *MockTransactionRepository) GetCCPayableSummary(workspaceID int32) ([]*domain.CCPayableSummaryRow, error) {
-	if m.GetCCPayableSummaryFn != nil {
-		return m.GetCCPayableSummaryFn(workspaceID)
-	}
-
-	// Note: The real implementation joins with accounts to filter by CC template.
-	// In the mock, we don't have access to accounts, so we just aggregate by settlement intent
-	// for transactions that have a settlement intent set (which implies CC).
-	summaryMap := make(map[domain.CCSettlementIntent]decimal.Decimal)
-
-	for _, tx := range m.ByWorkspace[workspaceID] {
-		if tx.DeletedAt != nil {
-			continue
-		}
-		if tx.Type != domain.TransactionTypeExpense {
-			continue
-		}
-		if tx.IsPaid {
-			continue
-		}
-		if tx.CCSettlementIntent == nil {
-			continue
-		}
-		intent := *tx.CCSettlementIntent
-		summaryMap[intent] = summaryMap[intent].Add(tx.Amount)
-	}
-
-	var result []*domain.CCPayableSummaryRow
-	for intent, total := range summaryMap {
-		result = append(result, &domain.CCPayableSummaryRow{
-			SettlementIntent: intent,
-			Total:            total,
-		})
-	}
-	return result, nil
-}
-
 // GetRecentlyUsedCategories returns recently used categories for suggestions
 func (m *MockTransactionRepository) GetRecentlyUsedCategories(workspaceID int32) ([]*domain.RecentCategory, error) {
 	if m.GetRecentlyUsedCategoriesFn != nil {
@@ -799,15 +733,6 @@ func (m *MockTransactionRepository) GetRecentlyUsedCategories(workspaceID int32)
 	}
 	// Default: return empty list
 	return []*domain.RecentCategory{}, nil
-}
-
-// GetCCPayableBreakdown returns CC transactions for payable breakdown
-func (m *MockTransactionRepository) GetCCPayableBreakdown(workspaceID int32) ([]*domain.CCPayableTransaction, error) {
-	if m.GetCCPayableBreakdownFn != nil {
-		return m.GetCCPayableBreakdownFn(workspaceID)
-	}
-	// Default: return empty list
-	return []*domain.CCPayableTransaction{}, nil
 }
 
 // GetProjectionsByTemplate retrieves all projected transactions for a specific template
@@ -1525,154 +1450,6 @@ func (m *MockBudgetAllocationRepository) CopyAllocationsToMonth(workspaceID int3
 		}
 	}
 	return nil
-}
-
-// MockRecurringRepository is a mock implementation of domain.RecurringRepository
-type MockRecurringRepository struct {
-	Recurring            map[int32]*domain.RecurringTransaction
-	ByWorkspace          map[int32][]*domain.RecurringTransaction
-	NextID               int32
-	ExistingTransactions map[string]bool // Tracks recurring+year+month combos for idempotency testing
-	CreateFn             func(rt *domain.RecurringTransaction) (*domain.RecurringTransaction, error)
-	GetByIDFn            func(workspaceID int32, id int32) (*domain.RecurringTransaction, error)
-	ListFn               func(workspaceID int32, activeOnly *bool) ([]*domain.RecurringTransaction, error)
-	UpdateFn             func(rt *domain.RecurringTransaction) (*domain.RecurringTransaction, error)
-	DeleteFn             func(workspaceID int32, id int32) error
-}
-
-// NewMockRecurringRepository creates a new MockRecurringRepository
-func NewMockRecurringRepository() *MockRecurringRepository {
-	return &MockRecurringRepository{
-		Recurring:   make(map[int32]*domain.RecurringTransaction),
-		ByWorkspace: make(map[int32][]*domain.RecurringTransaction),
-		NextID:      1,
-	}
-}
-
-// Create creates a new recurring transaction
-func (m *MockRecurringRepository) Create(rt *domain.RecurringTransaction) (*domain.RecurringTransaction, error) {
-	if m.CreateFn != nil {
-		return m.CreateFn(rt)
-	}
-	rt.ID = m.NextID
-	m.NextID++
-	rt.CreatedAt = time.Now()
-	rt.UpdatedAt = time.Now()
-	m.Recurring[rt.ID] = rt
-	m.ByWorkspace[rt.WorkspaceID] = append(m.ByWorkspace[rt.WorkspaceID], rt)
-	return rt, nil
-}
-
-// GetByID retrieves a recurring transaction by ID
-func (m *MockRecurringRepository) GetByID(workspaceID int32, id int32) (*domain.RecurringTransaction, error) {
-	if m.GetByIDFn != nil {
-		return m.GetByIDFn(workspaceID, id)
-	}
-	rt, ok := m.Recurring[id]
-	if !ok || rt.WorkspaceID != workspaceID {
-		return nil, domain.ErrRecurringNotFound
-	}
-	if rt.DeletedAt != nil {
-		return nil, domain.ErrRecurringNotFound
-	}
-	return rt, nil
-}
-
-// ListByWorkspace retrieves all recurring transactions for a workspace
-func (m *MockRecurringRepository) ListByWorkspace(workspaceID int32, activeOnly *bool) ([]*domain.RecurringTransaction, error) {
-	if m.ListFn != nil {
-		return m.ListFn(workspaceID, activeOnly)
-	}
-	rts := m.ByWorkspace[workspaceID]
-	if rts == nil {
-		return []*domain.RecurringTransaction{}, nil
-	}
-	var result []*domain.RecurringTransaction
-	for _, rt := range rts {
-		if rt.DeletedAt != nil {
-			continue
-		}
-		if activeOnly != nil && rt.IsActive != *activeOnly {
-			continue
-		}
-		result = append(result, rt)
-	}
-	if result == nil {
-		return []*domain.RecurringTransaction{}, nil
-	}
-	return result, nil
-}
-
-// Update updates a recurring transaction
-func (m *MockRecurringRepository) Update(rt *domain.RecurringTransaction) (*domain.RecurringTransaction, error) {
-	if m.UpdateFn != nil {
-		return m.UpdateFn(rt)
-	}
-	existing, ok := m.Recurring[rt.ID]
-	if !ok || existing.WorkspaceID != rt.WorkspaceID {
-		return nil, domain.ErrRecurringNotFound
-	}
-	if existing.DeletedAt != nil {
-		return nil, domain.ErrRecurringNotFound
-	}
-	rt.UpdatedAt = time.Now()
-	m.Recurring[rt.ID] = rt
-	// Update in workspace list
-	for i, r := range m.ByWorkspace[rt.WorkspaceID] {
-		if r.ID == rt.ID {
-			m.ByWorkspace[rt.WorkspaceID][i] = rt
-			break
-		}
-	}
-	return rt, nil
-}
-
-// Delete soft-deletes a recurring transaction
-func (m *MockRecurringRepository) Delete(workspaceID int32, id int32) error {
-	if m.DeleteFn != nil {
-		return m.DeleteFn(workspaceID, id)
-	}
-	rt, ok := m.Recurring[id]
-	if !ok || rt.WorkspaceID != workspaceID {
-		return domain.ErrRecurringNotFound
-	}
-	if rt.DeletedAt != nil {
-		return domain.ErrRecurringNotFound
-	}
-	now := time.Now()
-	rt.DeletedAt = &now
-	return nil
-}
-
-// AddRecurring adds a recurring transaction to the mock repository (helper for tests)
-func (m *MockRecurringRepository) AddRecurring(rt *domain.RecurringTransaction) {
-	m.Recurring[rt.ID] = rt
-	m.ByWorkspace[rt.WorkspaceID] = append(m.ByWorkspace[rt.WorkspaceID], rt)
-}
-
-// CheckTransactionExistsFn allows tests to override the behavior
-var CheckTransactionExistsFn func(recurringID, workspaceID int32, year, month int) (bool, error)
-
-// ExistingRecurringTransactions tracks which recurring+month combos exist (for idempotency testing)
-// Key format: "recurringID-year-month"
-func (m *MockRecurringRepository) SetTransactionExists(recurringID int32, year, month int) {
-	if m.ExistingTransactions == nil {
-		m.ExistingTransactions = make(map[string]bool)
-	}
-	key := fmt.Sprintf("%d-%d-%d", recurringID, year, month)
-	m.ExistingTransactions[key] = true
-}
-
-// CheckTransactionExists checks if a transaction already exists for a recurring template in a specific month
-func (m *MockRecurringRepository) CheckTransactionExists(recurringID, workspaceID int32, year, month int) (bool, error) {
-	if CheckTransactionExistsFn != nil {
-		return CheckTransactionExistsFn(recurringID, workspaceID, year, month)
-	}
-	if m.ExistingTransactions == nil {
-		return false, nil
-	}
-	key := fmt.Sprintf("%d-%d-%d", recurringID, year, month)
-	return m.ExistingTransactions[key], nil
 }
 
 // MockRecurringTemplateRepository is a mock implementation of domain.RecurringTemplateRepository

@@ -274,29 +274,15 @@ func (s *DashboardService) calculateTotalBalance(workspaceID int32) (decimal.Dec
 	return total, nil
 }
 
-// GetCCPayable calculates the CC payable summary for a workspace
+// GetCCPayable returns an empty CC payable summary (v1 this_month/next_month deprecated)
+// The v2 CC lifecycle uses pending/billed/settled states with immediate/deferred settlement intent
 func (s *DashboardService) GetCCPayable(workspaceID int32) (*domain.CCPayableSummary, error) {
-	rows, err := s.transactionRepo.GetCCPayableSummary(workspaceID)
-	if err != nil {
-		return nil, err
-	}
-
-	summary := &domain.CCPayableSummary{
+	// V1 CC payable has been deprecated - return zeros for backward compatibility
+	return &domain.CCPayableSummary{
 		ThisMonth: decimal.Zero,
 		NextMonth: decimal.Zero,
-	}
-
-	for _, row := range rows {
-		switch row.SettlementIntent {
-		case domain.CCSettlementThisMonth:
-			summary.ThisMonth = row.Total
-		case domain.CCSettlementNextMonth:
-			summary.NextMonth = row.Total
-		}
-	}
-
-	summary.Total = summary.ThisMonth.Add(summary.NextMonth)
-	return summary, nil
+		Total:     decimal.Zero,
+	}, nil
 }
 
 // GetFutureSpending returns aggregated spending data for future months

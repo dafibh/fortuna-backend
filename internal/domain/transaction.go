@@ -14,13 +14,6 @@ const (
 	TransactionTypeExpense TransactionType = "expense"
 )
 
-type CCSettlementIntent string
-
-const (
-	CCSettlementThisMonth CCSettlementIntent = "this_month"
-	CCSettlementNextMonth CCSettlementIntent = "next_month"
-)
-
 // CCState represents the lifecycle state of a credit card transaction
 type CCState string
 
@@ -39,32 +32,30 @@ const (
 )
 
 type Transaction struct {
-	ID                     int32               `json:"id"`
-	WorkspaceID            int32               `json:"workspaceId"`
-	AccountID              int32               `json:"accountId"`
-	Name                   string              `json:"name"`
-	Amount                 decimal.Decimal     `json:"amount"`
-	Type                   TransactionType     `json:"type"`
-	TransactionDate        time.Time           `json:"transactionDate"`
-	IsPaid                 bool                `json:"isPaid"`
-	CCSettlementIntent     *CCSettlementIntent `json:"ccSettlementIntent,omitempty"`
-	Notes                  *string             `json:"notes,omitempty"`
-	TransferPairID         *uuid.UUID          `json:"transferPairId,omitempty"`
-	CategoryID             *int32              `json:"categoryId,omitempty"`
-	CategoryName           *string             `json:"categoryName,omitempty"`
-	IsCCPayment            bool                `json:"isCcPayment"`
-	RecurringTransactionID *int32              `json:"recurringTransactionId,omitempty"`
-	CreatedAt              time.Time           `json:"createdAt"`
-	UpdatedAt              time.Time           `json:"updatedAt"`
-	DeletedAt              *time.Time          `json:"deletedAt,omitempty"`
+	ID              int32           `json:"id"`
+	WorkspaceID     int32           `json:"workspaceId"`
+	AccountID       int32           `json:"accountId"`
+	Name            string          `json:"name"`
+	Amount          decimal.Decimal `json:"amount"`
+	Type            TransactionType `json:"type"`
+	TransactionDate time.Time       `json:"transactionDate"`
+	IsPaid          bool            `json:"isPaid"`
+	Notes           *string         `json:"notes,omitempty"`
+	TransferPairID  *uuid.UUID      `json:"transferPairId,omitempty"`
+	CategoryID      *int32          `json:"categoryId,omitempty"`
+	CategoryName    *string         `json:"categoryName,omitempty"`
+	IsCCPayment     bool            `json:"isCcPayment"`
+	CreatedAt       time.Time       `json:"createdAt"`
+	UpdatedAt       time.Time       `json:"updatedAt"`
+	DeletedAt       *time.Time      `json:"deletedAt,omitempty"`
 
-	// CC Lifecycle (v2)
+	// CC Lifecycle
 	CCState          *CCState          `json:"ccState"`          // 'pending' | 'billed' | 'settled' | null
 	BilledAt         *time.Time        `json:"billedAt"`         // when marked as billed
 	SettledAt        *time.Time        `json:"settledAt"`        // when settlement completed
 	SettlementIntent *SettlementIntent `json:"settlementIntent"` // 'immediate' | 'deferred' | null
 
-	// Recurring/Projection (v2)
+	// Recurring/Projection
 	Source      string `json:"source"`      // 'manual' | 'recurring'
 	TemplateID  *int32 `json:"templateId"`  // FK to recurring_templates, nullable
 	IsProjected bool   `json:"isProjected"` // true = future projection
@@ -101,20 +92,19 @@ type PaginatedTransactions struct {
 }
 
 type UpdateTransactionData struct {
-	Name               string
-	Amount             decimal.Decimal
-	Type               TransactionType
-	TransactionDate    time.Time
-	AccountID          int32
-	CCSettlementIntent *CCSettlementIntent
-	Notes              *string
-	CategoryID         *int32
-	// CC Lifecycle (v2)
+	Name            string
+	Amount          decimal.Decimal
+	Type            TransactionType
+	TransactionDate time.Time
+	AccountID       int32
+	Notes           *string
+	CategoryID      *int32
+	// CC Lifecycle
 	CCState          *CCState
 	BilledAt         *time.Time
 	SettledAt        *time.Time
 	SettlementIntent *SettlementIntent
-	// Recurring/Projection (v2)
+	// Recurring/Projection
 	Source      string
 	TemplateID  *int32
 	IsProjected bool
@@ -136,45 +126,11 @@ type MonthlyTransactionSummary struct {
 	TotalExpenses decimal.Decimal
 }
 
-// CCPayableSummaryRow holds settlement intent and total for CC payables query
-type CCPayableSummaryRow struct {
-	SettlementIntent CCSettlementIntent
-	Total            decimal.Decimal
-}
-
 // RecentCategory holds recently used category info for suggestions
 type RecentCategory struct {
 	ID       int32     `json:"id"`
 	Name     string    `json:"name"`
 	LastUsed time.Time `json:"lastUsed"`
-}
-
-// CCPayableTransaction represents a single CC transaction in the payable breakdown
-type CCPayableTransaction struct {
-	ID               int32              `json:"id"`
-	Name             string             `json:"name"`
-	Amount           decimal.Decimal    `json:"amount"`
-	TransactionDate  time.Time          `json:"transactionDate"`
-	SettlementIntent CCSettlementIntent `json:"settlementIntent"`
-	AccountID        int32              `json:"accountId"`
-	AccountName      string             `json:"accountName"`
-}
-
-// CCPayableByAccount groups transactions by account for the payable breakdown
-type CCPayableByAccount struct {
-	AccountID    int32                  `json:"accountId"`
-	AccountName  string                 `json:"accountName"`
-	Total        decimal.Decimal        `json:"total"`
-	Transactions []CCPayableTransaction `json:"transactions"`
-}
-
-// CCPayableBreakdown contains the full payable breakdown by settlement intent
-type CCPayableBreakdown struct {
-	ThisMonth      []CCPayableByAccount `json:"thisMonth"`
-	NextMonth      []CCPayableByAccount `json:"nextMonth"`
-	ThisMonthTotal decimal.Decimal      `json:"thisMonthTotal"`
-	NextMonthTotal decimal.Decimal      `json:"nextMonthTotal"`
-	GrandTotal     decimal.Decimal      `json:"grandTotal"`
 }
 
 // CreateCCPaymentRequest represents a request to create a CC payment transaction
@@ -214,7 +170,6 @@ type TransactionRepository interface {
 	GetByID(workspaceID int32, id int32) (*Transaction, error)
 	GetByWorkspace(workspaceID int32, filters *TransactionFilters) (*PaginatedTransactions, error)
 	TogglePaid(workspaceID int32, id int32) (*Transaction, error)
-	UpdateSettlementIntent(workspaceID int32, id int32, intent CCSettlementIntent) (*Transaction, error)
 	Update(workspaceID int32, id int32, data *UpdateTransactionData) (*Transaction, error)
 	SoftDelete(workspaceID int32, id int32) error
 	CreateTransferPair(fromTx, toTx *Transaction) (*TransferResult, error)
@@ -224,19 +179,17 @@ type TransactionRepository interface {
 	GetMonthlyTransactionSummaries(workspaceID int32) ([]*MonthlyTransactionSummary, error)
 	SumPaidExpensesByDateRange(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
 	SumUnpaidExpensesByDateRange(workspaceID int32, startDate, endDate time.Time) (decimal.Decimal, error)
-	GetCCPayableSummary(workspaceID int32) ([]*CCPayableSummaryRow, error)
 	GetRecentlyUsedCategories(workspaceID int32) ([]*RecentCategory, error)
-	GetCCPayableBreakdown(workspaceID int32) ([]*CCPayableTransaction, error)
 	GetCCMetrics(workspaceID int32, startDate, endDate time.Time) (*CCMetrics, error)
 	BatchToggleToBilled(workspaceID int32, ids []int32) ([]*Transaction, error)
 
-	// Projection management (v2)
+	// Projection management
 	GetProjectionsByTemplate(workspaceID int32, templateID int32) ([]*Transaction, error)
 	DeleteProjectionsByTemplate(workspaceID int32, templateID int32) error
 	DeleteProjectionsBeyondDate(workspaceID int32, templateID int32, date time.Time) error
 	OrphanActualsByTemplate(workspaceID int32, templateID int32) error
 
-	// Settlement operations (v2)
+	// Settlement operations
 	GetByIDs(workspaceID int32, ids []int32) ([]*Transaction, error)
 	BulkSettle(workspaceID int32, ids []int32) ([]*Transaction, error)
 	GetDeferredForSettlement(workspaceID int32) ([]*Transaction, error)
@@ -245,7 +198,7 @@ type TransactionRepository interface {
 	// within a single database transaction. If any operation fails, all changes are rolled back.
 	AtomicSettle(transferTx *Transaction, settleIDs []int32) (*Transaction, int, error)
 
-	// Overdue detection (v2)
+	// Overdue detection
 	GetOverdueCC(workspaceID int32) ([]*Transaction, error)
 
 	// Aggregation operations (no pagination)

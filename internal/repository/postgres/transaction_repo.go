@@ -41,12 +41,6 @@ func (r *TransactionRepository) Create(transaction *domain.Transaction) (*domain
 	transactionDate.Time = transaction.TransactionDate
 	transactionDate.Valid = true
 
-	var ccSettlementIntent pgtype.Text
-	if transaction.CCSettlementIntent != nil {
-		ccSettlementIntent.String = string(*transaction.CCSettlementIntent)
-		ccSettlementIntent.Valid = true
-	}
-
 	var notes pgtype.Text
 	if transaction.Notes != nil {
 		notes.String = *transaction.Notes
@@ -63,12 +57,6 @@ func (r *TransactionRepository) Create(transaction *domain.Transaction) (*domain
 	if transaction.CategoryID != nil {
 		categoryID.Int32 = *transaction.CategoryID
 		categoryID.Valid = true
-	}
-
-	var recurringTransactionID pgtype.Int4
-	if transaction.RecurringTransactionID != nil {
-		recurringTransactionID.Int32 = *transaction.RecurringTransactionID
-		recurringTransactionID.Valid = true
 	}
 
 	// CC Lifecycle (v2)
@@ -117,26 +105,24 @@ func (r *TransactionRepository) Create(transaction *domain.Transaction) (*domain
 	isProjected.Valid = true
 
 	created, err := r.queries.CreateTransaction(ctx, sqlc.CreateTransactionParams{
-		WorkspaceID:            transaction.WorkspaceID,
-		AccountID:              transaction.AccountID,
-		Name:                   transaction.Name,
-		Amount:                 amount,
-		Type:                   string(transaction.Type),
-		TransactionDate:        transactionDate,
-		IsPaid:                 transaction.IsPaid,
-		CcSettlementIntent:     ccSettlementIntent,
-		Notes:                  notes,
-		TransferPairID:         transferPairID,
-		CategoryID:             categoryID,
-		IsCcPayment:            transaction.IsCCPayment,
-		RecurringTransactionID: recurringTransactionID,
-		CcState:                ccState,
-		BilledAt:               billedAt,
-		SettledAt:              settledAt,
-		SettlementIntent:       settlementIntent,
-		Source:                 source,
-		TemplateID:             templateID,
-		IsProjected:            isProjected,
+		WorkspaceID:      transaction.WorkspaceID,
+		AccountID:        transaction.AccountID,
+		Name:             transaction.Name,
+		Amount:           amount,
+		Type:             string(transaction.Type),
+		TransactionDate:  transactionDate,
+		IsPaid:           transaction.IsPaid,
+		Notes:            notes,
+		TransferPairID:   transferPairID,
+		CategoryID:       categoryID,
+		IsCcPayment:      transaction.IsCCPayment,
+		CcState:          ccState,
+		BilledAt:         billedAt,
+		SettledAt:        settledAt,
+		SettlementIntent: settlementIntent,
+		Source:           source,
+		TemplateID:       templateID,
+		IsProjected:      isProjected,
 	})
 	if err != nil {
 		return nil, err
@@ -264,28 +250,6 @@ func (r *TransactionRepository) TogglePaid(workspaceID int32, id int32) (*domain
 	return sqlcTransactionToDomain(transaction), nil
 }
 
-// UpdateSettlementIntent updates the CC settlement intent for an unpaid transaction
-func (r *TransactionRepository) UpdateSettlementIntent(workspaceID int32, id int32, intent domain.CCSettlementIntent) (*domain.Transaction, error) {
-	ctx := context.Background()
-
-	var ccSettlementIntent pgtype.Text
-	ccSettlementIntent.String = string(intent)
-	ccSettlementIntent.Valid = true
-
-	transaction, err := r.queries.UpdateTransactionSettlementIntent(ctx, sqlc.UpdateTransactionSettlementIntentParams{
-		WorkspaceID:        workspaceID,
-		ID:                 id,
-		CcSettlementIntent: ccSettlementIntent,
-	})
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, domain.ErrTransactionNotFound
-		}
-		return nil, err
-	}
-	return sqlcTransactionToDomain(transaction), nil
-}
-
 // Update updates a transaction's details
 func (r *TransactionRepository) Update(workspaceID int32, id int32, data *domain.UpdateTransactionData) (*domain.Transaction, error) {
 	ctx := context.Background()
@@ -298,12 +262,6 @@ func (r *TransactionRepository) Update(workspaceID int32, id int32, data *domain
 	var transactionDate pgtype.Date
 	transactionDate.Time = data.TransactionDate
 	transactionDate.Valid = true
-
-	var ccSettlementIntent pgtype.Text
-	if data.CCSettlementIntent != nil {
-		ccSettlementIntent.String = string(*data.CCSettlementIntent)
-		ccSettlementIntent.Valid = true
-	}
 
 	var notes pgtype.Text
 	if data.Notes != nil {
@@ -363,23 +321,22 @@ func (r *TransactionRepository) Update(workspaceID int32, id int32, data *domain
 	isProjected.Valid = true
 
 	transaction, err := r.queries.UpdateTransaction(ctx, sqlc.UpdateTransactionParams{
-		WorkspaceID:        workspaceID,
-		ID:                 id,
-		Name:               data.Name,
-		Amount:             amount,
-		Type:               string(data.Type),
-		TransactionDate:    transactionDate,
-		AccountID:          data.AccountID,
-		CcSettlementIntent: ccSettlementIntent,
-		Notes:              notes,
-		CategoryID:         categoryID,
-		CcState:            ccState,
-		BilledAt:           billedAt,
-		SettledAt:          settledAt,
-		SettlementIntent:   settlementIntent,
-		Source:             source,
-		TemplateID:         templateID,
-		IsProjected:        isProjected,
+		WorkspaceID:      workspaceID,
+		ID:               id,
+		Name:             data.Name,
+		Amount:           amount,
+		Type:             string(data.Type),
+		TransactionDate:  transactionDate,
+		AccountID:        data.AccountID,
+		Notes:            notes,
+		CategoryID:       categoryID,
+		CcState:          ccState,
+		BilledAt:         billedAt,
+		SettledAt:        settledAt,
+		SettlementIntent: settlementIntent,
+		Source:           source,
+		TemplateID:       templateID,
+		IsProjected:      isProjected,
 	})
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -452,12 +409,6 @@ func (r *TransactionRepository) createTransactionWithTx(ctx context.Context, qtx
 	transactionDate.Time = transaction.TransactionDate
 	transactionDate.Valid = true
 
-	var ccSettlementIntent pgtype.Text
-	if transaction.CCSettlementIntent != nil {
-		ccSettlementIntent.String = string(*transaction.CCSettlementIntent)
-		ccSettlementIntent.Valid = true
-	}
-
 	var notes pgtype.Text
 	if transaction.Notes != nil {
 		notes.String = *transaction.Notes
@@ -474,12 +425,6 @@ func (r *TransactionRepository) createTransactionWithTx(ctx context.Context, qtx
 	if transaction.CategoryID != nil {
 		categoryID.Int32 = *transaction.CategoryID
 		categoryID.Valid = true
-	}
-
-	var recurringTransactionID pgtype.Int4
-	if transaction.RecurringTransactionID != nil {
-		recurringTransactionID.Int32 = *transaction.RecurringTransactionID
-		recurringTransactionID.Valid = true
 	}
 
 	// CC Lifecycle (v2)
@@ -528,26 +473,24 @@ func (r *TransactionRepository) createTransactionWithTx(ctx context.Context, qtx
 	isProjected.Valid = true
 
 	created, err := qtx.CreateTransaction(ctx, sqlc.CreateTransactionParams{
-		WorkspaceID:            transaction.WorkspaceID,
-		AccountID:              transaction.AccountID,
-		Name:                   transaction.Name,
-		Amount:                 amount,
-		Type:                   string(transaction.Type),
-		TransactionDate:        transactionDate,
-		IsPaid:                 transaction.IsPaid,
-		CcSettlementIntent:     ccSettlementIntent,
-		Notes:                  notes,
-		TransferPairID:         transferPairID,
-		CategoryID:             categoryID,
-		IsCcPayment:            transaction.IsCCPayment,
-		RecurringTransactionID: recurringTransactionID,
-		CcState:                ccState,
-		BilledAt:               billedAt,
-		SettledAt:              settledAt,
-		SettlementIntent:       settlementIntent,
-		Source:                 source,
-		TemplateID:             templateID,
-		IsProjected:            isProjected,
+		WorkspaceID:      transaction.WorkspaceID,
+		AccountID:        transaction.AccountID,
+		Name:             transaction.Name,
+		Amount:           amount,
+		Type:             string(transaction.Type),
+		TransactionDate:  transactionDate,
+		IsPaid:           transaction.IsPaid,
+		Notes:            notes,
+		TransferPairID:   transferPairID,
+		CategoryID:       categoryID,
+		IsCcPayment:      transaction.IsCCPayment,
+		CcState:          ccState,
+		BilledAt:         billedAt,
+		SettledAt:        settledAt,
+		SettlementIntent: settlementIntent,
+		Source:           source,
+		TemplateID:       templateID,
+		IsProjected:      isProjected,
 	})
 	if err != nil {
 		return nil, err
@@ -683,25 +626,6 @@ func (r *TransactionRepository) SumUnpaidExpensesByDateRange(workspaceID int32, 
 	return pgNumericToDecimal(total), nil
 }
 
-// GetCCPayableSummary returns unpaid CC transaction totals grouped by settlement intent
-func (r *TransactionRepository) GetCCPayableSummary(workspaceID int32) ([]*domain.CCPayableSummaryRow, error) {
-	ctx := context.Background()
-
-	rows, err := r.queries.GetCCPayableSummary(ctx, workspaceID)
-	if err != nil {
-		return nil, err
-	}
-
-	result := make([]*domain.CCPayableSummaryRow, len(rows))
-	for i, row := range rows {
-		result[i] = &domain.CCPayableSummaryRow{
-			SettlementIntent: domain.CCSettlementIntent(row.CcSettlementIntent.String),
-			Total:            pgNumericToDecimal(row.Total),
-		}
-	}
-	return result, nil
-}
-
 // GetRecentlyUsedCategories returns recently used categories for suggestions
 func (r *TransactionRepository) GetRecentlyUsedCategories(workspaceID int32) ([]*domain.RecentCategory, error) {
 	ctx := context.Background()
@@ -732,36 +656,6 @@ func (r *TransactionRepository) GetRecentlyUsedCategories(workspaceID int32) ([]
 	return result, nil
 }
 
-// GetCCPayableBreakdown returns all unpaid CC transactions for payable breakdown
-func (r *TransactionRepository) GetCCPayableBreakdown(workspaceID int32) ([]*domain.CCPayableTransaction, error) {
-	ctx := context.Background()
-
-	rows, err := r.queries.GetCCPayableBreakdown(ctx, workspaceID)
-	if err != nil {
-		return nil, err
-	}
-
-	result := make([]*domain.CCPayableTransaction, len(rows))
-	for i, row := range rows {
-		// Default to this_month if no settlement intent (shouldn't happen with CC transactions)
-		settlementIntent := domain.CCSettlementThisMonth
-		if row.CcSettlementIntent.Valid {
-			settlementIntent = domain.CCSettlementIntent(row.CcSettlementIntent.String)
-		}
-
-		result[i] = &domain.CCPayableTransaction{
-			ID:               row.ID,
-			Name:             row.Name,
-			Amount:           pgNumericToDecimal(row.Amount),
-			TransactionDate:  row.TransactionDate.Time,
-			SettlementIntent: settlementIntent,
-			AccountID:        row.AccountID,
-			AccountName:      row.AccountName,
-		}
-	}
-	return result, nil
-}
-
 // Helper functions
 
 func sqlcTransactionToDomain(t sqlc.Transaction) *domain.Transaction {
@@ -778,10 +672,6 @@ func sqlcTransactionToDomain(t sqlc.Transaction) *domain.Transaction {
 		CreatedAt:       t.CreatedAt.Time,
 		UpdatedAt:       t.UpdatedAt.Time,
 	}
-	if t.CcSettlementIntent.Valid {
-		intent := domain.CCSettlementIntent(t.CcSettlementIntent.String)
-		transaction.CCSettlementIntent = &intent
-	}
 	if t.Notes.Valid {
 		transaction.Notes = &t.Notes.String
 	}
@@ -794,9 +684,6 @@ func sqlcTransactionToDomain(t sqlc.Transaction) *domain.Transaction {
 	}
 	if t.CategoryID.Valid {
 		transaction.CategoryID = &t.CategoryID.Int32
-	}
-	if t.RecurringTransactionID.Valid {
-		transaction.RecurringTransactionID = &t.RecurringTransactionID.Int32
 	}
 	// CC Lifecycle (v2)
 	if t.CcState.Valid {
@@ -840,10 +727,6 @@ func sqlcTransactionWithCategoryToDomain(t sqlc.GetTransactionsWithCategoryRow) 
 		CreatedAt:       t.CreatedAt.Time,
 		UpdatedAt:       t.UpdatedAt.Time,
 	}
-	if t.CcSettlementIntent.Valid {
-		intent := domain.CCSettlementIntent(t.CcSettlementIntent.String)
-		transaction.CCSettlementIntent = &intent
-	}
 	if t.Notes.Valid {
 		transaction.Notes = &t.Notes.String
 	}
@@ -859,9 +742,6 @@ func sqlcTransactionWithCategoryToDomain(t sqlc.GetTransactionsWithCategoryRow) 
 	}
 	if t.CategoryName.Valid {
 		transaction.CategoryName = &t.CategoryName.String
-	}
-	if t.RecurringTransactionID.Valid {
-		transaction.RecurringTransactionID = &t.RecurringTransactionID.Int32
 	}
 	// CC Lifecycle (v2)
 	if t.CcState.Valid {
@@ -1129,10 +1009,6 @@ func sqlcAggregationRowToDomain(row sqlc.GetTransactionsForAggregationRow) *doma
 		UpdatedAt:       row.UpdatedAt.Time,
 	}
 
-	if row.CcSettlementIntent.Valid {
-		intent := domain.CCSettlementIntent(row.CcSettlementIntent.String)
-		transaction.CCSettlementIntent = &intent
-	}
 	if row.Notes.Valid {
 		transaction.Notes = &row.Notes.String
 	}
@@ -1148,9 +1024,6 @@ func sqlcAggregationRowToDomain(row sqlc.GetTransactionsForAggregationRow) *doma
 	}
 	if row.CategoryName.Valid {
 		transaction.CategoryName = &row.CategoryName.String
-	}
-	if row.RecurringTransactionID.Valid {
-		transaction.RecurringTransactionID = &row.RecurringTransactionID.Int32
 	}
 	// CC Lifecycle (v2)
 	if row.CcState.Valid {

@@ -15,8 +15,6 @@ type Querier interface {
 	BatchToggleToBilled(ctx context.Context, arg BatchToggleToBilledParams) ([]Transaction, error)
 	// Bulk update multiple transactions to settled state
 	BulkSettleTransactions(ctx context.Context, arg BulkSettleTransactionsParams) ([]Transaction, error)
-	// Check if a transaction already exists for a recurring template in a specific month
-	CheckRecurringTransactionExists(ctx context.Context, arg CheckRecurringTransactionExistsParams) (int32, error)
 	// Copies all allocations from one month to another (atomic, skips deleted categories)
 	CopyAllocationsToMonth(ctx context.Context, arg CopyAllocationsToMonthParams) error
 	CountActiveLoansByProvider(ctx context.Context, arg CountActiveLoansByProviderParams) (int64, error)
@@ -36,11 +34,8 @@ type Querier interface {
 	CreateMonth(ctx context.Context, arg CreateMonthParams) (Month, error)
 	CreateOrGetUserByAuth0ID(ctx context.Context, arg CreateOrGetUserByAuth0IDParams) (User, error)
 	CreateProjectionExclusion(ctx context.Context, arg CreateProjectionExclusionParams) error
-	// ========================================
-	// V2 Recurring Templates (recurring_templates table)
-	// ========================================
+	// Recurring Templates (recurring_templates table)
 	CreateRecurringTemplate(ctx context.Context, arg CreateRecurringTemplateParams) (RecurringTemplate, error)
-	CreateRecurringTransaction(ctx context.Context, arg CreateRecurringTransactionParams) (RecurringTransaction, error)
 	CreateTransaction(ctx context.Context, arg CreateTransactionParams) (Transaction, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateWishlist(ctx context.Context, arg CreateWishlistParams) (Wishlist, error)
@@ -90,10 +85,6 @@ type Querier interface {
 	GetCCMetrics(ctx context.Context, arg GetCCMetricsParams) (GetCCMetricsRow, error)
 	// Get total outstanding balance across all CC accounts (sum of unpaid expenses)
 	GetCCOutstandingSummary(ctx context.Context, workspaceID int32) (GetCCOutstandingSummaryRow, error)
-	// Get all unpaid CC transactions with settlement intent for payable breakdown
-	GetCCPayableBreakdown(ctx context.Context, workspaceID int32) ([]GetCCPayableBreakdownRow, error)
-	// Get unpaid CC transaction totals grouped by settlement intent
-	GetCCPayableSummary(ctx context.Context, workspaceID int32) ([]GetCCPayableSummaryRow, error)
 	// Returns all categories with their allocation for a specific month (0 if not set)
 	GetCategoriesWithAllocations(ctx context.Context, arg GetCategoriesWithAllocationsParams) ([]GetCategoriesWithAllocationsRow, error)
 	// Returns all transactions for a specific category in a month
@@ -132,7 +123,6 @@ type Querier interface {
 	// Returns recently used categories for suggestions dropdown
 	GetRecentlyUsedCategories(ctx context.Context, workspaceID int32) ([]GetRecentlyUsedCategoriesRow, error)
 	GetRecurringTemplateByID(ctx context.Context, arg GetRecurringTemplateByIDParams) (RecurringTemplate, error)
-	GetRecurringTransaction(ctx context.Context, arg GetRecurringTransactionParams) (RecurringTransaction, error)
 	// Returns total spending per category for a specific month
 	GetSpendingByCategory(ctx context.Context, arg GetSpendingByCategoryParams) ([]GetSpendingByCategoryRow, error)
 	GetTransactionByID(ctx context.Context, arg GetTransactionByIDParams) (Transaction, error)
@@ -165,7 +155,6 @@ type Querier interface {
 	ListNotesByItemDesc(ctx context.Context, arg ListNotesByItemDescParams) ([]WishlistItemNote, error)
 	ListPricesByItem(ctx context.Context, arg ListPricesByItemParams) ([]WishlistItemPrice, error)
 	ListRecurringTemplatesByWorkspace(ctx context.Context, workspaceID int32) ([]RecurringTemplate, error)
-	ListRecurringTransactions(ctx context.Context, arg ListRecurringTransactionsParams) ([]RecurringTransaction, error)
 	ListWishlistItems(ctx context.Context, arg ListWishlistItemsParams) ([]WishlistItem, error)
 	ListWishlistItemsWithStats(ctx context.Context, arg ListWishlistItemsWithStatsParams) ([]ListWishlistItemsWithStatsRow, error)
 	ListWishlists(ctx context.Context, workspaceID int32) ([]Wishlist, error)
@@ -175,7 +164,6 @@ type Querier interface {
 	RevokeAPIToken(ctx context.Context, arg RevokeAPITokenParams) (int64, error)
 	SoftDeleteAccount(ctx context.Context, arg SoftDeleteAccountParams) (int64, error)
 	SoftDeleteBudgetCategory(ctx context.Context, arg SoftDeleteBudgetCategoryParams) error
-	SoftDeleteRecurringTransaction(ctx context.Context, arg SoftDeleteRecurringTransactionParams) (int64, error)
 	SoftDeleteTransaction(ctx context.Context, arg SoftDeleteTransactionParams) (int64, error)
 	SoftDeleteTransferPair(ctx context.Context, arg SoftDeleteTransferPairParams) (int64, error)
 	// Sum paid expenses within a date range for in-hand balance calculation
@@ -201,9 +189,7 @@ type Querier interface {
 	UpdateLoanProvider(ctx context.Context, arg UpdateLoanProviderParams) (LoanProvider, error)
 	UpdateMonthStartingBalance(ctx context.Context, arg UpdateMonthStartingBalanceParams) error
 	UpdateRecurringTemplate(ctx context.Context, arg UpdateRecurringTemplateParams) (RecurringTemplate, error)
-	UpdateRecurringTransaction(ctx context.Context, arg UpdateRecurringTransactionParams) (RecurringTransaction, error)
 	UpdateTransaction(ctx context.Context, arg UpdateTransactionParams) (Transaction, error)
-	UpdateTransactionSettlementIntent(ctx context.Context, arg UpdateTransactionSettlementIntentParams) (Transaction, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
 	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) (User, error)
 	UpdateWishlist(ctx context.Context, arg UpdateWishlistParams) (Wishlist, error)

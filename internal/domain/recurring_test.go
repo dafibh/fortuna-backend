@@ -7,24 +7,6 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-func TestFrequencyConstants(t *testing.T) {
-	tests := []struct {
-		name      string
-		frequency Frequency
-		expected  string
-	}{
-		{"monthly frequency", FrequencyMonthly, "monthly"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if string(tt.frequency) != tt.expected {
-				t.Errorf("Frequency constant %s = %s, want %s", tt.name, tt.frequency, tt.expected)
-			}
-		})
-	}
-}
-
 func TestRecurringTemplateEndDateNullable(t *testing.T) {
 	// Verify EndDate can be nil (runs forever)
 	template := RecurringTemplate{

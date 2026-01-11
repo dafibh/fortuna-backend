@@ -128,48 +128,29 @@ type RecurringTemplate struct {
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
-type RecurringTransaction struct {
-	ID          int32              `json:"id"`
-	WorkspaceID int32              `json:"workspace_id"`
-	Name        string             `json:"name"`
-	Amount      pgtype.Numeric     `json:"amount"`
-	AccountID   int32              `json:"account_id"`
-	Type        string             `json:"type"`
-	CategoryID  pgtype.Int4        `json:"category_id"`
-	Frequency   string             `json:"frequency"`
-	DueDay      int32              `json:"due_day"`
-	IsActive    bool               `json:"is_active"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
-	DeletedAt   pgtype.Timestamptz `json:"deleted_at"`
-}
-
 type Transaction struct {
-	ID                 int32              `json:"id"`
-	WorkspaceID        int32              `json:"workspace_id"`
-	AccountID          int32              `json:"account_id"`
-	Name               string             `json:"name"`
-	Amount             pgtype.Numeric     `json:"amount"`
-	Type               string             `json:"type"`
-	TransactionDate    pgtype.Date        `json:"transaction_date"`
-	IsPaid             bool               `json:"is_paid"`
-	CcSettlementIntent pgtype.Text        `json:"cc_settlement_intent"`
-	Notes              pgtype.Text        `json:"notes"`
-	CreatedAt          pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
-	DeletedAt          pgtype.Timestamptz `json:"deleted_at"`
-	TransferPairID     pgtype.UUID        `json:"transfer_pair_id"`
-	CategoryID         pgtype.Int4        `json:"category_id"`
-	IsCcPayment        bool               `json:"is_cc_payment"`
-	// Links transaction to recurring template if auto-generated
-	RecurringTransactionID pgtype.Int4        `json:"recurring_transaction_id"`
-	CcState                pgtype.Text        `json:"cc_state"`
-	BilledAt               pgtype.Timestamptz `json:"billed_at"`
-	SettledAt              pgtype.Timestamptz `json:"settled_at"`
-	SettlementIntent       pgtype.Text        `json:"settlement_intent"`
-	Source                 pgtype.Text        `json:"source"`
-	TemplateID             pgtype.Int4        `json:"template_id"`
-	IsProjected            pgtype.Bool        `json:"is_projected"`
+	ID               int32              `json:"id"`
+	WorkspaceID      int32              `json:"workspace_id"`
+	AccountID        int32              `json:"account_id"`
+	Name             string             `json:"name"`
+	Amount           pgtype.Numeric     `json:"amount"`
+	Type             string             `json:"type"`
+	TransactionDate  pgtype.Date        `json:"transaction_date"`
+	IsPaid           bool               `json:"is_paid"`
+	Notes            pgtype.Text        `json:"notes"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt        pgtype.Timestamptz `json:"deleted_at"`
+	TransferPairID   pgtype.UUID        `json:"transfer_pair_id"`
+	CategoryID       pgtype.Int4        `json:"category_id"`
+	IsCcPayment      bool               `json:"is_cc_payment"`
+	CcState          pgtype.Text        `json:"cc_state"`
+	BilledAt         pgtype.Timestamptz `json:"billed_at"`
+	SettledAt        pgtype.Timestamptz `json:"settled_at"`
+	SettlementIntent pgtype.Text        `json:"settlement_intent"`
+	Source           pgtype.Text        `json:"source"`
+	TemplateID       pgtype.Int4        `json:"template_id"`
+	IsProjected      pgtype.Bool        `json:"is_projected"`
 }
 
 type User struct {

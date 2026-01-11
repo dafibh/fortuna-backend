@@ -1,11 +1,11 @@
 -- name: CreateTransaction :one
 INSERT INTO transactions (
     workspace_id, account_id, name, amount, type,
-    transaction_date, is_paid, cc_settlement_intent, notes, transfer_pair_id, category_id, is_cc_payment, recurring_transaction_id,
+    transaction_date, is_paid, notes, transfer_pair_id, category_id, is_cc_payment,
     cc_state, billed_at, settled_at, settlement_intent,
     source, template_id, is_projected
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
 ) RETURNING *;
 
 -- name: GetTransactionByID :one
@@ -39,12 +39,6 @@ SET is_paid = NOT is_paid, updated_at = NOW()
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
 RETURNING *;
 
--- name: UpdateTransactionSettlementIntent :one
-UPDATE transactions
-SET cc_settlement_intent = $3, updated_at = NOW()
-WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL AND is_paid = false
-RETURNING *;
-
 -- name: UpdateTransaction :one
 UPDATE transactions
 SET
@@ -53,16 +47,15 @@ SET
     type = $5,
     transaction_date = $6,
     account_id = $7,
-    cc_settlement_intent = $8,
-    notes = $9,
-    category_id = $10,
-    cc_state = $11,
-    billed_at = $12,
-    settled_at = $13,
-    settlement_intent = $14,
-    source = $15,
-    template_id = $16,
-    is_projected = $17,
+    notes = $8,
+    category_id = $9,
+    cc_state = $10,
+    billed_at = $11,
+    settled_at = $12,
+    settlement_intent = $13,
+    source = $14,
+    template_id = $15,
+    is_projected = $16,
     updated_at = NOW()
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
 RETURNING *;
@@ -131,22 +124,6 @@ WHERE workspace_id = $1
   AND is_paid = false
   AND deleted_at IS NULL;
 
--- name: GetCCPayableSummary :many
--- Get unpaid CC transaction totals grouped by settlement intent
-SELECT
-    cc_settlement_intent,
-    COALESCE(SUM(amount), 0)::NUMERIC(12,2) as total
-FROM transactions t
-JOIN accounts a ON t.account_id = a.id
-WHERE t.workspace_id = $1
-  AND a.template = 'credit_card'
-  AND a.deleted_at IS NULL
-  AND t.type = 'expense'
-  AND t.is_paid = false
-  AND t.deleted_at IS NULL
-  AND t.cc_settlement_intent IS NOT NULL
-GROUP BY cc_settlement_intent;
-
 -- name: GetTransactionsWithCategory :many
 -- Returns transactions with category name joined for display
 SELECT
@@ -158,12 +135,10 @@ SELECT
     t.type,
     t.transaction_date,
     t.is_paid,
-    t.cc_settlement_intent,
     t.notes,
     t.transfer_pair_id,
     t.category_id,
     t.is_cc_payment,
-    t.recurring_transaction_id,
     t.created_at,
     t.updated_at,
     t.deleted_at,
@@ -201,26 +176,6 @@ WHERE t.workspace_id = $1
 GROUP BY bc.id, bc.name
 ORDER BY last_used DESC
 LIMIT 5;
-
--- name: GetCCPayableBreakdown :many
--- Get all unpaid CC transactions with settlement intent for payable breakdown
-SELECT
-    t.id,
-    t.name,
-    t.amount,
-    t.transaction_date,
-    t.cc_settlement_intent,
-    t.account_id,
-    a.name as account_name
-FROM transactions t
-JOIN accounts a ON t.account_id = a.id
-WHERE t.workspace_id = $1
-    AND a.template = 'credit_card'
-    AND t.type = 'expense'
-    AND t.is_paid = false
-    AND t.deleted_at IS NULL
-    AND a.deleted_at IS NULL
-ORDER BY t.cc_settlement_intent, a.name, t.transaction_date DESC;
 
 -- name: GetTransactionsByIDs :many
 -- Get multiple transactions by their IDs
@@ -371,12 +326,10 @@ SELECT
     t.type,
     t.transaction_date,
     t.is_paid,
-    t.cc_settlement_intent,
     t.notes,
     t.transfer_pair_id,
     t.category_id,
     t.is_cc_payment,
-    t.recurring_transaction_id,
     t.created_at,
     t.updated_at,
     t.deleted_at,

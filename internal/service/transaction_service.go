@@ -56,16 +56,14 @@ func (s *TransactionService) publishEvent(workspaceID int32, event websocket.Eve
 
 // CreateTransactionInput holds the input for creating a transaction
 type CreateTransactionInput struct {
-	AccountID          int32
-	Name               string
-	Amount             decimal.Decimal
-	Type               domain.TransactionType
-	TransactionDate    *time.Time
-	IsPaid             *bool
-	CCSettlementIntent *domain.CCSettlementIntent
-	Notes              *string
-	CategoryID         *int32
-	// CC Lifecycle (v2)
+	AccountID        int32
+	Name             string
+	Amount           decimal.Decimal
+	Type             domain.TransactionType
+	TransactionDate  *time.Time
+	IsPaid           *bool
+	Notes            *string
+	CategoryID       *int32
 	SettlementIntent *domain.SettlementIntent
 }
 
@@ -120,25 +118,7 @@ func (s *TransactionService) CreateTransaction(workspaceID int32, input CreateTr
 		}
 	}
 
-	// Handle CC settlement intent based on account type (legacy v1 field)
-	var settlementIntent *domain.CCSettlementIntent
-	if account.Template == domain.TemplateCreditCard {
-		// For CC accounts: use provided intent or default to 'this_month'
-		if input.CCSettlementIntent != nil {
-			// Validate the provided intent
-			if *input.CCSettlementIntent != domain.CCSettlementThisMonth && *input.CCSettlementIntent != domain.CCSettlementNextMonth {
-				return nil, domain.ErrInvalidSettlementIntent
-			}
-			settlementIntent = input.CCSettlementIntent
-		} else {
-			// Default to 'this_month'
-			defaultIntent := domain.CCSettlementThisMonth
-			settlementIntent = &defaultIntent
-		}
-	}
-	// For non-CC accounts, settlementIntent remains nil (ignores any provided value)
-
-	// Handle CC lifecycle fields (v2)
+	// Handle CC lifecycle fields
 	var ccState *domain.CCState
 	var v2SettlementIntent *domain.SettlementIntent
 	var settledAt *time.Time
@@ -177,13 +157,11 @@ func (s *TransactionService) CreateTransaction(workspaceID int32, input CreateTr
 		AccountID:          input.AccountID,
 		Name:               name,
 		Amount:             input.Amount,
-		Type:               input.Type,
-		TransactionDate:    transactionDate,
-		IsPaid:             isPaid,
-		CCSettlementIntent: settlementIntent,
-		Notes:              notes,
-		CategoryID:         input.CategoryID,
-		// CC Lifecycle (v2)
+		Type:             input.Type,
+		TransactionDate:  transactionDate,
+		IsPaid:           isPaid,
+		Notes:            notes,
+		CategoryID:       input.CategoryID,
 		CCState:          ccState,
 		SettlementIntent: v2SettlementIntent,
 		SettledAt:        settledAt,
@@ -289,14 +267,13 @@ func (s *TransactionService) ToggleBilled(workspaceID int32, id int32) (*domain.
 
 // UpdateTransactionInput holds the input for updating a transaction
 type UpdateTransactionInput struct {
-	Name               string
-	Amount             decimal.Decimal
-	Type               domain.TransactionType
-	TransactionDate    time.Time
-	AccountID          int32
-	CCSettlementIntent *domain.CCSettlementIntent
-	Notes              *string
-	CategoryID         *int32
+	Name            string
+	Amount          decimal.Decimal
+	Type            domain.TransactionType
+	TransactionDate time.Time
+	AccountID       int32
+	Notes           *string
+	CategoryID      *int32
 }
 
 // UpdateTransaction updates an existing transaction with validation
@@ -321,28 +298,10 @@ func (s *TransactionService) UpdateTransaction(workspaceID int32, id int32, inpu
 	}
 
 	// Validate account exists and belongs to workspace
-	account, err := s.accountRepo.GetByID(workspaceID, input.AccountID)
+	_, err := s.accountRepo.GetByID(workspaceID, input.AccountID)
 	if err != nil {
 		return nil, domain.ErrAccountNotFound
 	}
-
-	// Handle CC settlement intent based on account type
-	var settlementIntent *domain.CCSettlementIntent
-	if account.Template == domain.TemplateCreditCard {
-		// For CC accounts: use provided intent or default to 'this_month'
-		if input.CCSettlementIntent != nil {
-			// Validate the provided intent
-			if *input.CCSettlementIntent != domain.CCSettlementThisMonth && *input.CCSettlementIntent != domain.CCSettlementNextMonth {
-				return nil, domain.ErrInvalidSettlementIntent
-			}
-			settlementIntent = input.CCSettlementIntent
-		} else {
-			// Default to 'this_month'
-			defaultIntent := domain.CCSettlementThisMonth
-			settlementIntent = &defaultIntent
-		}
-	}
-	// For non-CC accounts, settlementIntent remains nil (clears any existing value)
 
 	// Trim and validate notes if provided
 	var notes *string
@@ -365,53 +324,14 @@ func (s *TransactionService) UpdateTransaction(workspaceID int32, id int32, inpu
 	}
 
 	updated, err := s.transactionRepo.Update(workspaceID, id, &domain.UpdateTransactionData{
-		Name:               name,
-		Amount:             input.Amount,
-		Type:               input.Type,
-		TransactionDate:    input.TransactionDate,
-		AccountID:          input.AccountID,
-		CCSettlementIntent: settlementIntent,
-		Notes:              notes,
-		CategoryID:         input.CategoryID,
+		Name:            name,
+		Amount:          input.Amount,
+		Type:            input.Type,
+		TransactionDate: input.TransactionDate,
+		AccountID:       input.AccountID,
+		Notes:           notes,
+		CategoryID:      input.CategoryID,
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	// Publish event for real-time updates
-	s.publishEvent(workspaceID, websocket.TransactionUpdated(updated))
-
-	return updated, nil
-}
-
-// UpdateSettlementIntent updates the CC settlement intent for an unpaid CC transaction
-func (s *TransactionService) UpdateSettlementIntent(workspaceID int32, id int32, intent domain.CCSettlementIntent) (*domain.Transaction, error) {
-	// Validate intent value
-	if intent != domain.CCSettlementThisMonth && intent != domain.CCSettlementNextMonth {
-		return nil, domain.ErrInvalidSettlementIntent
-	}
-
-	// Get transaction first to verify it exists and get account info
-	tx, err := s.transactionRepo.GetByID(workspaceID, id)
-	if err != nil {
-		return nil, err
-	}
-
-	// Verify transaction is unpaid
-	if tx.IsPaid {
-		return nil, domain.ErrTransactionAlreadyPaid
-	}
-
-	// Verify account is Credit Card type
-	account, err := s.accountRepo.GetByID(workspaceID, tx.AccountID)
-	if err != nil {
-		return nil, err
-	}
-	if account.Template != domain.TemplateCreditCard {
-		return nil, domain.ErrSettlementIntentNotApplicable
-	}
-
-	updated, err := s.transactionRepo.UpdateSettlementIntent(workspaceID, id, intent)
 	if err != nil {
 		return nil, err
 	}
@@ -770,16 +690,15 @@ func (s *TransactionService) UpdateAmount(workspaceID int32, id int32, amount de
 
 	// Only update the amount, preserve everything else
 	updateData := &domain.UpdateTransactionData{
-		Name:               existing.Name,
-		Amount:             amount,
-		Type:               existing.Type,
-		TransactionDate:    existing.TransactionDate,
-		AccountID:          existing.AccountID,
-		CCSettlementIntent: existing.CCSettlementIntent,
-		Notes:              existing.Notes,
-		CategoryID:         existing.CategoryID,
-		CCState:            existing.CCState,
-		SettlementIntent:   existing.SettlementIntent,
+		Name:             existing.Name,
+		Amount:           amount,
+		Type:             existing.Type,
+		TransactionDate:  existing.TransactionDate,
+		AccountID:        existing.AccountID,
+		Notes:            existing.Notes,
+		CategoryID:       existing.CategoryID,
+		CCState:          existing.CCState,
+		SettlementIntent: existing.SettlementIntent,
 	}
 
 	return s.transactionRepo.Update(workspaceID, id, updateData)

@@ -20,7 +20,7 @@ func TestCreateTransaction_Success(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
+	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
 	accountID := int32(1)
@@ -77,7 +77,7 @@ func TestCreateTransaction_WithDate(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
+	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
 	accountID := int32(1)
@@ -121,7 +121,7 @@ func TestCreateTransaction_MissingWorkspaceID(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
+	handler := NewTransactionHandler(transactionService)
 
 	reqBody := `{"accountId": 1, "name": "Test", "amount": "100.00", "type": "expense"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/transactions", strings.NewReader(reqBody))
@@ -148,7 +148,7 @@ func TestCreateTransaction_MissingName(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
+	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
 	accountRepo.AddAccount(&domain.Account{
@@ -190,7 +190,7 @@ func TestCreateTransaction_InvalidAmount(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
+	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
 	accountRepo.AddAccount(&domain.Account{
@@ -223,7 +223,7 @@ func TestCreateTransaction_ZeroAmount(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
+	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
 	accountRepo.AddAccount(&domain.Account{
@@ -265,7 +265,7 @@ func TestCreateTransaction_InvalidType(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
+	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
 	accountRepo.AddAccount(&domain.Account{
@@ -307,7 +307,7 @@ func TestCreateTransaction_AccountNotFound(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
+	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
 
@@ -344,7 +344,7 @@ func TestCreateTransaction_ZeroAccountId(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
+	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
 
@@ -381,7 +381,7 @@ func TestGetTransactions_Success(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
+	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
 
@@ -442,7 +442,7 @@ func TestGetTransactions_EmptyList(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
+	handler := NewTransactionHandler(transactionService)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/transactions", nil)
 	rec := httptest.NewRecorder()
@@ -479,7 +479,7 @@ func TestGetTransactions_WorkspaceIsolation(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
+	handler := NewTransactionHandler(transactionService)
 
 	// Add transaction to workspace 1
 	transactionRepo.AddTransaction(&domain.Transaction{
@@ -533,7 +533,7 @@ func TestTogglePaidStatus_Success(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
+	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
 
@@ -581,7 +581,7 @@ func TestTogglePaidStatus_UnpaidToPaid(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
+	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
 
@@ -629,7 +629,7 @@ func TestTogglePaidStatus_InvalidID(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
+	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
 
@@ -657,7 +657,7 @@ func TestTogglePaidStatus_NotFound(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
+	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
 
@@ -685,7 +685,7 @@ func TestTogglePaidStatus_MissingWorkspaceID(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
+	handler := NewTransactionHandler(transactionService)
 
 	req := httptest.NewRequest(http.MethodPatch, "/api/v1/transactions/1/toggle-paid", nil)
 	rec := httptest.NewRecorder()
@@ -712,7 +712,7 @@ func TestTogglePaidStatus_WorkspaceIsolation(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
+	handler := NewTransactionHandler(transactionService)
 
 	// Transaction belongs to workspace 1
 	transactionRepo.AddTransaction(&domain.Transaction{
@@ -744,317 +744,6 @@ func TestTogglePaidStatus_WorkspaceIsolation(t *testing.T) {
 	}
 }
 
-func TestUpdateSettlementIntent_Success(t *testing.T) {
-	e := echo.New()
-	transactionRepo := testutil.NewMockTransactionRepository()
-	accountRepo := testutil.NewMockAccountRepository()
-	categoryRepo := testutil.NewMockBudgetCategoryRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
-
-	workspaceID := int32(1)
-	accountID := int32(1)
-
-	// Add credit card account
-	accountRepo.AddAccount(&domain.Account{
-		ID:          accountID,
-		WorkspaceID: workspaceID,
-		Name:        "Credit Card",
-		Template:    domain.TemplateCreditCard,
-	})
-
-	// Add unpaid CC transaction
-	thisMonth := domain.CCSettlementThisMonth
-	transactionRepo.AddTransaction(&domain.Transaction{
-		ID:                 1,
-		WorkspaceID:        workspaceID,
-		AccountID:          accountID,
-		Name:               "Online Purchase",
-		Amount:             decimal.NewFromFloat(250.00),
-		Type:               domain.TransactionTypeExpense,
-		IsPaid:             false,
-		CCSettlementIntent: &thisMonth,
-	})
-
-	reqBody := `{"intent": "next_month"}`
-	req := httptest.NewRequest(http.MethodPatch, "/api/v1/transactions/1/settlement-intent", strings.NewReader(reqBody))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-	c.SetParamNames("id")
-	c.SetParamValues("1")
-
-	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
-
-	err := handler.UpdateSettlementIntent(c)
-	if err != nil {
-		t.Fatalf("Expected no error, got %v", err)
-	}
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", rec.Code)
-	}
-
-	var response TransactionResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
-		t.Fatalf("Failed to unmarshal response: %v", err)
-	}
-
-	if response.CCSettlementIntent == nil || *response.CCSettlementIntent != "next_month" {
-		t.Errorf("Expected settlement intent 'next_month', got %v", response.CCSettlementIntent)
-	}
-}
-
-func TestUpdateSettlementIntent_MissingIntent(t *testing.T) {
-	e := echo.New()
-	transactionRepo := testutil.NewMockTransactionRepository()
-	accountRepo := testutil.NewMockAccountRepository()
-	categoryRepo := testutil.NewMockBudgetCategoryRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
-
-	workspaceID := int32(1)
-
-	reqBody := `{}`
-	req := httptest.NewRequest(http.MethodPatch, "/api/v1/transactions/1/settlement-intent", strings.NewReader(reqBody))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-	c.SetParamNames("id")
-	c.SetParamValues("1")
-
-	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
-
-	err := handler.UpdateSettlementIntent(c)
-	if err != nil {
-		t.Fatalf("Expected JSON response, got error: %v", err)
-	}
-
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("Expected status 400, got %d", rec.Code)
-	}
-
-	var problemDetails ProblemDetails
-	if err := json.Unmarshal(rec.Body.Bytes(), &problemDetails); err != nil {
-		t.Fatalf("Failed to unmarshal response: %v", err)
-	}
-
-	if len(problemDetails.Errors) != 1 || problemDetails.Errors[0].Field != "intent" {
-		t.Error("Expected validation error for 'intent' field")
-	}
-}
-
-func TestUpdateSettlementIntent_InvalidIntent(t *testing.T) {
-	e := echo.New()
-	transactionRepo := testutil.NewMockTransactionRepository()
-	accountRepo := testutil.NewMockAccountRepository()
-	categoryRepo := testutil.NewMockBudgetCategoryRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
-
-	workspaceID := int32(1)
-	accountID := int32(1)
-
-	// Add credit card account
-	accountRepo.AddAccount(&domain.Account{
-		ID:          accountID,
-		WorkspaceID: workspaceID,
-		Name:        "Credit Card",
-		Template:    domain.TemplateCreditCard,
-	})
-
-	// Add unpaid transaction
-	transactionRepo.AddTransaction(&domain.Transaction{
-		ID:          1,
-		WorkspaceID: workspaceID,
-		AccountID:   accountID,
-		Name:        "Test Transaction",
-		Amount:      decimal.NewFromFloat(100.00),
-		Type:        domain.TransactionTypeExpense,
-		IsPaid:      false,
-	})
-
-	reqBody := `{"intent": "invalid"}`
-	req := httptest.NewRequest(http.MethodPatch, "/api/v1/transactions/1/settlement-intent", strings.NewReader(reqBody))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-	c.SetParamNames("id")
-	c.SetParamValues("1")
-
-	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
-
-	err := handler.UpdateSettlementIntent(c)
-	if err != nil {
-		t.Fatalf("Expected JSON response, got error: %v", err)
-	}
-
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("Expected status 400, got %d", rec.Code)
-	}
-}
-
-func TestUpdateSettlementIntent_PaidTransaction(t *testing.T) {
-	e := echo.New()
-	transactionRepo := testutil.NewMockTransactionRepository()
-	accountRepo := testutil.NewMockAccountRepository()
-	categoryRepo := testutil.NewMockBudgetCategoryRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
-
-	workspaceID := int32(1)
-	accountID := int32(1)
-
-	// Add credit card account
-	accountRepo.AddAccount(&domain.Account{
-		ID:          accountID,
-		WorkspaceID: workspaceID,
-		Name:        "Credit Card",
-		Template:    domain.TemplateCreditCard,
-	})
-
-	// Add PAID transaction
-	thisMonth := domain.CCSettlementThisMonth
-	transactionRepo.AddTransaction(&domain.Transaction{
-		ID:                 1,
-		WorkspaceID:        workspaceID,
-		AccountID:          accountID,
-		Name:               "Paid Transaction",
-		Amount:             decimal.NewFromFloat(100.00),
-		Type:               domain.TransactionTypeExpense,
-		IsPaid:             true, // Already paid
-		CCSettlementIntent: &thisMonth,
-	})
-
-	reqBody := `{"intent": "next_month"}`
-	req := httptest.NewRequest(http.MethodPatch, "/api/v1/transactions/1/settlement-intent", strings.NewReader(reqBody))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-	c.SetParamNames("id")
-	c.SetParamValues("1")
-
-	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
-
-	err := handler.UpdateSettlementIntent(c)
-	if err != nil {
-		t.Fatalf("Expected JSON response, got error: %v", err)
-	}
-
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("Expected status 400, got %d", rec.Code)
-	}
-}
-
-func TestUpdateSettlementIntent_NonCCAccount(t *testing.T) {
-	e := echo.New()
-	transactionRepo := testutil.NewMockTransactionRepository()
-	accountRepo := testutil.NewMockAccountRepository()
-	categoryRepo := testutil.NewMockBudgetCategoryRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
-
-	workspaceID := int32(1)
-	accountID := int32(1)
-
-	// Add bank account (not credit card)
-	accountRepo.AddAccount(&domain.Account{
-		ID:          accountID,
-		WorkspaceID: workspaceID,
-		Name:        "Checking Account",
-		Template:    domain.TemplateBank,
-	})
-
-	// Add transaction for bank account
-	transactionRepo.AddTransaction(&domain.Transaction{
-		ID:          1,
-		WorkspaceID: workspaceID,
-		AccountID:   accountID,
-		Name:        "Bank Transaction",
-		Amount:      decimal.NewFromFloat(100.00),
-		Type:        domain.TransactionTypeExpense,
-		IsPaid:      false,
-	})
-
-	reqBody := `{"intent": "next_month"}`
-	req := httptest.NewRequest(http.MethodPatch, "/api/v1/transactions/1/settlement-intent", strings.NewReader(reqBody))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-	c.SetParamNames("id")
-	c.SetParamValues("1")
-
-	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
-
-	err := handler.UpdateSettlementIntent(c)
-	if err != nil {
-		t.Fatalf("Expected JSON response, got error: %v", err)
-	}
-
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("Expected status 400, got %d", rec.Code)
-	}
-}
-
-func TestUpdateSettlementIntent_NotFound(t *testing.T) {
-	e := echo.New()
-	transactionRepo := testutil.NewMockTransactionRepository()
-	accountRepo := testutil.NewMockAccountRepository()
-	categoryRepo := testutil.NewMockBudgetCategoryRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
-
-	workspaceID := int32(1)
-
-	reqBody := `{"intent": "next_month"}`
-	req := httptest.NewRequest(http.MethodPatch, "/api/v1/transactions/999/settlement-intent", strings.NewReader(reqBody))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-	c.SetParamNames("id")
-	c.SetParamValues("999")
-
-	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
-
-	err := handler.UpdateSettlementIntent(c)
-	if err != nil {
-		t.Fatalf("Expected JSON response, got error: %v", err)
-	}
-
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("Expected status 404, got %d", rec.Code)
-	}
-}
-
-func TestUpdateSettlementIntent_MissingWorkspaceID(t *testing.T) {
-	e := echo.New()
-	transactionRepo := testutil.NewMockTransactionRepository()
-	accountRepo := testutil.NewMockAccountRepository()
-	categoryRepo := testutil.NewMockBudgetCategoryRepository()
-	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
-
-	reqBody := `{"intent": "next_month"}`
-	req := httptest.NewRequest(http.MethodPatch, "/api/v1/transactions/1/settlement-intent", strings.NewReader(reqBody))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-	c.SetParamNames("id")
-	c.SetParamValues("1")
-
-	// No workspace ID set
-	setupAuthContext(c, "auth0|test", "test@example.com", "Test User", "")
-
-	err := handler.UpdateSettlementIntent(c)
-	if err != nil {
-		t.Fatalf("Expected JSON response, got error: %v", err)
-	}
-
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("Expected status 401, got %d", rec.Code)
-	}
-}
-
 // ============================================
 // Transfer Handler Tests
 // ============================================
@@ -1065,7 +754,7 @@ func TestCreateTransfer_Success(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
+	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
 
@@ -1133,7 +822,7 @@ func TestCreateTransfer_SameAccountError(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
+	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
 
@@ -1177,7 +866,7 @@ func TestCreateTransfer_MissingWorkspaceID(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
+	handler := NewTransactionHandler(transactionService)
 
 	reqBody := `{"fromAccountId": 1, "toAccountId": 2, "amount": "500.00"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/transactions/transfers", strings.NewReader(reqBody))
@@ -1204,7 +893,7 @@ func TestCreateTransfer_InvalidAmount(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
+	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
 
@@ -1245,7 +934,7 @@ func TestCreateTransfer_ZeroAmount(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
+	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
 
@@ -1295,7 +984,7 @@ func TestCreateTransfer_AccountNotFound(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
+	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
 
@@ -1331,7 +1020,7 @@ func TestCreateTransfer_MissingFromAccountId(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
+	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
 
@@ -1368,7 +1057,7 @@ func TestCreateTransfer_MissingToAccountId(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 	categoryRepo := testutil.NewMockBudgetCategoryRepository()
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
-	handler := NewTransactionHandler(transactionService, nil)
+	handler := NewTransactionHandler(transactionService)
 
 	workspaceID := int32(1)
 

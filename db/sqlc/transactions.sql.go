@@ -20,7 +20,7 @@ WHERE id = ANY($1::int[])
   AND workspace_id = $2
   AND cc_state = 'pending'
   AND deleted_at IS NULL
-RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, recurring_transaction_id, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected
+RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected
 `
 
 type BatchToggleToBilledParams struct {
@@ -47,7 +47,6 @@ func (q *Queries) BatchToggleToBilled(ctx context.Context, arg BatchToggleToBill
 			&i.Type,
 			&i.TransactionDate,
 			&i.IsPaid,
-			&i.CcSettlementIntent,
 			&i.Notes,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -55,7 +54,6 @@ func (q *Queries) BatchToggleToBilled(ctx context.Context, arg BatchToggleToBill
 			&i.TransferPairID,
 			&i.CategoryID,
 			&i.IsCcPayment,
-			&i.RecurringTransactionID,
 			&i.CcState,
 			&i.BilledAt,
 			&i.SettledAt,
@@ -83,7 +81,7 @@ WHERE id = ANY($1::int[])
   AND workspace_id = $2
   AND cc_state = 'billed'
   AND deleted_at IS NULL
-RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, recurring_transaction_id, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected
+RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected
 `
 
 type BulkSettleTransactionsParams struct {
@@ -110,7 +108,6 @@ func (q *Queries) BulkSettleTransactions(ctx context.Context, arg BulkSettleTran
 			&i.Type,
 			&i.TransactionDate,
 			&i.IsPaid,
-			&i.CcSettlementIntent,
 			&i.Notes,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -118,7 +115,6 @@ func (q *Queries) BulkSettleTransactions(ctx context.Context, arg BulkSettleTran
 			&i.TransferPairID,
 			&i.CategoryID,
 			&i.IsCcPayment,
-			&i.RecurringTransactionID,
 			&i.CcState,
 			&i.BilledAt,
 			&i.SettledAt,
@@ -174,35 +170,33 @@ func (q *Queries) CountTransactionsByWorkspace(ctx context.Context, arg CountTra
 const createTransaction = `-- name: CreateTransaction :one
 INSERT INTO transactions (
     workspace_id, account_id, name, amount, type,
-    transaction_date, is_paid, cc_settlement_intent, notes, transfer_pair_id, category_id, is_cc_payment, recurring_transaction_id,
+    transaction_date, is_paid, notes, transfer_pair_id, category_id, is_cc_payment,
     cc_state, billed_at, settled_at, settlement_intent,
     source, template_id, is_projected
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
-) RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, recurring_transaction_id, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
+) RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected
 `
 
 type CreateTransactionParams struct {
-	WorkspaceID            int32              `json:"workspace_id"`
-	AccountID              int32              `json:"account_id"`
-	Name                   string             `json:"name"`
-	Amount                 pgtype.Numeric     `json:"amount"`
-	Type                   string             `json:"type"`
-	TransactionDate        pgtype.Date        `json:"transaction_date"`
-	IsPaid                 bool               `json:"is_paid"`
-	CcSettlementIntent     pgtype.Text        `json:"cc_settlement_intent"`
-	Notes                  pgtype.Text        `json:"notes"`
-	TransferPairID         pgtype.UUID        `json:"transfer_pair_id"`
-	CategoryID             pgtype.Int4        `json:"category_id"`
-	IsCcPayment            bool               `json:"is_cc_payment"`
-	RecurringTransactionID pgtype.Int4        `json:"recurring_transaction_id"`
-	CcState                pgtype.Text        `json:"cc_state"`
-	BilledAt               pgtype.Timestamptz `json:"billed_at"`
-	SettledAt              pgtype.Timestamptz `json:"settled_at"`
-	SettlementIntent       pgtype.Text        `json:"settlement_intent"`
-	Source                 pgtype.Text        `json:"source"`
-	TemplateID             pgtype.Int4        `json:"template_id"`
-	IsProjected            pgtype.Bool        `json:"is_projected"`
+	WorkspaceID      int32              `json:"workspace_id"`
+	AccountID        int32              `json:"account_id"`
+	Name             string             `json:"name"`
+	Amount           pgtype.Numeric     `json:"amount"`
+	Type             string             `json:"type"`
+	TransactionDate  pgtype.Date        `json:"transaction_date"`
+	IsPaid           bool               `json:"is_paid"`
+	Notes            pgtype.Text        `json:"notes"`
+	TransferPairID   pgtype.UUID        `json:"transfer_pair_id"`
+	CategoryID       pgtype.Int4        `json:"category_id"`
+	IsCcPayment      bool               `json:"is_cc_payment"`
+	CcState          pgtype.Text        `json:"cc_state"`
+	BilledAt         pgtype.Timestamptz `json:"billed_at"`
+	SettledAt        pgtype.Timestamptz `json:"settled_at"`
+	SettlementIntent pgtype.Text        `json:"settlement_intent"`
+	Source           pgtype.Text        `json:"source"`
+	TemplateID       pgtype.Int4        `json:"template_id"`
+	IsProjected      pgtype.Bool        `json:"is_projected"`
 }
 
 func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionParams) (Transaction, error) {
@@ -214,12 +208,10 @@ func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionPa
 		arg.Type,
 		arg.TransactionDate,
 		arg.IsPaid,
-		arg.CcSettlementIntent,
 		arg.Notes,
 		arg.TransferPairID,
 		arg.CategoryID,
 		arg.IsCcPayment,
-		arg.RecurringTransactionID,
 		arg.CcState,
 		arg.BilledAt,
 		arg.SettledAt,
@@ -238,7 +230,6 @@ func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionPa
 		&i.Type,
 		&i.TransactionDate,
 		&i.IsPaid,
-		&i.CcSettlementIntent,
 		&i.Notes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -246,7 +237,6 @@ func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionPa
 		&i.TransferPairID,
 		&i.CategoryID,
 		&i.IsCcPayment,
-		&i.RecurringTransactionID,
 		&i.CcState,
 		&i.BilledAt,
 		&i.SettledAt,
@@ -340,7 +330,7 @@ func (q *Queries) GetAccountTransactionSummaries(ctx context.Context, workspaceI
 }
 
 const getBilledCCByMonth = `-- name: GetBilledCCByMonth :many
-SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, recurring_transaction_id, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected FROM transactions
+SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected FROM transactions
 WHERE workspace_id = $1
   AND cc_state = 'billed'
   AND settlement_intent = 'deferred'
@@ -374,7 +364,6 @@ func (q *Queries) GetBilledCCByMonth(ctx context.Context, arg GetBilledCCByMonth
 			&i.Type,
 			&i.TransactionDate,
 			&i.IsPaid,
-			&i.CcSettlementIntent,
 			&i.Notes,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -382,7 +371,6 @@ func (q *Queries) GetBilledCCByMonth(ctx context.Context, arg GetBilledCCByMonth
 			&i.TransferPairID,
 			&i.CategoryID,
 			&i.IsCcPayment,
-			&i.RecurringTransactionID,
 			&i.CcState,
 			&i.BilledAt,
 			&i.SettledAt,
@@ -436,109 +424,8 @@ func (q *Queries) GetCCMetrics(ctx context.Context, arg GetCCMetricsParams) (Get
 	return i, err
 }
 
-const getCCPayableBreakdown = `-- name: GetCCPayableBreakdown :many
-SELECT
-    t.id,
-    t.name,
-    t.amount,
-    t.transaction_date,
-    t.cc_settlement_intent,
-    t.account_id,
-    a.name as account_name
-FROM transactions t
-JOIN accounts a ON t.account_id = a.id
-WHERE t.workspace_id = $1
-    AND a.template = 'credit_card'
-    AND t.type = 'expense'
-    AND t.is_paid = false
-    AND t.deleted_at IS NULL
-    AND a.deleted_at IS NULL
-ORDER BY t.cc_settlement_intent, a.name, t.transaction_date DESC
-`
-
-type GetCCPayableBreakdownRow struct {
-	ID                 int32          `json:"id"`
-	Name               string         `json:"name"`
-	Amount             pgtype.Numeric `json:"amount"`
-	TransactionDate    pgtype.Date    `json:"transaction_date"`
-	CcSettlementIntent pgtype.Text    `json:"cc_settlement_intent"`
-	AccountID          int32          `json:"account_id"`
-	AccountName        string         `json:"account_name"`
-}
-
-// Get all unpaid CC transactions with settlement intent for payable breakdown
-func (q *Queries) GetCCPayableBreakdown(ctx context.Context, workspaceID int32) ([]GetCCPayableBreakdownRow, error) {
-	rows, err := q.db.Query(ctx, getCCPayableBreakdown, workspaceID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []GetCCPayableBreakdownRow{}
-	for rows.Next() {
-		var i GetCCPayableBreakdownRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Name,
-			&i.Amount,
-			&i.TransactionDate,
-			&i.CcSettlementIntent,
-			&i.AccountID,
-			&i.AccountName,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const getCCPayableSummary = `-- name: GetCCPayableSummary :many
-SELECT
-    cc_settlement_intent,
-    COALESCE(SUM(amount), 0)::NUMERIC(12,2) as total
-FROM transactions t
-JOIN accounts a ON t.account_id = a.id
-WHERE t.workspace_id = $1
-  AND a.template = 'credit_card'
-  AND a.deleted_at IS NULL
-  AND t.type = 'expense'
-  AND t.is_paid = false
-  AND t.deleted_at IS NULL
-  AND t.cc_settlement_intent IS NOT NULL
-GROUP BY cc_settlement_intent
-`
-
-type GetCCPayableSummaryRow struct {
-	CcSettlementIntent pgtype.Text    `json:"cc_settlement_intent"`
-	Total              pgtype.Numeric `json:"total"`
-}
-
-// Get unpaid CC transaction totals grouped by settlement intent
-func (q *Queries) GetCCPayableSummary(ctx context.Context, workspaceID int32) ([]GetCCPayableSummaryRow, error) {
-	rows, err := q.db.Query(ctx, getCCPayableSummary, workspaceID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []GetCCPayableSummaryRow{}
-	for rows.Next() {
-		var i GetCCPayableSummaryRow
-		if err := rows.Scan(&i.CcSettlementIntent, &i.Total); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const getDeferredForSettlement = `-- name: GetDeferredForSettlement :many
-SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, recurring_transaction_id, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected FROM transactions
+SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected FROM transactions
 WHERE workspace_id = $1
   AND cc_state = 'billed'
   AND settlement_intent = 'deferred'
@@ -565,7 +452,6 @@ func (q *Queries) GetDeferredForSettlement(ctx context.Context, workspaceID int3
 			&i.Type,
 			&i.TransactionDate,
 			&i.IsPaid,
-			&i.CcSettlementIntent,
 			&i.Notes,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -573,7 +459,6 @@ func (q *Queries) GetDeferredForSettlement(ctx context.Context, workspaceID int3
 			&i.TransferPairID,
 			&i.CategoryID,
 			&i.IsCcPayment,
-			&i.RecurringTransactionID,
 			&i.CcState,
 			&i.BilledAt,
 			&i.SettledAt,
@@ -639,7 +524,7 @@ func (q *Queries) GetMonthlyTransactionSummaries(ctx context.Context, workspaceI
 }
 
 const getOverdueCC = `-- name: GetOverdueCC :many
-SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, recurring_transaction_id, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected FROM transactions
+SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected FROM transactions
 WHERE workspace_id = $1
   AND cc_state = 'billed'
   AND settlement_intent = 'deferred'
@@ -667,7 +552,6 @@ func (q *Queries) GetOverdueCC(ctx context.Context, workspaceID int32) ([]Transa
 			&i.Type,
 			&i.TransactionDate,
 			&i.IsPaid,
-			&i.CcSettlementIntent,
 			&i.Notes,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -675,7 +559,6 @@ func (q *Queries) GetOverdueCC(ctx context.Context, workspaceID int32) ([]Transa
 			&i.TransferPairID,
 			&i.CategoryID,
 			&i.IsCcPayment,
-			&i.RecurringTransactionID,
 			&i.CcState,
 			&i.BilledAt,
 			&i.SettledAt,
@@ -695,7 +578,7 @@ func (q *Queries) GetOverdueCC(ctx context.Context, workspaceID int32) ([]Transa
 }
 
 const getPendingCCByMonth = `-- name: GetPendingCCByMonth :many
-SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, recurring_transaction_id, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected FROM transactions
+SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected FROM transactions
 WHERE workspace_id = $1
   AND cc_state = 'pending'
   AND transaction_date >= $2 AND transaction_date < $3
@@ -728,7 +611,6 @@ func (q *Queries) GetPendingCCByMonth(ctx context.Context, arg GetPendingCCByMon
 			&i.Type,
 			&i.TransactionDate,
 			&i.IsPaid,
-			&i.CcSettlementIntent,
 			&i.Notes,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -736,7 +618,6 @@ func (q *Queries) GetPendingCCByMonth(ctx context.Context, arg GetPendingCCByMon
 			&i.TransferPairID,
 			&i.CategoryID,
 			&i.IsCcPayment,
-			&i.RecurringTransactionID,
 			&i.CcState,
 			&i.BilledAt,
 			&i.SettledAt,
@@ -757,7 +638,7 @@ func (q *Queries) GetPendingCCByMonth(ctx context.Context, arg GetPendingCCByMon
 
 const getProjectionsByTemplate = `-- name: GetProjectionsByTemplate :many
 
-SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, recurring_transaction_id, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected FROM transactions
+SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected FROM transactions
 WHERE workspace_id = $1
   AND template_id = $2
   AND is_projected = true
@@ -792,7 +673,6 @@ func (q *Queries) GetProjectionsByTemplate(ctx context.Context, arg GetProjectio
 			&i.Type,
 			&i.TransactionDate,
 			&i.IsPaid,
-			&i.CcSettlementIntent,
 			&i.Notes,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -800,7 +680,6 @@ func (q *Queries) GetProjectionsByTemplate(ctx context.Context, arg GetProjectio
 			&i.TransferPairID,
 			&i.CategoryID,
 			&i.IsCcPayment,
-			&i.RecurringTransactionID,
 			&i.CcState,
 			&i.BilledAt,
 			&i.SettledAt,
@@ -862,7 +741,7 @@ func (q *Queries) GetRecentlyUsedCategories(ctx context.Context, workspaceID int
 }
 
 const getTransactionByID = `-- name: GetTransactionByID :one
-SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, recurring_transaction_id, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected FROM transactions
+SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected FROM transactions
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
 `
 
@@ -883,7 +762,6 @@ func (q *Queries) GetTransactionByID(ctx context.Context, arg GetTransactionByID
 		&i.Type,
 		&i.TransactionDate,
 		&i.IsPaid,
-		&i.CcSettlementIntent,
 		&i.Notes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -891,7 +769,6 @@ func (q *Queries) GetTransactionByID(ctx context.Context, arg GetTransactionByID
 		&i.TransferPairID,
 		&i.CategoryID,
 		&i.IsCcPayment,
-		&i.RecurringTransactionID,
 		&i.CcState,
 		&i.BilledAt,
 		&i.SettledAt,
@@ -904,7 +781,7 @@ func (q *Queries) GetTransactionByID(ctx context.Context, arg GetTransactionByID
 }
 
 const getTransactionsByIDs = `-- name: GetTransactionsByIDs :many
-SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, recurring_transaction_id, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected FROM transactions
+SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected FROM transactions
 WHERE workspace_id = $1
   AND id = ANY($2::int[])
   AND deleted_at IS NULL
@@ -935,7 +812,6 @@ func (q *Queries) GetTransactionsByIDs(ctx context.Context, arg GetTransactionsB
 			&i.Type,
 			&i.TransactionDate,
 			&i.IsPaid,
-			&i.CcSettlementIntent,
 			&i.Notes,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -943,7 +819,6 @@ func (q *Queries) GetTransactionsByIDs(ctx context.Context, arg GetTransactionsB
 			&i.TransferPairID,
 			&i.CategoryID,
 			&i.IsCcPayment,
-			&i.RecurringTransactionID,
 			&i.CcState,
 			&i.BilledAt,
 			&i.SettledAt,
@@ -963,7 +838,7 @@ func (q *Queries) GetTransactionsByIDs(ctx context.Context, arg GetTransactionsB
 }
 
 const getTransactionsByWorkspace = `-- name: GetTransactionsByWorkspace :many
-SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, recurring_transaction_id, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected FROM transactions
+SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected FROM transactions
 WHERE workspace_id = $1
   AND deleted_at IS NULL
   AND ($2::INTEGER IS NULL OR account_id = $2)
@@ -1010,7 +885,6 @@ func (q *Queries) GetTransactionsByWorkspace(ctx context.Context, arg GetTransac
 			&i.Type,
 			&i.TransactionDate,
 			&i.IsPaid,
-			&i.CcSettlementIntent,
 			&i.Notes,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -1018,7 +892,6 @@ func (q *Queries) GetTransactionsByWorkspace(ctx context.Context, arg GetTransac
 			&i.TransferPairID,
 			&i.CategoryID,
 			&i.IsCcPayment,
-			&i.RecurringTransactionID,
 			&i.CcState,
 			&i.BilledAt,
 			&i.SettledAt,
@@ -1047,12 +920,10 @@ SELECT
     t.type,
     t.transaction_date,
     t.is_paid,
-    t.cc_settlement_intent,
     t.notes,
     t.transfer_pair_id,
     t.category_id,
     t.is_cc_payment,
-    t.recurring_transaction_id,
     t.created_at,
     t.updated_at,
     t.deleted_at,
@@ -1080,31 +951,29 @@ type GetTransactionsForAggregationParams struct {
 }
 
 type GetTransactionsForAggregationRow struct {
-	ID                     int32              `json:"id"`
-	WorkspaceID            int32              `json:"workspace_id"`
-	AccountID              int32              `json:"account_id"`
-	Name                   string             `json:"name"`
-	Amount                 pgtype.Numeric     `json:"amount"`
-	Type                   string             `json:"type"`
-	TransactionDate        pgtype.Date        `json:"transaction_date"`
-	IsPaid                 bool               `json:"is_paid"`
-	CcSettlementIntent     pgtype.Text        `json:"cc_settlement_intent"`
-	Notes                  pgtype.Text        `json:"notes"`
-	TransferPairID         pgtype.UUID        `json:"transfer_pair_id"`
-	CategoryID             pgtype.Int4        `json:"category_id"`
-	IsCcPayment            bool               `json:"is_cc_payment"`
-	RecurringTransactionID pgtype.Int4        `json:"recurring_transaction_id"`
-	CreatedAt              pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt              pgtype.Timestamptz `json:"updated_at"`
-	DeletedAt              pgtype.Timestamptz `json:"deleted_at"`
-	CcState                pgtype.Text        `json:"cc_state"`
-	BilledAt               pgtype.Timestamptz `json:"billed_at"`
-	SettledAt              pgtype.Timestamptz `json:"settled_at"`
-	SettlementIntent       pgtype.Text        `json:"settlement_intent"`
-	Source                 pgtype.Text        `json:"source"`
-	TemplateID             pgtype.Int4        `json:"template_id"`
-	IsProjected            pgtype.Bool        `json:"is_projected"`
-	CategoryName           pgtype.Text        `json:"category_name"`
+	ID               int32              `json:"id"`
+	WorkspaceID      int32              `json:"workspace_id"`
+	AccountID        int32              `json:"account_id"`
+	Name             string             `json:"name"`
+	Amount           pgtype.Numeric     `json:"amount"`
+	Type             string             `json:"type"`
+	TransactionDate  pgtype.Date        `json:"transaction_date"`
+	IsPaid           bool               `json:"is_paid"`
+	Notes            pgtype.Text        `json:"notes"`
+	TransferPairID   pgtype.UUID        `json:"transfer_pair_id"`
+	CategoryID       pgtype.Int4        `json:"category_id"`
+	IsCcPayment      bool               `json:"is_cc_payment"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt        pgtype.Timestamptz `json:"deleted_at"`
+	CcState          pgtype.Text        `json:"cc_state"`
+	BilledAt         pgtype.Timestamptz `json:"billed_at"`
+	SettledAt        pgtype.Timestamptz `json:"settled_at"`
+	SettlementIntent pgtype.Text        `json:"settlement_intent"`
+	Source           pgtype.Text        `json:"source"`
+	TemplateID       pgtype.Int4        `json:"template_id"`
+	IsProjected      pgtype.Bool        `json:"is_projected"`
+	CategoryName     pgtype.Text        `json:"category_name"`
 }
 
 // Returns all transactions in a date range with category name for aggregation (no pagination)
@@ -1127,12 +996,10 @@ func (q *Queries) GetTransactionsForAggregation(ctx context.Context, arg GetTran
 			&i.Type,
 			&i.TransactionDate,
 			&i.IsPaid,
-			&i.CcSettlementIntent,
 			&i.Notes,
 			&i.TransferPairID,
 			&i.CategoryID,
 			&i.IsCcPayment,
-			&i.RecurringTransactionID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
@@ -1165,12 +1032,10 @@ SELECT
     t.type,
     t.transaction_date,
     t.is_paid,
-    t.cc_settlement_intent,
     t.notes,
     t.transfer_pair_id,
     t.category_id,
     t.is_cc_payment,
-    t.recurring_transaction_id,
     t.created_at,
     t.updated_at,
     t.deleted_at,
@@ -1207,31 +1072,29 @@ type GetTransactionsWithCategoryParams struct {
 }
 
 type GetTransactionsWithCategoryRow struct {
-	ID                     int32              `json:"id"`
-	WorkspaceID            int32              `json:"workspace_id"`
-	AccountID              int32              `json:"account_id"`
-	Name                   string             `json:"name"`
-	Amount                 pgtype.Numeric     `json:"amount"`
-	Type                   string             `json:"type"`
-	TransactionDate        pgtype.Date        `json:"transaction_date"`
-	IsPaid                 bool               `json:"is_paid"`
-	CcSettlementIntent     pgtype.Text        `json:"cc_settlement_intent"`
-	Notes                  pgtype.Text        `json:"notes"`
-	TransferPairID         pgtype.UUID        `json:"transfer_pair_id"`
-	CategoryID             pgtype.Int4        `json:"category_id"`
-	IsCcPayment            bool               `json:"is_cc_payment"`
-	RecurringTransactionID pgtype.Int4        `json:"recurring_transaction_id"`
-	CreatedAt              pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt              pgtype.Timestamptz `json:"updated_at"`
-	DeletedAt              pgtype.Timestamptz `json:"deleted_at"`
-	CcState                pgtype.Text        `json:"cc_state"`
-	BilledAt               pgtype.Timestamptz `json:"billed_at"`
-	SettledAt              pgtype.Timestamptz `json:"settled_at"`
-	SettlementIntent       pgtype.Text        `json:"settlement_intent"`
-	Source                 pgtype.Text        `json:"source"`
-	TemplateID             pgtype.Int4        `json:"template_id"`
-	IsProjected            pgtype.Bool        `json:"is_projected"`
-	CategoryName           pgtype.Text        `json:"category_name"`
+	ID               int32              `json:"id"`
+	WorkspaceID      int32              `json:"workspace_id"`
+	AccountID        int32              `json:"account_id"`
+	Name             string             `json:"name"`
+	Amount           pgtype.Numeric     `json:"amount"`
+	Type             string             `json:"type"`
+	TransactionDate  pgtype.Date        `json:"transaction_date"`
+	IsPaid           bool               `json:"is_paid"`
+	Notes            pgtype.Text        `json:"notes"`
+	TransferPairID   pgtype.UUID        `json:"transfer_pair_id"`
+	CategoryID       pgtype.Int4        `json:"category_id"`
+	IsCcPayment      bool               `json:"is_cc_payment"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt        pgtype.Timestamptz `json:"deleted_at"`
+	CcState          pgtype.Text        `json:"cc_state"`
+	BilledAt         pgtype.Timestamptz `json:"billed_at"`
+	SettledAt        pgtype.Timestamptz `json:"settled_at"`
+	SettlementIntent pgtype.Text        `json:"settlement_intent"`
+	Source           pgtype.Text        `json:"source"`
+	TemplateID       pgtype.Int4        `json:"template_id"`
+	IsProjected      pgtype.Bool        `json:"is_projected"`
+	CategoryName     pgtype.Text        `json:"category_name"`
 }
 
 // Returns transactions with category name joined for display
@@ -1262,12 +1125,10 @@ func (q *Queries) GetTransactionsWithCategory(ctx context.Context, arg GetTransa
 			&i.Type,
 			&i.TransactionDate,
 			&i.IsPaid,
-			&i.CcSettlementIntent,
 			&i.Notes,
 			&i.TransferPairID,
 			&i.CategoryID,
 			&i.IsCcPayment,
-			&i.RecurringTransactionID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
@@ -1432,7 +1293,7 @@ const toggleTransactionPaidStatus = `-- name: ToggleTransactionPaidStatus :one
 UPDATE transactions
 SET is_paid = NOT is_paid, updated_at = NOW()
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
-RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, recurring_transaction_id, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected
+RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected
 `
 
 type ToggleTransactionPaidStatusParams struct {
@@ -1452,7 +1313,6 @@ func (q *Queries) ToggleTransactionPaidStatus(ctx context.Context, arg ToggleTra
 		&i.Type,
 		&i.TransactionDate,
 		&i.IsPaid,
-		&i.CcSettlementIntent,
 		&i.Notes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -1460,7 +1320,6 @@ func (q *Queries) ToggleTransactionPaidStatus(ctx context.Context, arg ToggleTra
 		&i.TransferPairID,
 		&i.CategoryID,
 		&i.IsCcPayment,
-		&i.RecurringTransactionID,
 		&i.CcState,
 		&i.BilledAt,
 		&i.SettledAt,
@@ -1480,7 +1339,7 @@ SET cc_state = $3,
     settled_at = $5,
     updated_at = NOW()
 WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL
-RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, recurring_transaction_id, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected
+RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected
 `
 
 type UpdateCCStateParams struct {
@@ -1513,7 +1372,6 @@ func (q *Queries) UpdateCCState(ctx context.Context, arg UpdateCCStateParams) (T
 		&i.Type,
 		&i.TransactionDate,
 		&i.IsPaid,
-		&i.CcSettlementIntent,
 		&i.Notes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -1521,7 +1379,6 @@ func (q *Queries) UpdateCCState(ctx context.Context, arg UpdateCCStateParams) (T
 		&i.TransferPairID,
 		&i.CategoryID,
 		&i.IsCcPayment,
-		&i.RecurringTransactionID,
 		&i.CcState,
 		&i.BilledAt,
 		&i.SettledAt,
@@ -1541,39 +1398,37 @@ SET
     type = $5,
     transaction_date = $6,
     account_id = $7,
-    cc_settlement_intent = $8,
-    notes = $9,
-    category_id = $10,
-    cc_state = $11,
-    billed_at = $12,
-    settled_at = $13,
-    settlement_intent = $14,
-    source = $15,
-    template_id = $16,
-    is_projected = $17,
+    notes = $8,
+    category_id = $9,
+    cc_state = $10,
+    billed_at = $11,
+    settled_at = $12,
+    settlement_intent = $13,
+    source = $14,
+    template_id = $15,
+    is_projected = $16,
     updated_at = NOW()
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
-RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, recurring_transaction_id, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected
+RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected
 `
 
 type UpdateTransactionParams struct {
-	WorkspaceID        int32              `json:"workspace_id"`
-	ID                 int32              `json:"id"`
-	Name               string             `json:"name"`
-	Amount             pgtype.Numeric     `json:"amount"`
-	Type               string             `json:"type"`
-	TransactionDate    pgtype.Date        `json:"transaction_date"`
-	AccountID          int32              `json:"account_id"`
-	CcSettlementIntent pgtype.Text        `json:"cc_settlement_intent"`
-	Notes              pgtype.Text        `json:"notes"`
-	CategoryID         pgtype.Int4        `json:"category_id"`
-	CcState            pgtype.Text        `json:"cc_state"`
-	BilledAt           pgtype.Timestamptz `json:"billed_at"`
-	SettledAt          pgtype.Timestamptz `json:"settled_at"`
-	SettlementIntent   pgtype.Text        `json:"settlement_intent"`
-	Source             pgtype.Text        `json:"source"`
-	TemplateID         pgtype.Int4        `json:"template_id"`
-	IsProjected        pgtype.Bool        `json:"is_projected"`
+	WorkspaceID      int32              `json:"workspace_id"`
+	ID               int32              `json:"id"`
+	Name             string             `json:"name"`
+	Amount           pgtype.Numeric     `json:"amount"`
+	Type             string             `json:"type"`
+	TransactionDate  pgtype.Date        `json:"transaction_date"`
+	AccountID        int32              `json:"account_id"`
+	Notes            pgtype.Text        `json:"notes"`
+	CategoryID       pgtype.Int4        `json:"category_id"`
+	CcState          pgtype.Text        `json:"cc_state"`
+	BilledAt         pgtype.Timestamptz `json:"billed_at"`
+	SettledAt        pgtype.Timestamptz `json:"settled_at"`
+	SettlementIntent pgtype.Text        `json:"settlement_intent"`
+	Source           pgtype.Text        `json:"source"`
+	TemplateID       pgtype.Int4        `json:"template_id"`
+	IsProjected      pgtype.Bool        `json:"is_projected"`
 }
 
 func (q *Queries) UpdateTransaction(ctx context.Context, arg UpdateTransactionParams) (Transaction, error) {
@@ -1585,7 +1440,6 @@ func (q *Queries) UpdateTransaction(ctx context.Context, arg UpdateTransactionPa
 		arg.Type,
 		arg.TransactionDate,
 		arg.AccountID,
-		arg.CcSettlementIntent,
 		arg.Notes,
 		arg.CategoryID,
 		arg.CcState,
@@ -1606,7 +1460,6 @@ func (q *Queries) UpdateTransaction(ctx context.Context, arg UpdateTransactionPa
 		&i.Type,
 		&i.TransactionDate,
 		&i.IsPaid,
-		&i.CcSettlementIntent,
 		&i.Notes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -1614,52 +1467,6 @@ func (q *Queries) UpdateTransaction(ctx context.Context, arg UpdateTransactionPa
 		&i.TransferPairID,
 		&i.CategoryID,
 		&i.IsCcPayment,
-		&i.RecurringTransactionID,
-		&i.CcState,
-		&i.BilledAt,
-		&i.SettledAt,
-		&i.SettlementIntent,
-		&i.Source,
-		&i.TemplateID,
-		&i.IsProjected,
-	)
-	return i, err
-}
-
-const updateTransactionSettlementIntent = `-- name: UpdateTransactionSettlementIntent :one
-UPDATE transactions
-SET cc_settlement_intent = $3, updated_at = NOW()
-WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL AND is_paid = false
-RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, cc_settlement_intent, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, recurring_transaction_id, cc_state, billed_at, settled_at, settlement_intent, source, template_id, is_projected
-`
-
-type UpdateTransactionSettlementIntentParams struct {
-	WorkspaceID        int32       `json:"workspace_id"`
-	ID                 int32       `json:"id"`
-	CcSettlementIntent pgtype.Text `json:"cc_settlement_intent"`
-}
-
-func (q *Queries) UpdateTransactionSettlementIntent(ctx context.Context, arg UpdateTransactionSettlementIntentParams) (Transaction, error) {
-	row := q.db.QueryRow(ctx, updateTransactionSettlementIntent, arg.WorkspaceID, arg.ID, arg.CcSettlementIntent)
-	var i Transaction
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.AccountID,
-		&i.Name,
-		&i.Amount,
-		&i.Type,
-		&i.TransactionDate,
-		&i.IsPaid,
-		&i.CcSettlementIntent,
-		&i.Notes,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.DeletedAt,
-		&i.TransferPairID,
-		&i.CategoryID,
-		&i.IsCcPayment,
-		&i.RecurringTransactionID,
 		&i.CcState,
 		&i.BilledAt,
 		&i.SettledAt,

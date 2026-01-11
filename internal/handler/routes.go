@@ -6,7 +6,7 @@ import (
 )
 
 // RegisterRoutes sets up all API routes
-func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateLimiter *middleware.RateLimiter, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler, recurringHandler *RecurringHandler, recurringTemplateHandler *RecurringTemplateHandler, loanProviderHandler *LoanProviderHandler, loanHandler *LoanHandler, loanPaymentHandler *LoanPaymentHandler, wishlistHandler *WishlistHandler, wishlistItemHandler *WishlistItemHandler, wishlistPriceHandler *WishlistPriceHandler, wishlistNoteHandler *WishlistNoteHandler, imageHandler *ImageHandler, wsHandler *WebSocketHandler, apiTokenHandler *APITokenHandler, settlementHandler *SettlementHandler) {
+func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateLimiter *middleware.RateLimiter, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler, recurringTemplateHandler *RecurringTemplateHandler, loanProviderHandler *LoanProviderHandler, loanHandler *LoanHandler, loanPaymentHandler *LoanPaymentHandler, wishlistHandler *WishlistHandler, wishlistItemHandler *WishlistItemHandler, wishlistPriceHandler *WishlistPriceHandler, wishlistNoteHandler *WishlistNoteHandler, imageHandler *ImageHandler, wsHandler *WebSocketHandler, apiTokenHandler *APITokenHandler, settlementHandler *SettlementHandler) {
 	// WebSocket route (auth via query param token)
 	e.GET("/ws", wsHandler.HandleWS)
 
@@ -46,7 +46,6 @@ func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateL
 	transactions.DELETE("/:id", transactionHandler.DeleteTransaction)
 	transactions.PATCH("/:id/toggle-paid", transactionHandler.TogglePaidStatus)
 	transactions.PATCH("/:id/toggle-billed", transactionHandler.ToggleBilled)
-	transactions.PATCH("/:id/settlement-intent", transactionHandler.UpdateSettlementIntent)
 	transactions.POST("/transfers", transactionHandler.CreateTransfer)
 	transactions.POST("/batch-toggle-billed", transactionHandler.BatchToggleBilled)
 	transactions.GET("/deferred-to-settle", transactionHandler.GetDeferredToSettle)
@@ -86,7 +85,6 @@ func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateL
 	// Credit Card routes (dual auth with rate limiting)
 	cc := api.Group("/cc")
 	cc.Use(dualAuth.Authenticate(), middleware.RateLimitMiddleware(rateLimiter))
-	cc.GET("/payable/breakdown", ccHandler.GetPayableBreakdown)
 	cc.POST("/payments", ccHandler.CreateCCPayment)
 
 	// Settlement routes (dual auth with rate limiting)
@@ -94,18 +92,7 @@ func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateL
 	settlements.Use(dualAuth.Authenticate(), middleware.RateLimitMiddleware(rateLimiter))
 	settlements.POST("", settlementHandler.Create)
 
-	// Recurring Transactions routes (v1 - dual auth with rate limiting)
-	recurring := api.Group("/recurring-transactions")
-	recurring.Use(dualAuth.Authenticate(), middleware.RateLimitMiddleware(rateLimiter))
-	recurring.POST("", recurringHandler.CreateRecurring)
-	recurring.GET("", recurringHandler.GetRecurringTransactions)
-	recurring.POST("/generate", recurringHandler.GenerateRecurring)
-	recurring.GET("/:id", recurringHandler.GetRecurringTransaction)
-	recurring.PUT("/:id", recurringHandler.UpdateRecurring)
-	recurring.PATCH("/:id/toggle-active", recurringHandler.ToggleActive)
-	recurring.DELETE("/:id", recurringHandler.DeleteRecurring)
-
-	// Recurring Templates routes (v2 - dual auth with rate limiting)
+	// Recurring Templates routes (dual auth with rate limiting)
 	recurringTemplates := api.Group("/recurring-templates")
 	recurringTemplates.Use(dualAuth.Authenticate(), middleware.RateLimitMiddleware(rateLimiter))
 	recurringTemplates.POST("", recurringTemplateHandler.CreateTemplate)

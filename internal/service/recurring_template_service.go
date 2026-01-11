@@ -280,6 +280,22 @@ func (s *RecurringTemplateServiceImpl) validateUpdateInput(input domain.UpdateRe
 	return nil
 }
 
+// getCCFieldsForAccount returns CC lifecycle fields if the account is a credit card account
+// Returns (ccState, settlementIntent) - both nil if not a CC account
+func (s *RecurringTemplateServiceImpl) getCCFieldsForAccount(workspaceID int32, accountID int32) (*domain.CCState, *domain.SettlementIntent) {
+	account, err := s.accountRepo.GetByID(workspaceID, accountID)
+	if err != nil {
+		return nil, nil
+	}
+	if account.Template != domain.TemplateCreditCard {
+		return nil, nil
+	}
+	// CC account: default to pending state with deferred settlement
+	ccState := domain.CCStatePending
+	settlementIntent := domain.SettlementIntentDeferred
+	return &ccState, &settlementIntent
+}
+
 // generateProjections creates projected transactions for a template
 func (s *RecurringTemplateServiceImpl) generateProjections(workspaceID int32, template *domain.RecurringTemplate) error {
 	// Check for existing projections (idempotency check)
@@ -345,18 +361,23 @@ func (s *RecurringTemplateServiceImpl) generateProjections(workspaceID int32, te
 			}
 		}
 
+		// Get CC lifecycle fields if this is a CC account
+		ccState, settlementIntent := s.getCCFieldsForAccount(workspaceID, template.AccountID)
+
 		transaction := &domain.Transaction{
-			WorkspaceID:     workspaceID,
-			Name:            template.Description,
-			Amount:          template.Amount,
-			Type:            domain.TransactionTypeExpense, // Default to expense
-			CategoryID:      &template.CategoryID,
-			AccountID:       template.AccountID,
-			TransactionDate: actualDate,
-			Source:          "recurring",
-			TemplateID:      &template.ID,
-			IsProjected:     true,
-			IsPaid:          false,
+			WorkspaceID:      workspaceID,
+			Name:             template.Description,
+			Amount:           template.Amount,
+			Type:             domain.TransactionTypeExpense, // Default to expense
+			CategoryID:       &template.CategoryID,
+			AccountID:        template.AccountID,
+			TransactionDate:  actualDate,
+			Source:           "recurring",
+			TemplateID:       &template.ID,
+			IsProjected:      true,
+			IsPaid:           false,
+			CCState:          ccState,
+			SettlementIntent: settlementIntent,
 		}
 
 		if _, err := s.transactionRepo.Create(transaction); err != nil {
@@ -386,6 +407,9 @@ func (s *RecurringTemplateServiceImpl) recalculateProjections(workspaceID int32,
 		existingByMonth[monthKey] = proj
 	}
 
+	// Get CC lifecycle fields based on new template's account
+	ccState, settlementIntent := s.getCCFieldsForAccount(workspaceID, newTemplate.AccountID)
+
 	// Process each existing projection
 	for _, proj := range existingProjections {
 		if s.isUserEdited(proj, oldTemplate) {
@@ -395,15 +419,17 @@ func (s *RecurringTemplateServiceImpl) recalculateProjections(workspaceID int32,
 
 		// Update unedited projection with new template values
 		updateData := &domain.UpdateTransactionData{
-			Name:            newTemplate.Description,
-			Amount:          newTemplate.Amount,
-			Type:            domain.TransactionTypeExpense,
-			TransactionDate: proj.TransactionDate,
-			AccountID:       newTemplate.AccountID,
-			CategoryID:      &newTemplate.CategoryID,
-			Source:          "recurring",
-			TemplateID:      &newTemplate.ID,
-			IsProjected:     true,
+			Name:             newTemplate.Description,
+			Amount:           newTemplate.Amount,
+			Type:             domain.TransactionTypeExpense,
+			TransactionDate:  proj.TransactionDate,
+			AccountID:        newTemplate.AccountID,
+			CategoryID:       &newTemplate.CategoryID,
+			Source:           "recurring",
+			TemplateID:       &newTemplate.ID,
+			IsProjected:      true,
+			CCState:          ccState,
+			SettlementIntent: settlementIntent,
 		}
 		if _, err := s.transactionRepo.Update(workspaceID, proj.ID, updateData); err != nil {
 			return err
@@ -504,18 +530,23 @@ func (s *RecurringTemplateServiceImpl) generateProjectionsWithSkips(workspaceID 
 			}
 		}
 
+		// Get CC lifecycle fields if this is a CC account
+		ccState, settlementIntent := s.getCCFieldsForAccount(workspaceID, template.AccountID)
+
 		transaction := &domain.Transaction{
-			WorkspaceID:     workspaceID,
-			Name:            template.Description,
-			Amount:          template.Amount,
-			Type:            domain.TransactionTypeExpense,
-			CategoryID:      &template.CategoryID,
-			AccountID:       template.AccountID,
-			TransactionDate: actualDate,
-			Source:          "recurring",
-			TemplateID:      &template.ID,
-			IsProjected:     true,
-			IsPaid:          false,
+			WorkspaceID:      workspaceID,
+			Name:             template.Description,
+			Amount:           template.Amount,
+			Type:             domain.TransactionTypeExpense,
+			CategoryID:       &template.CategoryID,
+			AccountID:        template.AccountID,
+			TransactionDate:  actualDate,
+			Source:           "recurring",
+			TemplateID:       &template.ID,
+			IsProjected:      true,
+			IsPaid:           false,
+			CCState:          ccState,
+			SettlementIntent: settlementIntent,
 		}
 
 		if _, err := s.transactionRepo.Create(transaction); err != nil {
