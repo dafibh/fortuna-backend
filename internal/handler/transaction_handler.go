@@ -1026,6 +1026,119 @@ func (h *TransactionHandler) GetDeferredToSettle(c echo.Context) error {
 	return c.JSON(http.StatusOK, groups)
 }
 
+// OverdueGroupResponse represents an overdue group in API responses
+type OverdueGroupResponse struct {
+	Month         string                `json:"month"`         // "2025-11"
+	MonthLabel    string                `json:"monthLabel"`    // "November 2025"
+	MonthsOverdue int                   `json:"monthsOverdue"` // Number of months overdue
+	TotalAmount   string                `json:"totalAmount"`
+	ItemCount     int                   `json:"itemCount"`
+	Transactions  []TransactionResponse `json:"transactions"`
+}
+
+// GetOverdue returns overdue CC transactions grouped by month
+// @Summary Get overdue CC transactions
+// @Description Returns CC transactions that are billed but overdue (2+ months), grouped by month
+// @Tags transactions
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {array} OverdueGroupResponse
+// @Failure 401 {object} ProblemDetails
+// @Failure 500 {object} ProblemDetails
+// @Router /transactions/overdue [get]
+func (h *TransactionHandler) GetOverdue(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	groups, err := h.transactionService.GetOverdue(workspaceID)
+	if err != nil {
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Msg("Failed to get overdue transactions")
+		return NewInternalError(c, "Failed to get overdue transactions")
+	}
+
+	// Convert to response format
+	response := make([]OverdueGroupResponse, len(groups))
+	for i, group := range groups {
+		transactions := make([]TransactionResponse, len(group.Transactions))
+		for j, tx := range group.Transactions {
+			transactions[j] = toTransactionResponse(tx)
+		}
+		response[i] = OverdueGroupResponse{
+			Month:         group.Month,
+			MonthLabel:    group.MonthLabel,
+			MonthsOverdue: group.MonthsOverdue,
+			TotalAmount:   group.TotalAmount.StringFixed(2),
+			ItemCount:     group.ItemCount,
+			Transactions:  transactions,
+		}
+	}
+
+	return c.JSON(http.StatusOK, response)
+}
+
+// UpdateAmountRequest represents the update amount request body
+type UpdateAmountRequest struct {
+	Amount string `json:"amount"`
+}
+
+// UpdateAmount godoc
+// @Summary Update transaction amount
+// @Description Update only the amount field of a transaction (for overdue items)
+// @Tags transactions
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Transaction ID"
+// @Param request body UpdateAmountRequest true "New amount"
+// @Success 200 {object} TransactionResponse
+// @Failure 400 {object} ProblemDetails
+// @Failure 401 {object} ProblemDetails
+// @Failure 404 {object} ProblemDetails
+// @Failure 500 {object} ProblemDetails
+// @Router /transactions/{id}/amount [patch]
+func (h *TransactionHandler) UpdateAmount(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return NewValidationError(c, "Invalid transaction ID", nil)
+	}
+
+	var req UpdateAmountRequest
+	if err := c.Bind(&req); err != nil {
+		return NewValidationError(c, "Invalid request body", nil)
+	}
+
+	// Parse amount
+	amount, err := decimal.NewFromString(req.Amount)
+	if err != nil {
+		return NewValidationError(c, "Invalid amount", []ValidationError{
+			{Field: "amount", Message: "Must be a valid decimal number"},
+		})
+	}
+
+	transaction, err := h.transactionService.UpdateAmount(workspaceID, int32(id), amount)
+	if err != nil {
+		if errors.Is(err, domain.ErrTransactionNotFound) {
+			return NewNotFoundError(c, "Transaction not found")
+		}
+		if errors.Is(err, domain.ErrInvalidAmount) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "amount", Message: "Amount must be positive"},
+			})
+		}
+		log.Error().Err(err).Int32("id", int32(id)).Msg("Failed to update transaction amount")
+		return NewInternalError(c, "Failed to update transaction amount")
+	}
+
+	return c.JSON(http.StatusOK, toTransactionResponse(transaction))
+}
+
 // groupTransactionsByMonth groups transactions by their transaction month
 func groupTransactionsByMonth(transactions []*domain.Transaction) []DeferredGroup {
 	// Map to group transactions by year-month

@@ -2377,3 +2377,153 @@ func TestToggleBilled_WrongWorkspace_Error(t *testing.T) {
 		t.Errorf("Expected ErrTransactionNotFound for wrong workspace, got %v", err)
 	}
 }
+
+// ========================================
+// GetOverdue Tests
+// ========================================
+
+func TestGetOverdue_ReturnsEmptyWhenNoOverdue(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo, categoryRepo)
+
+	workspaceID := int32(1)
+
+	groups, err := transactionService.GetOverdue(workspaceID)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if len(groups) != 0 {
+		t.Errorf("Expected 0 groups, got %d", len(groups))
+	}
+}
+
+func TestGetOverdue_GroupsByMonth(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo, categoryRepo)
+
+	workspaceID := int32(1)
+	billedState := domain.CCStateBilled
+	deferredIntent := domain.SettlementIntentDeferred
+
+	// Set up overdue transactions in different months (3+ months ago to be safe)
+	oct2025 := time.Date(2025, 10, 15, 0, 0, 0, 0, time.UTC)
+	nov2025 := time.Date(2025, 11, 10, 0, 0, 0, 0, time.UTC)
+
+	// Use custom mock function to return specific overdue transactions
+	transactionRepo.GetOverdueCCFn = func(wsID int32) ([]*domain.Transaction, error) {
+		if wsID != workspaceID {
+			return []*domain.Transaction{}, nil
+		}
+		return []*domain.Transaction{
+			{
+				ID:               1,
+				WorkspaceID:      workspaceID,
+				Name:             "October Purchase 1",
+				Amount:           decimal.NewFromFloat(100.00),
+				CCState:          &billedState,
+				SettlementIntent: &deferredIntent,
+				BilledAt:         &oct2025,
+				TransactionDate:  oct2025,
+			},
+			{
+				ID:               2,
+				WorkspaceID:      workspaceID,
+				Name:             "October Purchase 2",
+				Amount:           decimal.NewFromFloat(50.00),
+				CCState:          &billedState,
+				SettlementIntent: &deferredIntent,
+				BilledAt:         &oct2025,
+				TransactionDate:  oct2025,
+			},
+			{
+				ID:               3,
+				WorkspaceID:      workspaceID,
+				Name:             "November Purchase",
+				Amount:           decimal.NewFromFloat(75.00),
+				CCState:          &billedState,
+				SettlementIntent: &deferredIntent,
+				BilledAt:         &nov2025,
+				TransactionDate:  nov2025,
+			},
+		}, nil
+	}
+
+	groups, err := transactionService.GetOverdue(workspaceID)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if len(groups) != 2 {
+		t.Fatalf("Expected 2 groups (Oct and Nov), got %d", len(groups))
+	}
+
+	// First group should be October (oldest first based on order returned by repo)
+	oct := groups[0]
+	if oct.Month != "2025-10" {
+		t.Errorf("Expected first group month '2025-10', got %s", oct.Month)
+	}
+	if oct.ItemCount != 2 {
+		t.Errorf("Expected October group to have 2 items, got %d", oct.ItemCount)
+	}
+	expectedOctTotal := decimal.NewFromFloat(150.00)
+	if !oct.TotalAmount.Equal(expectedOctTotal) {
+		t.Errorf("Expected October total '150.00', got %s", oct.TotalAmount.String())
+	}
+
+	// Second group should be November
+	nov := groups[1]
+	if nov.Month != "2025-11" {
+		t.Errorf("Expected second group month '2025-11', got %s", nov.Month)
+	}
+	if nov.ItemCount != 1 {
+		t.Errorf("Expected November group to have 1 item, got %d", nov.ItemCount)
+	}
+}
+
+func TestGetOverdue_CalculatesMonthsOverdue(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := NewTransactionService(transactionRepo, accountRepo, categoryRepo)
+
+	workspaceID := int32(1)
+	billedState := domain.CCStateBilled
+	deferredIntent := domain.SettlementIntentDeferred
+
+	// Transaction billed 3 months ago
+	threeMonthsAgo := time.Now().AddDate(0, -3, 0)
+
+	transactionRepo.GetOverdueCCFn = func(wsID int32) ([]*domain.Transaction, error) {
+		return []*domain.Transaction{
+			{
+				ID:               1,
+				WorkspaceID:      workspaceID,
+				Name:             "Old CC Purchase",
+				Amount:           decimal.NewFromFloat(200.00),
+				CCState:          &billedState,
+				SettlementIntent: &deferredIntent,
+				BilledAt:         &threeMonthsAgo,
+				TransactionDate:  threeMonthsAgo,
+			},
+		}, nil
+	}
+
+	groups, err := transactionService.GetOverdue(workspaceID)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if len(groups) != 1 {
+		t.Fatalf("Expected 1 group, got %d", len(groups))
+	}
+
+	// MonthsOverdue should be approximately 3
+	if groups[0].MonthsOverdue < 3 {
+		t.Errorf("Expected MonthsOverdue >= 3, got %d", groups[0].MonthsOverdue)
+	}
+}

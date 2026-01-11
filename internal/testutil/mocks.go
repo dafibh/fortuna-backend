@@ -364,6 +364,7 @@ type MockTransactionRepository struct {
 	BulkSettleFn                      func(workspaceID int32, ids []int32) ([]*domain.Transaction, error)
 	GetDeferredForSettlementFn        func(workspaceID int32) ([]*domain.Transaction, error)
 	AtomicSettleFn                    func(transferTx *domain.Transaction, settleIDs []int32) (*domain.Transaction, int, error)
+	GetOverdueCCFn                    func(workspaceID int32) ([]*domain.Transaction, error)
 }
 
 // NewMockTransactionRepository creates a new MockTransactionRepository
@@ -979,6 +980,27 @@ func (m *MockTransactionRepository) AtomicSettle(transferTx *domain.Transaction,
 		}
 	}
 	return transferTx, settledCount, nil
+}
+
+// GetOverdueCC retrieves overdue CC transactions (billed + deferred for 2+ months)
+func (m *MockTransactionRepository) GetOverdueCC(workspaceID int32) ([]*domain.Transaction, error) {
+	if m.GetOverdueCCFn != nil {
+		return m.GetOverdueCCFn(workspaceID)
+	}
+	// Default: filter transactions that match overdue criteria
+	var result []*domain.Transaction
+	billedState := domain.CCStateBilled
+	deferredIntent := domain.SettlementIntentDeferred
+	twoMonthsAgo := time.Now().AddDate(0, -2, 0)
+
+	for _, tx := range m.ByWorkspace[workspaceID] {
+		if tx.CCState != nil && *tx.CCState == billedState &&
+			tx.SettlementIntent != nil && *tx.SettlementIntent == deferredIntent &&
+			tx.BilledAt != nil && tx.BilledAt.Before(twoMonthsAgo) {
+			result = append(result, tx)
+		}
+	}
+	return result, nil
 }
 
 // MockMonthRepository is a mock implementation of domain.MonthRepository

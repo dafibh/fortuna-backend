@@ -50,6 +50,8 @@ func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateL
 	transactions.POST("/transfers", transactionHandler.CreateTransfer)
 	transactions.POST("/batch-toggle-billed", transactionHandler.BatchToggleBilled)
 	transactions.GET("/deferred-to-settle", transactionHandler.GetDeferredToSettle)
+	transactions.GET("/overdue", transactionHandler.GetOverdue)
+	transactions.PATCH("/:id/amount", transactionHandler.UpdateAmount)
 
 	// Month routes (dual auth with rate limiting)
 	months := api.Group("/months")

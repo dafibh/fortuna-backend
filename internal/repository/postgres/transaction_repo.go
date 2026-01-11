@@ -1030,6 +1030,22 @@ func (r *TransactionRepository) GetDeferredForSettlement(workspaceID int32) ([]*
 	return transactions, nil
 }
 
+// GetOverdueCC retrieves overdue CC transactions (billed + deferred for 2+ months)
+func (r *TransactionRepository) GetOverdueCC(workspaceID int32) ([]*domain.Transaction, error) {
+	ctx := context.Background()
+
+	rows, err := r.queries.GetOverdueCC(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+
+	transactions := make([]*domain.Transaction, len(rows))
+	for i, row := range rows {
+		transactions[i] = sqlcTransactionToDomain(row)
+	}
+	return transactions, nil
+}
+
 // AtomicSettle creates a transfer transaction and settles CC transactions atomically
 // within a single database transaction. If any operation fails, all changes are rolled back.
 func (r *TransactionRepository) AtomicSettle(transferTx *domain.Transaction, settleIDs []int32) (*domain.Transaction, int, error) {

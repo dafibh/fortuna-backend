@@ -753,3 +753,100 @@ func (s *TransactionService) BatchToggleToBilled(workspaceID int32, ids []int32)
 func (s *TransactionService) GetDeferredForSettlement(workspaceID int32) ([]*domain.Transaction, error) {
 	return s.transactionRepo.GetDeferredForSettlement(workspaceID)
 }
+
+// UpdateAmount updates only the amount field of a transaction
+// This is used for overdue items where only amount adjustment (for interest/fees) is allowed
+func (s *TransactionService) UpdateAmount(workspaceID int32, id int32, amount decimal.Decimal) (*domain.Transaction, error) {
+	// Validate amount is positive
+	if amount.LessThanOrEqual(decimal.Zero) {
+		return nil, domain.ErrInvalidAmount
+	}
+
+	// Get existing transaction
+	existing, err := s.transactionRepo.GetByID(workspaceID, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Only update the amount, preserve everything else
+	updateData := &domain.UpdateTransactionData{
+		Name:               existing.Name,
+		Amount:             amount,
+		Type:               existing.Type,
+		TransactionDate:    existing.TransactionDate,
+		AccountID:          existing.AccountID,
+		CCSettlementIntent: existing.CCSettlementIntent,
+		Notes:              existing.Notes,
+		CategoryID:         existing.CategoryID,
+		CCState:            existing.CCState,
+		SettlementIntent:   existing.SettlementIntent,
+	}
+
+	return s.transactionRepo.Update(workspaceID, id, updateData)
+}
+
+// GetOverdue returns overdue CC transactions grouped by month
+func (s *TransactionService) GetOverdue(workspaceID int32) ([]domain.OverdueGroup, error) {
+	transactions, err := s.transactionRepo.GetOverdueCC(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Group by month
+	groups := make(map[string]*domain.OverdueGroup)
+	monthOrder := []string{}
+
+	for _, txn := range transactions {
+		var monthKey string
+		var monthLabel string
+
+		// Use BilledAt for grouping (overdue is based on when billed)
+		if txn.BilledAt != nil {
+			monthKey = txn.BilledAt.Format("2006-01")
+			monthLabel = txn.BilledAt.Format("January 2006")
+		} else {
+			// Fallback to transaction date if BilledAt is missing
+			monthKey = txn.TransactionDate.Format("2006-01")
+			monthLabel = txn.TransactionDate.Format("January 2006")
+		}
+
+		if _, exists := groups[monthKey]; !exists {
+			// Calculate months overdue
+			monthsOverdue := calculateMonthsOverdue(txn.BilledAt)
+
+			groups[monthKey] = &domain.OverdueGroup{
+				Month:         monthKey,
+				MonthLabel:    monthLabel,
+				MonthsOverdue: monthsOverdue,
+				TotalAmount:   decimal.Zero,
+				ItemCount:     0,
+				Transactions:  make([]*domain.Transaction, 0),
+			}
+			monthOrder = append(monthOrder, monthKey)
+		}
+
+		group := groups[monthKey]
+		group.TotalAmount = group.TotalAmount.Add(txn.Amount)
+		group.ItemCount++
+		group.Transactions = append(group.Transactions, txn)
+	}
+
+	// Convert to slice and sort by month (oldest first)
+	result := make([]domain.OverdueGroup, 0, len(groups))
+	for _, monthKey := range monthOrder {
+		result = append(result, *groups[monthKey])
+	}
+
+	return result, nil
+}
+
+// calculateMonthsOverdue calculates how many months a transaction is overdue
+func calculateMonthsOverdue(billedAt *time.Time) int {
+	if billedAt == nil {
+		return 0
+	}
+
+	now := time.Now()
+	months := (now.Year()-billedAt.Year())*12 + int(now.Month()) - int(billedAt.Month())
+	return months
+}

@@ -198,6 +198,16 @@ type CCMetrics struct {
 	Purchases   decimal.Decimal `json:"purchases"`   // Sum of all CC transactions (pending + billed + settled)
 }
 
+// OverdueGroup groups overdue CC transactions by month
+type OverdueGroup struct {
+	Month         string          `json:"month"`         // "2025-11"
+	MonthLabel    string          `json:"monthLabel"`    // "November"
+	MonthsOverdue int             `json:"monthsOverdue"` // Number of months overdue
+	TotalAmount   decimal.Decimal `json:"totalAmount"`
+	ItemCount     int             `json:"itemCount"`
+	Transactions  []*Transaction  `json:"transactions"`
+}
+
 type TransactionRepository interface {
 	Create(transaction *Transaction) (*Transaction, error)
 	GetByID(workspaceID int32, id int32) (*Transaction, error)
@@ -233,4 +243,7 @@ type TransactionRepository interface {
 	// AtomicSettle creates a transfer transaction and settles CC transactions atomically
 	// within a single database transaction. If any operation fails, all changes are rolled back.
 	AtomicSettle(transferTx *Transaction, settleIDs []int32) (*Transaction, int, error)
+
+	// Overdue detection (v2)
+	GetOverdueCC(workspaceID int32) ([]*Transaction, error)
 }
