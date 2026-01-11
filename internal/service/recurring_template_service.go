@@ -322,11 +322,14 @@ func (s *RecurringTemplateServiceImpl) generateProjections(workspaceID int32, te
 
 	// Calculate start date for projections
 	var startDate time.Time
-	if template.StartDate.After(now) {
-		// Template starts in the future - use template start date
+	templateMonth := time.Date(template.StartDate.Year(), template.StartDate.Month(), 1, 0, 0, 0, 0, time.UTC)
+	currentMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+
+	if !templateMonth.Before(currentMonth) {
+		// Template starts this month or in the future - use template start date
 		startDate = template.StartDate
 	} else {
-		// Template starts in the past - find the next valid projection date
+		// Template starts in a previous month - find the next valid projection date
 		// Use calculateActualDate to properly handle month-end edge cases (e.g., 31st in Feb -> Feb 28/29)
 		startDate = s.calculateActualDate(now.Year(), now.Month(), targetDay)
 		if startDate.Before(now) || startDate.Equal(now) {
@@ -488,11 +491,14 @@ func (s *RecurringTemplateServiceImpl) generateProjectionsWithSkips(workspaceID 
 
 	// Calculate start date for projections
 	var startDate time.Time
-	if template.StartDate.After(now) {
-		// Template starts in the future - use template start date
+	templateMonth := time.Date(template.StartDate.Year(), template.StartDate.Month(), 1, 0, 0, 0, 0, time.UTC)
+	currentMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+
+	if !templateMonth.Before(currentMonth) {
+		// Template starts this month or in the future - use template start date
 		startDate = template.StartDate
 	} else {
-		// Template starts in the past - find the next valid projection date
+		// Template starts in a previous month - find the next valid projection date
 		// Use calculateActualDate to properly handle month-end edge cases (e.g., 31st in Feb -> Feb 28/29)
 		startDate = s.calculateActualDate(now.Year(), now.Month(), targetDay)
 		if startDate.Before(now) || startDate.Equal(now) {
