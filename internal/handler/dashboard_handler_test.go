@@ -371,3 +371,293 @@ func TestGetSummary_EmptyAccounts(t *testing.T) {
 		t.Errorf("Expected in-hand balance '0.00', got %s", response.InHandBalance)
 	}
 }
+
+// Tests for GetFutureSpending endpoint
+
+func TestGetFutureSpending_Success(t *testing.T) {
+	e := echo.New()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	monthRepo := testutil.NewMockMonthRepository()
+	loanPaymentRepo := testutil.NewMockLoanPaymentRepository()
+	calcService := service.NewCalculationService(accountRepo, transactionRepo)
+	monthService := service.NewMonthService(monthRepo, transactionRepo, calcService)
+	dashboardService := service.NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calcService)
+	handler := NewDashboardHandler(dashboardService)
+
+	workspaceID := int32(1)
+	now := time.Now()
+
+	// Add an account
+	accountRepo.AddAccount(&domain.Account{
+		ID:             1,
+		WorkspaceID:    workspaceID,
+		Name:           "Bank Account",
+		AccountType:    domain.AccountTypeAsset,
+		Template:       domain.TemplateBank,
+		InitialBalance: decimal.NewFromInt(10000),
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	})
+
+	// Add expense transaction for current month
+	categoryID := int32(1)
+	categoryName := "Food"
+	txDate := time.Date(now.Year(), now.Month(), 15, 12, 0, 0, 0, time.UTC)
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:              1,
+		WorkspaceID:     workspaceID,
+		AccountID:       1,
+		Name:            "Groceries",
+		Amount:          decimal.NewFromInt(500),
+		Type:            domain.TransactionTypeExpense,
+		TransactionDate: txDate,
+		IsPaid:          true,
+		CategoryID:      &categoryID,
+		CategoryName:    &categoryName,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/future-spending?months=3", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	err := handler.GetFutureSpending(c)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", rec.Code)
+	}
+
+	var response domain.FutureSpendingData
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	// Should have 3 months of data
+	if len(response.Months) != 3 {
+		t.Errorf("Expected 3 months, got %d", len(response.Months))
+	}
+
+	// First month should have the expense
+	if response.Months[0].Total != "500.00" {
+		t.Errorf("Expected first month total '500.00', got %s", response.Months[0].Total)
+	}
+
+	// Should have category breakdown
+	if len(response.Months[0].ByCategory) != 1 {
+		t.Errorf("Expected 1 category, got %d", len(response.Months[0].ByCategory))
+	}
+
+	// Should have account breakdown
+	if len(response.Months[0].ByAccount) != 1 {
+		t.Errorf("Expected 1 account, got %d", len(response.Months[0].ByAccount))
+	}
+}
+
+func TestGetFutureSpending_DefaultMonths(t *testing.T) {
+	e := echo.New()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	monthRepo := testutil.NewMockMonthRepository()
+	loanPaymentRepo := testutil.NewMockLoanPaymentRepository()
+	calcService := service.NewCalculationService(accountRepo, transactionRepo)
+	monthService := service.NewMonthService(monthRepo, transactionRepo, calcService)
+	dashboardService := service.NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calcService)
+	handler := NewDashboardHandler(dashboardService)
+
+	workspaceID := int32(1)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/future-spending", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	err := handler.GetFutureSpending(c)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", rec.Code)
+	}
+
+	var response domain.FutureSpendingData
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	// Default is 12 months
+	if len(response.Months) != 12 {
+		t.Errorf("Expected 12 months (default), got %d", len(response.Months))
+	}
+}
+
+func TestGetFutureSpending_InvalidMonthsParameter(t *testing.T) {
+	e := echo.New()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	monthRepo := testutil.NewMockMonthRepository()
+	loanPaymentRepo := testutil.NewMockLoanPaymentRepository()
+	calcService := service.NewCalculationService(accountRepo, transactionRepo)
+	monthService := service.NewMonthService(monthRepo, transactionRepo, calcService)
+	dashboardService := service.NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calcService)
+	handler := NewDashboardHandler(dashboardService)
+
+	workspaceID := int32(1)
+
+	// Test invalid format
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/future-spending?months=abc", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	err := handler.GetFutureSpending(c)
+	if err != nil {
+		t.Fatalf("Expected JSON response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rec.Code)
+	}
+
+	// Test out of range (too high)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/future-spending?months=25", nil)
+	rec = httptest.NewRecorder()
+	c = e.NewContext(req, rec)
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	err = handler.GetFutureSpending(c)
+	if err != nil {
+		t.Fatalf("Expected JSON response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rec.Code)
+	}
+
+	// Test out of range (too low)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/future-spending?months=0", nil)
+	rec = httptest.NewRecorder()
+	c = e.NewContext(req, rec)
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	err = handler.GetFutureSpending(c)
+	if err != nil {
+		t.Fatalf("Expected JSON response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestGetFutureSpending_MissingWorkspaceID(t *testing.T) {
+	e := echo.New()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	monthRepo := testutil.NewMockMonthRepository()
+	loanPaymentRepo := testutil.NewMockLoanPaymentRepository()
+	calcService := service.NewCalculationService(accountRepo, transactionRepo)
+	monthService := service.NewMonthService(monthRepo, transactionRepo, calcService)
+	dashboardService := service.NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calcService)
+	handler := NewDashboardHandler(dashboardService)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/future-spending", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	// No workspace ID set
+	setupAuthContext(c, "auth0|test", "test@example.com", "Test User", "")
+
+	err := handler.GetFutureSpending(c)
+	if err != nil {
+		t.Fatalf("Expected JSON response, got error: %v", err)
+	}
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401, got %d", rec.Code)
+	}
+}
+
+func TestGetFutureSpending_WithDeferredCC(t *testing.T) {
+	e := echo.New()
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	monthRepo := testutil.NewMockMonthRepository()
+	loanPaymentRepo := testutil.NewMockLoanPaymentRepository()
+	calcService := service.NewCalculationService(accountRepo, transactionRepo)
+	monthService := service.NewMonthService(monthRepo, transactionRepo, calcService)
+	dashboardService := service.NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calcService)
+	handler := NewDashboardHandler(dashboardService)
+
+	workspaceID := int32(1)
+	now := time.Now()
+
+	// Add CC account
+	accountRepo.AddAccount(&domain.Account{
+		ID:             1,
+		WorkspaceID:    workspaceID,
+		Name:           "Credit Card",
+		AccountType:    domain.AccountTypeLiability,
+		Template:       domain.TemplateCreditCard,
+		InitialBalance: decimal.Zero,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	})
+
+	// Add deferred CC transaction (billed + deferred)
+	ccState := domain.CCStateBilled
+	settlementIntent := domain.SettlementIntentDeferred
+	lastMonth := now.AddDate(0, -1, 0)
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:               1,
+		WorkspaceID:      workspaceID,
+		AccountID:        1,
+		Name:             "Deferred Purchase",
+		Amount:           decimal.NewFromInt(300),
+		Type:             domain.TransactionTypeExpense,
+		TransactionDate:  lastMonth,
+		IsPaid:           false,
+		CCState:          &ccState,
+		SettlementIntent: &settlementIntent,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/future-spending?months=1", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", workspaceID)
+
+	err := handler.GetFutureSpending(c)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", rec.Code)
+	}
+
+	var response domain.FutureSpendingData
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	// The deferred CC should be carried forward to current month
+	if len(response.Months) != 1 {
+		t.Errorf("Expected 1 month, got %d", len(response.Months))
+	}
+
+	// Current month should include the deferred CC amount
+	if response.Months[0].Total != "300.00" {
+		t.Errorf("Expected current month total '300.00' (deferred CC), got %s", response.Months[0].Total)
+	}
+}

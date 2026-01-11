@@ -150,3 +150,44 @@ func (h *DashboardHandler) GetSummary(c echo.Context) error {
 		Projection:            projection,
 	})
 }
+
+// GetFutureSpending godoc
+// @Summary Get future spending data
+// @Description Get aggregated spending data for future months including projections
+// @Tags dashboard
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param months query int false "Number of months to include (1-24, default 12)"
+// @Success 200 {object} domain.FutureSpendingData
+// @Failure 400 {object} ProblemDetails
+// @Failure 401 {object} ProblemDetails
+// @Failure 500 {object} ProblemDetails
+// @Router /dashboard/future-spending [get]
+func (h *DashboardHandler) GetFutureSpending(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	// Parse months parameter (default 12)
+	months := 12
+	if monthsStr := c.QueryParam("months"); monthsStr != "" {
+		parsedMonths, err := strconv.Atoi(monthsStr)
+		if err != nil {
+			return NewValidationError(c, "Invalid months format", []ValidationError{{Field: "months", Message: "Must be a valid integer"}})
+		}
+		if parsedMonths < 1 || parsedMonths > 24 {
+			return NewValidationError(c, "Months must be between 1 and 24", []ValidationError{{Field: "months", Message: "Must be between 1 and 24"}})
+		}
+		months = parsedMonths
+	}
+
+	data, err := h.dashboardService.GetFutureSpending(workspaceID, months)
+	if err != nil {
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("months", months).Msg("Failed to get future spending data")
+		return NewInternalError(c, "Failed to get future spending data")
+	}
+
+	return c.JSON(http.StatusOK, data)
+}

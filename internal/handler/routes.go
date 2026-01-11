@@ -64,6 +64,7 @@ func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateL
 	dashboard := api.Group("/dashboard")
 	dashboard.Use(dualAuth.Authenticate(), middleware.RateLimitMiddleware(rateLimiter))
 	dashboard.GET("/summary", dashboardHandler.GetSummary)
+	dashboard.GET("/future-spending", dashboardHandler.GetFutureSpending)
 
 	// Budget Category routes (dual auth with rate limiting)
 	budgetCategories := api.Group("/budget-categories")

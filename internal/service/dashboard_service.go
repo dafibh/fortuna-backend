@@ -298,3 +298,147 @@ func (s *DashboardService) GetCCPayable(workspaceID int32) (*domain.CCPayableSum
 	summary.Total = summary.ThisMonth.Add(summary.NextMonth)
 	return summary, nil
 }
+
+// GetFutureSpending returns aggregated spending data for future months
+// including both actual and projected transactions
+func (s *DashboardService) GetFutureSpending(workspaceID int32, months int) (*domain.FutureSpendingData, error) {
+	now := time.Now()
+	startDate := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	endDate := startDate.AddDate(0, months, 0)
+
+	// Get all transactions in the date range (includes both actual and projected)
+	filters := &domain.TransactionFilters{
+		StartDate: &startDate,
+		EndDate:   &endDate,
+		Page:      1,
+		PageSize:  domain.MaxPageSize * 100, // Get all transactions
+	}
+
+	txResult, err := s.transactionRepo.GetByWorkspace(workspaceID, filters)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get accounts for name lookup
+	accounts, err := s.accountRepo.GetAllByWorkspace(workspaceID, false)
+	if err != nil {
+		return nil, err
+	}
+
+	accountMap := make(map[int32]string)
+	for _, acc := range accounts {
+		accountMap[acc.ID] = acc.Name
+	}
+
+	// Get deferred CC transactions that should be carried forward
+	deferredCC, err := s.transactionRepo.GetDeferredForSettlement(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Aggregate by month
+	monthlyData := make(map[string]*domain.MonthSpending)
+
+	// Process regular transactions
+	for _, txn := range txResult.Data {
+		// Only count expenses
+		if txn.Type != domain.TransactionTypeExpense {
+			continue
+		}
+
+		monthKey := txn.TransactionDate.Format("2006-01")
+
+		if _, exists := monthlyData[monthKey]; !exists {
+			monthlyData[monthKey] = &domain.MonthSpending{
+				Month:      monthKey,
+				Total:      decimal.Zero,
+				ByCategory: make(map[int32]decimal.Decimal),
+				ByAccount:  make(map[int32]decimal.Decimal),
+			}
+		}
+
+		m := monthlyData[monthKey]
+		amount := txn.Amount.Abs()
+		m.Total = m.Total.Add(amount)
+		if txn.CategoryID != nil {
+			m.ByCategory[*txn.CategoryID] = m.ByCategory[*txn.CategoryID].Add(amount)
+		}
+		m.ByAccount[txn.AccountID] = m.ByAccount[txn.AccountID].Add(amount)
+	}
+
+	// Add deferred CC to the current month (they're carried forward)
+	currentMonthKey := startDate.Format("2006-01")
+	if _, exists := monthlyData[currentMonthKey]; !exists {
+		monthlyData[currentMonthKey] = &domain.MonthSpending{
+			Month:      currentMonthKey,
+			Total:      decimal.Zero,
+			ByCategory: make(map[int32]decimal.Decimal),
+			ByAccount:  make(map[int32]decimal.Decimal),
+		}
+	}
+	for _, txn := range deferredCC {
+		m := monthlyData[currentMonthKey]
+		amount := txn.Amount.Abs()
+		m.Total = m.Total.Add(amount)
+		if txn.CategoryID != nil {
+			m.ByCategory[*txn.CategoryID] = m.ByCategory[*txn.CategoryID].Add(amount)
+		}
+		m.ByAccount[txn.AccountID] = m.ByAccount[txn.AccountID].Add(amount)
+	}
+
+	// Build category name map (from transactions that have category names)
+	categoryMap := make(map[int32]string)
+	for _, txn := range txResult.Data {
+		if txn.CategoryID != nil && txn.CategoryName != nil {
+			categoryMap[*txn.CategoryID] = *txn.CategoryName
+		}
+	}
+
+	// Convert to response format, ensuring all months in range are present
+	result := &domain.FutureSpendingData{
+		Months: make([]domain.MonthSpendingResponse, 0, months),
+	}
+
+	current := startDate
+	for current.Before(endDate) {
+		monthKey := current.Format("2006-01")
+
+		data, exists := monthlyData[monthKey]
+		if !exists {
+			data = &domain.MonthSpending{
+				Month:      monthKey,
+				Total:      decimal.Zero,
+				ByCategory: make(map[int32]decimal.Decimal),
+				ByAccount:  make(map[int32]decimal.Decimal),
+			}
+		}
+
+		response := domain.MonthSpendingResponse{
+			Month:      monthKey,
+			Total:      data.Total.StringFixed(2),
+			ByCategory: make([]domain.CategoryAmount, 0, len(data.ByCategory)),
+			ByAccount:  make([]domain.AccountAmount, 0, len(data.ByAccount)),
+		}
+
+		for catID, amount := range data.ByCategory {
+			response.ByCategory = append(response.ByCategory, domain.CategoryAmount{
+				ID:     catID,
+				Name:   categoryMap[catID],
+				Amount: amount.StringFixed(2),
+			})
+		}
+
+		for accID, amount := range data.ByAccount {
+			response.ByAccount = append(response.ByAccount, domain.AccountAmount{
+				ID:     accID,
+				Name:   accountMap[accID],
+				Amount: amount.StringFixed(2),
+			})
+		}
+
+		result.Months = append(result.Months, response)
+		current = current.AddDate(0, 1, 0)
+	}
+
+	return result, nil
+}

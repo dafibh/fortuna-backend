@@ -1233,3 +1233,329 @@ func TestDashboardService_GetSummary_IncludesCCPayable(t *testing.T) {
 		t.Errorf("CCPayable.Total = %v, want 800.00", summary.CCPayable.Total.StringFixed(2))
 	}
 }
+
+// Tests for GetFutureSpending service method
+
+func TestDashboardService_GetFutureSpending_BasicAggregation(t *testing.T) {
+	now := time.Now()
+	workspaceID := int32(1)
+
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	monthRepo := testutil.NewMockMonthRepository()
+	loanPaymentRepo := testutil.NewMockLoanPaymentRepository()
+
+	// Add account
+	accountRepo.AddAccount(&domain.Account{
+		ID:             1,
+		WorkspaceID:    workspaceID,
+		Name:           "Bank Account",
+		AccountType:    domain.AccountTypeAsset,
+		Template:       domain.TemplateBank,
+		InitialBalance: decimal.NewFromInt(10000),
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	})
+
+	// Add expense transactions in current month
+	categoryID := int32(1)
+	categoryName := "Food"
+	txDate := time.Date(now.Year(), now.Month(), 15, 12, 0, 0, 0, time.UTC)
+
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:              1,
+		WorkspaceID:     workspaceID,
+		AccountID:       1,
+		Name:            "Groceries",
+		Amount:          decimal.NewFromInt(500),
+		Type:            domain.TransactionTypeExpense,
+		TransactionDate: txDate,
+		IsPaid:          true,
+		CategoryID:      &categoryID,
+		CategoryName:    &categoryName,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	})
+
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:              2,
+		WorkspaceID:     workspaceID,
+		AccountID:       1,
+		Name:            "Restaurant",
+		Amount:          decimal.NewFromInt(200),
+		Type:            domain.TransactionTypeExpense,
+		TransactionDate: txDate,
+		IsPaid:          true,
+		CategoryID:      &categoryID,
+		CategoryName:    &categoryName,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	})
+
+	calcService := NewCalculationService(accountRepo, transactionRepo)
+	monthService := NewMonthService(monthRepo, transactionRepo, calcService)
+	dashboardService := NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calcService)
+
+	result, err := dashboardService.GetFutureSpending(workspaceID, 3)
+	if err != nil {
+		t.Fatalf("GetFutureSpending() error = %v", err)
+	}
+
+	// Should have 3 months
+	if len(result.Months) != 3 {
+		t.Errorf("Expected 3 months, got %d", len(result.Months))
+	}
+
+	// First month should have total = 700 (500 + 200)
+	if result.Months[0].Total != "700.00" {
+		t.Errorf("First month total = %s, want 700.00", result.Months[0].Total)
+	}
+
+	// Should have category breakdown
+	if len(result.Months[0].ByCategory) != 1 {
+		t.Errorf("Expected 1 category, got %d", len(result.Months[0].ByCategory))
+	}
+
+	// Category amount should be 700
+	if len(result.Months[0].ByCategory) > 0 && result.Months[0].ByCategory[0].Amount != "700.00" {
+		t.Errorf("Category amount = %s, want 700.00", result.Months[0].ByCategory[0].Amount)
+	}
+}
+
+func TestDashboardService_GetFutureSpending_IncludesDeferredCC(t *testing.T) {
+	now := time.Now()
+	workspaceID := int32(1)
+
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	monthRepo := testutil.NewMockMonthRepository()
+	loanPaymentRepo := testutil.NewMockLoanPaymentRepository()
+
+	// Add CC account
+	accountRepo.AddAccount(&domain.Account{
+		ID:             1,
+		WorkspaceID:    workspaceID,
+		Name:           "Credit Card",
+		AccountType:    domain.AccountTypeLiability,
+		Template:       domain.TemplateCreditCard,
+		InitialBalance: decimal.Zero,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	})
+
+	// Add deferred CC transaction from last month (billed + deferred)
+	ccState := domain.CCStateBilled
+	settlementIntent := domain.SettlementIntentDeferred
+	lastMonth := now.AddDate(0, -1, 0)
+
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:               1,
+		WorkspaceID:      workspaceID,
+		AccountID:        1,
+		Name:             "Deferred Purchase",
+		Amount:           decimal.NewFromInt(300),
+		Type:             domain.TransactionTypeExpense,
+		TransactionDate:  lastMonth,
+		IsPaid:           false,
+		CCState:          &ccState,
+		SettlementIntent: &settlementIntent,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	})
+
+	calcService := NewCalculationService(accountRepo, transactionRepo)
+	monthService := NewMonthService(monthRepo, transactionRepo, calcService)
+	dashboardService := NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calcService)
+
+	result, err := dashboardService.GetFutureSpending(workspaceID, 1)
+	if err != nil {
+		t.Fatalf("GetFutureSpending() error = %v", err)
+	}
+
+	// Current month should include deferred CC carried forward
+	if len(result.Months) != 1 {
+		t.Fatalf("Expected 1 month, got %d", len(result.Months))
+	}
+
+	// Total should include the deferred amount
+	if result.Months[0].Total != "300.00" {
+		t.Errorf("Current month total = %s, want 300.00 (deferred CC)", result.Months[0].Total)
+	}
+}
+
+func TestDashboardService_GetFutureSpending_ExcludesIncome(t *testing.T) {
+	now := time.Now()
+	workspaceID := int32(1)
+
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	monthRepo := testutil.NewMockMonthRepository()
+	loanPaymentRepo := testutil.NewMockLoanPaymentRepository()
+
+	// Add account
+	accountRepo.AddAccount(&domain.Account{
+		ID:             1,
+		WorkspaceID:    workspaceID,
+		Name:           "Bank Account",
+		AccountType:    domain.AccountTypeAsset,
+		Template:       domain.TemplateBank,
+		InitialBalance: decimal.NewFromInt(10000),
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	})
+
+	txDate := time.Date(now.Year(), now.Month(), 15, 12, 0, 0, 0, time.UTC)
+
+	// Add expense
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:              1,
+		WorkspaceID:     workspaceID,
+		AccountID:       1,
+		Name:            "Expense",
+		Amount:          decimal.NewFromInt(100),
+		Type:            domain.TransactionTypeExpense,
+		TransactionDate: txDate,
+		IsPaid:          true,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	})
+
+	// Add income (should be excluded from spending)
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:              2,
+		WorkspaceID:     workspaceID,
+		AccountID:       1,
+		Name:            "Salary",
+		Amount:          decimal.NewFromInt(5000),
+		Type:            domain.TransactionTypeIncome,
+		TransactionDate: txDate,
+		IsPaid:          true,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	})
+
+	calcService := NewCalculationService(accountRepo, transactionRepo)
+	monthService := NewMonthService(monthRepo, transactionRepo, calcService)
+	dashboardService := NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calcService)
+
+	result, err := dashboardService.GetFutureSpending(workspaceID, 1)
+	if err != nil {
+		t.Fatalf("GetFutureSpending() error = %v", err)
+	}
+
+	// Total should only include expense, not income
+	if result.Months[0].Total != "100.00" {
+		t.Errorf("Total = %s, want 100.00 (income should be excluded)", result.Months[0].Total)
+	}
+}
+
+func TestDashboardService_GetFutureSpending_EmptyMonths(t *testing.T) {
+	workspaceID := int32(1)
+
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	monthRepo := testutil.NewMockMonthRepository()
+	loanPaymentRepo := testutil.NewMockLoanPaymentRepository()
+
+	calcService := NewCalculationService(accountRepo, transactionRepo)
+	monthService := NewMonthService(monthRepo, transactionRepo, calcService)
+	dashboardService := NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calcService)
+
+	result, err := dashboardService.GetFutureSpending(workspaceID, 6)
+	if err != nil {
+		t.Fatalf("GetFutureSpending() error = %v", err)
+	}
+
+	// Should have 6 months even with no data
+	if len(result.Months) != 6 {
+		t.Errorf("Expected 6 months, got %d", len(result.Months))
+	}
+
+	// All months should have zero totals
+	for i, month := range result.Months {
+		if month.Total != "0.00" {
+			t.Errorf("Month %d total = %s, want 0.00", i, month.Total)
+		}
+	}
+}
+
+func TestDashboardService_GetFutureSpending_MultipleAccounts(t *testing.T) {
+	now := time.Now()
+	workspaceID := int32(1)
+
+	accountRepo := testutil.NewMockAccountRepository()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	monthRepo := testutil.NewMockMonthRepository()
+	loanPaymentRepo := testutil.NewMockLoanPaymentRepository()
+
+	// Add two accounts
+	accountRepo.AddAccount(&domain.Account{
+		ID:             1,
+		WorkspaceID:    workspaceID,
+		Name:           "Bank Account",
+		AccountType:    domain.AccountTypeAsset,
+		Template:       domain.TemplateBank,
+		InitialBalance: decimal.NewFromInt(10000),
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	})
+	accountRepo.AddAccount(&domain.Account{
+		ID:             2,
+		WorkspaceID:    workspaceID,
+		Name:           "Cash",
+		AccountType:    domain.AccountTypeAsset,
+		Template:       domain.TemplateCash,
+		InitialBalance: decimal.NewFromInt(500),
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	})
+
+	txDate := time.Date(now.Year(), now.Month(), 15, 12, 0, 0, 0, time.UTC)
+
+	// Add expense from account 1
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:              1,
+		WorkspaceID:     workspaceID,
+		AccountID:       1,
+		Name:            "Card Payment",
+		Amount:          decimal.NewFromInt(300),
+		Type:            domain.TransactionTypeExpense,
+		TransactionDate: txDate,
+		IsPaid:          true,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	})
+
+	// Add expense from account 2
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:              2,
+		WorkspaceID:     workspaceID,
+		AccountID:       2,
+		Name:            "Cash Payment",
+		Amount:          decimal.NewFromInt(100),
+		Type:            domain.TransactionTypeExpense,
+		TransactionDate: txDate,
+		IsPaid:          true,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	})
+
+	calcService := NewCalculationService(accountRepo, transactionRepo)
+	monthService := NewMonthService(monthRepo, transactionRepo, calcService)
+	dashboardService := NewDashboardService(accountRepo, transactionRepo, loanPaymentRepo, monthService, calcService)
+
+	result, err := dashboardService.GetFutureSpending(workspaceID, 1)
+	if err != nil {
+		t.Fatalf("GetFutureSpending() error = %v", err)
+	}
+
+	// Total should be 400 (300 + 100)
+	if result.Months[0].Total != "400.00" {
+		t.Errorf("Total = %s, want 400.00", result.Months[0].Total)
+	}
+
+	// Should have 2 accounts in breakdown
+	if len(result.Months[0].ByAccount) != 2 {
+		t.Errorf("Expected 2 accounts, got %d", len(result.Months[0].ByAccount))
+	}
+}
