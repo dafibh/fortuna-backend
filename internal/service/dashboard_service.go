@@ -336,10 +336,15 @@ func (s *DashboardService) GetFutureSpending(workspaceID int32, months int) (*do
 	deferredByTargetMonth := make(map[string][]*domain.Transaction)
 
 	// Process regular transactions
-	// EXCLUDE deferred CC transactions - they'll be added to next month
+	// EXCLUDE transfers and deferred CC transactions
 	for _, txn := range transactions {
 		// Only count expenses
 		if txn.Type != domain.TransactionTypeExpense {
+			continue
+		}
+
+		// Skip transfers (they move money between accounts, not actual spending)
+		if txn.TransferPairID != nil {
 			continue
 		}
 
