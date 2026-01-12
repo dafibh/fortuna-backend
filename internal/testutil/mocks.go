@@ -364,7 +364,7 @@ type MockTransactionRepository struct {
 	GetDeferredForSettlementFn        func(workspaceID int32) ([]*domain.Transaction, error)
 	GetImmediateForSettlementFn       func(workspaceID int32, startDate, endDate time.Time) ([]*domain.Transaction, error)
 	GetPendingDeferredCCFn            func(workspaceID int32, startDate, endDate time.Time) ([]*domain.Transaction, error)
-	AtomicSettleFn                    func(transferTx *domain.Transaction, settleIDs []int32) (*domain.Transaction, int, error)
+	AtomicSettleFn                    func(fromTx, toTx *domain.Transaction, settleIDs []int32) (*domain.Transaction, int, error)
 	GetOverdueCCFn                    func(workspaceID int32) ([]*domain.Transaction, error)
 }
 
@@ -1009,30 +1009,37 @@ func (m *MockTransactionRepository) GetPendingDeferredCC(workspaceID int32, star
 	return result, nil
 }
 
-// AtomicSettle creates a transfer transaction and settles CC transactions atomically
-func (m *MockTransactionRepository) AtomicSettle(transferTx *domain.Transaction, settleIDs []int32) (*domain.Transaction, int, error) {
+// AtomicSettle creates a transfer pair and settles CC transactions atomically
+func (m *MockTransactionRepository) AtomicSettle(fromTx, toTx *domain.Transaction, settleIDs []int32) (*domain.Transaction, int, error) {
 	if m.AtomicSettleFn != nil {
-		return m.AtomicSettleFn(transferTx, settleIDs)
+		return m.AtomicSettleFn(fromTx, toTx, settleIDs)
 	}
-	// Default: create transfer and settle transactions
-	transferTx.ID = m.NextID
+	// Default: create both transfer transactions and settle CC transactions
+	fromTx.ID = m.NextID
 	m.NextID++
-	transferTx.CreatedAt = time.Now()
-	transferTx.UpdatedAt = time.Now()
-	m.Transactions[transferTx.ID] = transferTx
-	m.ByWorkspace[transferTx.WorkspaceID] = append(m.ByWorkspace[transferTx.WorkspaceID], transferTx)
+	fromTx.CreatedAt = time.Now()
+	fromTx.UpdatedAt = time.Now()
+	m.Transactions[fromTx.ID] = fromTx
+	m.ByWorkspace[fromTx.WorkspaceID] = append(m.ByWorkspace[fromTx.WorkspaceID], fromTx)
+
+	toTx.ID = m.NextID
+	m.NextID++
+	toTx.CreatedAt = time.Now()
+	toTx.UpdatedAt = time.Now()
+	m.Transactions[toTx.ID] = toTx
+	m.ByWorkspace[toTx.WorkspaceID] = append(m.ByWorkspace[toTx.WorkspaceID], toTx)
 
 	// Settle all transactions (isPaid = true)
 	settledCount := 0
 	for _, id := range settleIDs {
-		if tx, ok := m.Transactions[id]; ok && tx.WorkspaceID == transferTx.WorkspaceID {
+		if tx, ok := m.Transactions[id]; ok && tx.WorkspaceID == fromTx.WorkspaceID {
 			tx.IsPaid = true // v2: isPaid = true means settled
 			// Recompute CCState
 			tx.CCState = domain.ComputeCCState(tx.IsPaid, tx.BilledAt)
 			settledCount++
 		}
 	}
-	return transferTx, settledCount, nil
+	return fromTx, settledCount, nil
 }
 
 // GetOverdueCC retrieves overdue CC transactions (billed + deferred for 2+ months)

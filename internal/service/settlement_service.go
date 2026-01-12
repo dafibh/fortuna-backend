@@ -90,10 +90,12 @@ func (s *SettlementService) Settle(workspaceID int32, input domain.SettlementInp
 
 	now := time.Now()
 
-	// 5. Prepare transfer transaction (Bank → CC expense)
-	// This represents the payment from bank to CC
+	// 5. Prepare transfer transactions (Bank → CC)
+	// Like a regular transfer, we create both expense and income sides
 	transferPairID := uuid.New()
-	transferTx := &domain.Transaction{
+
+	// Expense from source bank account
+	fromTx := &domain.Transaction{
 		WorkspaceID:     workspaceID,
 		AccountID:       input.SourceAccountID,
 		Name:            "CC Settlement",
@@ -108,9 +110,25 @@ func (s *SettlementService) Settle(workspaceID int32, input domain.SettlementInp
 		UpdatedAt:       now,
 	}
 
-	// 6. Atomically create transfer and settle CC transactions
+	// Income to CC account (offsets the CC liability)
+	toTx := &domain.Transaction{
+		WorkspaceID:     workspaceID,
+		AccountID:       input.TargetCCAccountID,
+		Name:            "CC Settlement",
+		Amount:          totalAmount,
+		Type:            domain.TransactionTypeIncome,
+		TransactionDate: now,
+		IsPaid:          true,
+		TransferPairID:  &transferPairID,
+		IsCCPayment:     true,
+		Source:          "manual",
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+
+	// 6. Atomically create transfer pair and settle CC transactions
 	// This ensures all-or-nothing behavior: if any operation fails, all changes are rolled back
-	createdTransfer, settledCount, err := s.transactionRepo.AtomicSettle(transferTx, input.TransactionIDs)
+	createdTransfer, settledCount, err := s.transactionRepo.AtomicSettle(fromTx, toTx, input.TransactionIDs)
 	if err != nil {
 		return nil, err
 	}

@@ -954,9 +954,9 @@ func (r *TransactionRepository) GetOverdueCC(workspaceID int32) ([]*domain.Trans
 	return transactions, nil
 }
 
-// AtomicSettle creates a transfer transaction and settles CC transactions atomically
+// AtomicSettle creates a transfer pair (expense and income) and settles CC transactions atomically
 // within a single database transaction. If any operation fails, all changes are rolled back.
-func (r *TransactionRepository) AtomicSettle(transferTx *domain.Transaction, settleIDs []int32) (*domain.Transaction, int, error) {
+func (r *TransactionRepository) AtomicSettle(fromTx, toTx *domain.Transaction, settleIDs []int32) (*domain.Transaction, int, error) {
 	ctx := context.Background()
 
 	// Start a transaction
@@ -968,32 +968,38 @@ func (r *TransactionRepository) AtomicSettle(transferTx *domain.Transaction, set
 
 	qtx := r.queries.WithTx(tx)
 
-	// 1. Create transfer transaction
-	createdTransfer, err := r.createTransactionWithTx(ctx, qtx, transferTx)
+	// 1. Create expense transaction (from bank)
+	createdFromTx, err := r.createTransactionWithTx(ctx, qtx, fromTx)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	// 2. Bulk settle all CC transactions
+	// 2. Create income transaction (to CC)
+	_, err = r.createTransactionWithTx(ctx, qtx, toTx)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 3. Bulk settle all CC transactions
 	rows, err := qtx.BulkSettleTransactions(ctx, sqlc.BulkSettleTransactionsParams{
 		Column1:     settleIDs,
-		WorkspaceID: transferTx.WorkspaceID,
+		WorkspaceID: fromTx.WorkspaceID,
 	})
 	if err != nil {
 		return nil, 0, err
 	}
 
-	// 3. Verify all requested transactions were settled
+	// 4. Verify all requested transactions were settled
 	if len(rows) != len(settleIDs) {
 		return nil, 0, domain.ErrTransactionsNotFound
 	}
 
-	// 4. Commit the transaction
+	// 5. Commit the transaction
 	if err := tx.Commit(ctx); err != nil {
 		return nil, 0, err
 	}
 
-	return createdTransfer, len(rows), nil
+	return createdFromTx, len(rows), nil
 }
 
 // GetByDateRangeForAggregation retrieves all transactions in a date range for aggregation

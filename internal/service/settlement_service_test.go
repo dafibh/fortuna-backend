@@ -471,12 +471,12 @@ func TestSettlementService_Settle_CreatesTransferTransaction(t *testing.T) {
 
 	// Track created transactions via AtomicSettle
 	var createdTransfer *domain.Transaction
-	transactionRepo.AtomicSettleFn = func(transferTx *domain.Transaction, settleIDs []int32) (*domain.Transaction, int, error) {
-		transferTx.ID = 100
-		transferTx.CreatedAt = time.Now()
-		transferTx.UpdatedAt = time.Now()
-		createdTransfer = transferTx
-		return transferTx, len(settleIDs), nil
+	transactionRepo.AtomicSettleFn = func(fromTx, toTx *domain.Transaction, settleIDs []int32) (*domain.Transaction, int, error) {
+		fromTx.ID = 100
+		fromTx.CreatedAt = time.Now()
+		fromTx.UpdatedAt = time.Now()
+		createdTransfer = fromTx
+		return fromTx, len(settleIDs), nil
 	}
 
 	// Create accounts
@@ -534,7 +534,7 @@ func TestSettlementService_Settle_AtomicRollbackOnFailure(t *testing.T) {
 
 	// Simulate AtomicSettle failure - this should roll back both create and settle
 	atomicSettleCalled := false
-	transactionRepo.AtomicSettleFn = func(transferTx *domain.Transaction, settleIDs []int32) (*domain.Transaction, int, error) {
+	transactionRepo.AtomicSettleFn = func(fromTx, toTx *domain.Transaction, settleIDs []int32) (*domain.Transaction, int, error) {
 		atomicSettleCalled = true
 		// Simulate database error during atomic operation
 		return nil, 0, domain.ErrTransactionsNotFound
@@ -584,10 +584,10 @@ func TestSettlementService_Settle_PartialSettleCountMismatch(t *testing.T) {
 	accountRepo := testutil.NewMockAccountRepository()
 
 	// Simulate AtomicSettle returning fewer settled transactions than requested
-	transactionRepo.AtomicSettleFn = func(transferTx *domain.Transaction, settleIDs []int32) (*domain.Transaction, int, error) {
-		transferTx.ID = 100
+	transactionRepo.AtomicSettleFn = func(fromTx, toTx *domain.Transaction, settleIDs []int32) (*domain.Transaction, int, error) {
+		fromTx.ID = 100
 		// Return fewer settled than requested (simulating partial failure that was caught)
-		return transferTx, len(settleIDs) - 1, nil
+		return fromTx, len(settleIDs) - 1, nil
 	}
 
 	// Create accounts

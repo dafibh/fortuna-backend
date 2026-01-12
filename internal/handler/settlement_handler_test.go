@@ -53,11 +53,11 @@ func TestSettlementHandler_Create_Success(t *testing.T) {
 	transactionRepo.AddTransaction(tx)
 
 	// Track created transfer via AtomicSettle
-	transactionRepo.AtomicSettleFn = func(transferTx *domain.Transaction, settleIDs []int32) (*domain.Transaction, int, error) {
-		transferTx.ID = 99
-		transferTx.CreatedAt = time.Now()
-		transferTx.UpdatedAt = time.Now()
-		return transferTx, len(settleIDs), nil
+	transactionRepo.AtomicSettleFn = func(fromTx, toTx *domain.Transaction, settleIDs []int32) (*domain.Transaction, int, error) {
+		fromTx.ID = 99
+		fromTx.CreatedAt = time.Now()
+		fromTx.UpdatedAt = time.Now()
+		return fromTx, len(settleIDs), nil
 	}
 
 	settlementService := service.NewSettlementService(transactionRepo, accountRepo)
