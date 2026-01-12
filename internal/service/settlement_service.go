@@ -81,9 +81,9 @@ func (s *SettlementService) Settle(workspaceID int32, input domain.SettlementInp
 		if tx.CCState == nil || *tx.CCState != domain.CCStateBilled {
 			return nil, domain.ErrTransactionNotBilled
 		}
-		// Must have deferred settlement intent
-		if tx.SettlementIntent == nil || *tx.SettlementIntent != domain.SettlementIntentDeferred {
-			return nil, domain.ErrTransactionNotDeferred
+		// Must have settlement intent (either immediate or deferred)
+		if tx.SettlementIntent == nil {
+			return nil, domain.ErrTransactionNotSettleable
 		}
 		totalAmount = totalAmount.Add(tx.Amount)
 	}

@@ -180,7 +180,7 @@ func TestSettlementService_Settle_TransactionNotBilled(t *testing.T) {
 	}
 }
 
-func TestSettlementService_Settle_TransactionNotDeferred(t *testing.T) {
+func TestSettlementService_Settle_ImmediateIntentSuccess(t *testing.T) {
 	transactionRepo := testutil.NewMockTransactionRepository()
 	accountRepo := testutil.NewMockAccountRepository()
 
@@ -190,7 +190,7 @@ func TestSettlementService_Settle_TransactionNotDeferred(t *testing.T) {
 	ccAccount := &domain.Account{ID: 2, WorkspaceID: 1, Template: domain.TemplateCreditCard}
 	accountRepo.AddAccount(ccAccount)
 
-	// Create billed transaction but with immediate intent (not deferred)
+	// Create billed transaction with immediate intent (should succeed now)
 	billedState := domain.CCStateBilled
 	immediateIntent := domain.SettlementIntentImmediate
 	tx := &domain.Transaction{
@@ -210,10 +210,49 @@ func TestSettlementService_Settle_TransactionNotDeferred(t *testing.T) {
 		SourceAccountID:   1,
 		TargetCCAccountID: 2,
 	}
+	result, err := service.Settle(1, input)
+
+	if err != nil {
+		t.Fatalf("expected no error for immediate intent, got %v", err)
+	}
+	if result.SettledCount != 1 {
+		t.Errorf("expected settled count 1, got %d", result.SettledCount)
+	}
+}
+
+func TestSettlementService_Settle_NoSettlementIntent(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+
+	// Create accounts
+	bankAccount := &domain.Account{ID: 1, WorkspaceID: 1, Template: domain.TemplateBank}
+	accountRepo.AddAccount(bankAccount)
+	ccAccount := &domain.Account{ID: 2, WorkspaceID: 1, Template: domain.TemplateCreditCard}
+	accountRepo.AddAccount(ccAccount)
+
+	// Create billed transaction but without any settlement intent
+	billedState := domain.CCStateBilled
+	tx := &domain.Transaction{
+		ID:               1,
+		WorkspaceID:      1,
+		AccountID:        2,
+		Amount:           decimal.NewFromFloat(50.00),
+		CCState:          &billedState,
+		SettlementIntent: nil, // No settlement intent
+	}
+	transactionRepo.AddTransaction(tx)
+
+	service := NewSettlementService(transactionRepo, accountRepo)
+
+	input := domain.SettlementInput{
+		TransactionIDs:    []int32{1},
+		SourceAccountID:   1,
+		TargetCCAccountID: 2,
+	}
 	_, err := service.Settle(1, input)
 
-	if err != domain.ErrTransactionNotDeferred {
-		t.Errorf("expected ErrTransactionNotDeferred, got %v", err)
+	if err != domain.ErrTransactionNotSettleable {
+		t.Errorf("expected ErrTransactionNotSettleable, got %v", err)
 	}
 }
 

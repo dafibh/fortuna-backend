@@ -110,8 +110,8 @@ func (h *SettlementHandler) handleServiceError(c echo.Context, err error) error 
 		return NewNotFoundError(c, "One or more transactions not found")
 	case errors.Is(err, domain.ErrTransactionNotBilled):
 		return NewConflictError(c, "All transactions must be in billed state to settle")
-	case errors.Is(err, domain.ErrTransactionNotDeferred):
-		return NewConflictError(c, "All transactions must have deferred settlement intent")
+	case errors.Is(err, domain.ErrTransactionNotSettleable):
+		return NewConflictError(c, "All transactions must be credit card transactions with settlement intent")
 	case errors.Is(err, domain.ErrInvalidSourceAccount):
 		return NewValidationError(c, "Source account cannot be a credit card", nil)
 	case errors.Is(err, domain.ErrInvalidTargetAccount):

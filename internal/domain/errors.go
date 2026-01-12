@@ -43,7 +43,7 @@ var (
 	// Settlement errors
 	ErrTransactionsNotFound   = errors.New("one or more transactions not found")
 	ErrTransactionNotBilled   = errors.New("transaction must be billed to settle")
-	ErrTransactionNotDeferred = errors.New("transaction must have deferred settlement intent to settle")
+	ErrTransactionNotSettleable = errors.New("transaction must be a credit card transaction with settlement intent")
 	ErrInvalidTargetAccount   = errors.New("target account must be a credit card")
 	ErrEmptySettlement        = errors.New("at least one transaction must be selected for settlement")
 )
