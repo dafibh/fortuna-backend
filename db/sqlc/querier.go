@@ -184,7 +184,7 @@ type Querier interface {
 	// Sum paid expenses within a date range for in-hand balance calculation
 	// Excludes transfers (they move money between accounts, not actual spending)
 	SumPaidExpensesByDateRange(ctx context.Context, arg SumPaidExpensesByDateRangeParams) (pgtype.Numeric, error)
-	// Only count paid transactions
+	// Only count paid transactions, excludes transfers
 	SumTransactionsByTypeAndDateRange(ctx context.Context, arg SumTransactionsByTypeAndDateRangeParams) (pgtype.Numeric, error)
 	// Sum unpaid expenses within a date range (ALL unpaid, including deferred CC)
 	// Used for balance calculations where all obligations matter

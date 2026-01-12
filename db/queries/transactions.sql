@@ -82,7 +82,7 @@ WHERE workspace_id = $1 AND deleted_at IS NULL
 GROUP BY account_id;
 
 -- name: SumTransactionsByTypeAndDateRange :one
--- Only count paid transactions
+-- Only count paid transactions, excludes transfers
 SELECT COALESCE(SUM(amount), 0)::NUMERIC(12,2) as total
 FROM transactions
 WHERE workspace_id = $1
@@ -90,6 +90,7 @@ WHERE workspace_id = $1
   AND transaction_date <= $3
   AND type = $4
   AND is_paid = true
+  AND transfer_pair_id IS NULL
   AND deleted_at IS NULL;
 
 -- name: GetMonthlyTransactionSummaries :many

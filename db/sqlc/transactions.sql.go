@@ -1633,6 +1633,7 @@ WHERE workspace_id = $1
   AND transaction_date <= $3
   AND type = $4
   AND is_paid = true
+  AND transfer_pair_id IS NULL
   AND deleted_at IS NULL
 `
 
@@ -1643,7 +1644,7 @@ type SumTransactionsByTypeAndDateRangeParams struct {
 	Type              string      `json:"type"`
 }
 
-// Only count paid transactions
+// Only count paid transactions, excludes transfers
 func (q *Queries) SumTransactionsByTypeAndDateRange(ctx context.Context, arg SumTransactionsByTypeAndDateRangeParams) (pgtype.Numeric, error) {
 	row := q.db.QueryRow(ctx, sumTransactionsByTypeAndDateRange,
 		arg.WorkspaceID,
