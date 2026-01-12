@@ -115,7 +115,7 @@ type Querier interface {
 	GetLoansWithStats(ctx context.Context, workspaceID int32) ([]GetLoansWithStatsRow, error)
 	GetMonthByYearMonth(ctx context.Context, arg GetMonthByYearMonthParams) (Month, error)
 	// Batch query to get income/expense totals grouped by year/month for N+1 prevention
-	// Only count paid transactions
+	// Only count paid transactions, excludes transfers
 	GetMonthlyTransactionSummaries(ctx context.Context, workspaceID int32) ([]GetMonthlyTransactionSummariesRow, error)
 	// Get CC transactions that are billed but overdue (2+ months old)
 	GetOverdueCC(ctx context.Context, workspaceID int32) ([]GetOverdueCCRow, error)
@@ -182,14 +182,17 @@ type Querier interface {
 	// Used for next month projections
 	SumDeferredCCByDateRange(ctx context.Context, arg SumDeferredCCByDateRangeParams) (pgtype.Numeric, error)
 	// Sum paid expenses within a date range for in-hand balance calculation
+	// Excludes transfers (they move money between accounts, not actual spending)
 	SumPaidExpensesByDateRange(ctx context.Context, arg SumPaidExpensesByDateRangeParams) (pgtype.Numeric, error)
 	// Only count paid transactions
 	SumTransactionsByTypeAndDateRange(ctx context.Context, arg SumTransactionsByTypeAndDateRangeParams) (pgtype.Numeric, error)
 	// Sum unpaid expenses within a date range (ALL unpaid, including deferred CC)
 	// Used for balance calculations where all obligations matter
+	// Excludes transfers (they move money between accounts, not actual spending)
 	SumUnpaidExpensesByDateRange(ctx context.Context, arg SumUnpaidExpensesByDateRangeParams) (pgtype.Numeric, error)
 	// Sum unpaid expenses for disposable income calculation
 	// EXCLUDES deferred CC transactions (those are for next month)
+	// EXCLUDES transfers (they move money between accounts, not actual spending)
 	// Includes: non-CC unpaid expenses + immediate CC expenses
 	SumUnpaidExpensesForDisposable(ctx context.Context, arg SumUnpaidExpensesForDisposableParams) (pgtype.Numeric, error)
 	SumUnpaidLoanPaymentsByMonth(ctx context.Context, arg SumUnpaidLoanPaymentsByMonthParams) (pgtype.Numeric, error)

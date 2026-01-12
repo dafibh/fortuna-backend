@@ -674,8 +674,8 @@ const getMonthlyTransactionSummaries = `-- name: GetMonthlyTransactionSummaries 
 SELECT
     EXTRACT(YEAR FROM transaction_date)::INTEGER AS year,
     EXTRACT(MONTH FROM transaction_date)::INTEGER AS month,
-    COALESCE(SUM(CASE WHEN type = 'income' AND is_paid = true THEN amount ELSE 0 END), 0)::NUMERIC(12,2) AS total_income,
-    COALESCE(SUM(CASE WHEN type = 'expense' AND is_paid = true THEN amount ELSE 0 END), 0)::NUMERIC(12,2) AS total_expenses
+    COALESCE(SUM(CASE WHEN type = 'income' AND is_paid = true AND transfer_pair_id IS NULL THEN amount ELSE 0 END), 0)::NUMERIC(12,2) AS total_income,
+    COALESCE(SUM(CASE WHEN type = 'expense' AND is_paid = true AND transfer_pair_id IS NULL THEN amount ELSE 0 END), 0)::NUMERIC(12,2) AS total_expenses
 FROM transactions
 WHERE workspace_id = $1
   AND deleted_at IS NULL
@@ -691,7 +691,7 @@ type GetMonthlyTransactionSummariesRow struct {
 }
 
 // Batch query to get income/expense totals grouped by year/month for N+1 prevention
-// Only count paid transactions
+// Only count paid transactions, excludes transfers
 func (q *Queries) GetMonthlyTransactionSummaries(ctx context.Context, workspaceID int32) ([]GetMonthlyTransactionSummariesRow, error) {
 	rows, err := q.db.Query(ctx, getMonthlyTransactionSummaries, workspaceID)
 	if err != nil {
@@ -1606,6 +1606,7 @@ WHERE workspace_id = $1
   AND transaction_date <= $3
   AND type = 'expense'
   AND is_paid = true
+  AND transfer_pair_id IS NULL
   AND deleted_at IS NULL
 `
 
@@ -1616,6 +1617,7 @@ type SumPaidExpensesByDateRangeParams struct {
 }
 
 // Sum paid expenses within a date range for in-hand balance calculation
+// Excludes transfers (they move money between accounts, not actual spending)
 func (q *Queries) SumPaidExpensesByDateRange(ctx context.Context, arg SumPaidExpensesByDateRangeParams) (pgtype.Numeric, error) {
 	row := q.db.QueryRow(ctx, sumPaidExpensesByDateRange, arg.WorkspaceID, arg.TransactionDate, arg.TransactionDate_2)
 	var total pgtype.Numeric
@@ -1662,6 +1664,7 @@ WHERE workspace_id = $1
   AND transaction_date <= $3
   AND type = 'expense'
   AND is_paid = false
+  AND transfer_pair_id IS NULL
   AND deleted_at IS NULL
 `
 
@@ -1673,6 +1676,7 @@ type SumUnpaidExpensesByDateRangeParams struct {
 
 // Sum unpaid expenses within a date range (ALL unpaid, including deferred CC)
 // Used for balance calculations where all obligations matter
+// Excludes transfers (they move money between accounts, not actual spending)
 func (q *Queries) SumUnpaidExpensesByDateRange(ctx context.Context, arg SumUnpaidExpensesByDateRangeParams) (pgtype.Numeric, error) {
 	row := q.db.QueryRow(ctx, sumUnpaidExpensesByDateRange, arg.WorkspaceID, arg.TransactionDate, arg.TransactionDate_2)
 	var total pgtype.Numeric
@@ -1689,6 +1693,7 @@ WHERE t.workspace_id = $1
   AND t.transaction_date <= $3
   AND t.type = 'expense'
   AND t.is_paid = false
+  AND t.transfer_pair_id IS NULL
   AND t.deleted_at IS NULL
   AND NOT (a.template = 'credit_card' AND t.settlement_intent = 'deferred')
 `
@@ -1701,6 +1706,7 @@ type SumUnpaidExpensesForDisposableParams struct {
 
 // Sum unpaid expenses for disposable income calculation
 // EXCLUDES deferred CC transactions (those are for next month)
+// EXCLUDES transfers (they move money between accounts, not actual spending)
 // Includes: non-CC unpaid expenses + immediate CC expenses
 func (q *Queries) SumUnpaidExpensesForDisposable(ctx context.Context, arg SumUnpaidExpensesForDisposableParams) (pgtype.Numeric, error) {
 	row := q.db.QueryRow(ctx, sumUnpaidExpensesForDisposable, arg.WorkspaceID, arg.TransactionDate, arg.TransactionDate_2)
