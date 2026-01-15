@@ -7,6 +7,12 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+// PaymentMode constants for loan provider billing behavior
+const (
+	PaymentModePerItem            = "per_item"
+	PaymentModeConsolidatedMonthly = "consolidated_monthly"
+)
+
 var (
 	ErrLoanProviderNotFound    = errors.New("loan provider not found")
 	ErrLoanProviderHasLoans    = errors.New("loan provider has active loans")
@@ -16,6 +22,7 @@ var (
 	ErrInterestRateTooHigh     = errors.New("interest rate must be 100% or less")
 	ErrLoanProviderNameEmpty   = errors.New("loan provider name is required")
 	ErrLoanProviderNameTooLong = errors.New("loan provider name must be 100 characters or less")
+	ErrInvalidPaymentMode      = errors.New("payment mode must be 'per_item' or 'consolidated_monthly'")
 )
 
 type LoanProvider struct {
@@ -24,6 +31,7 @@ type LoanProvider struct {
 	Name                string          `json:"name"`
 	CutoffDay           int32           `json:"cutoffDay"`
 	DefaultInterestRate decimal.Decimal `json:"defaultInterestRate"`
+	PaymentMode         string          `json:"paymentMode"`
 	CreatedAt           time.Time       `json:"createdAt"`
 	UpdatedAt           time.Time       `json:"updatedAt"`
 	DeletedAt           *time.Time      `json:"deletedAt,omitempty"`
@@ -39,7 +47,15 @@ func (lp *LoanProvider) Validate() error {
 	if lp.DefaultInterestRate.LessThan(decimal.Zero) {
 		return ErrInvalidInterestRate
 	}
+	if lp.PaymentMode != "" && !IsValidPaymentMode(lp.PaymentMode) {
+		return ErrInvalidPaymentMode
+	}
 	return nil
+}
+
+// IsValidPaymentMode checks if the given payment mode is valid
+func IsValidPaymentMode(mode string) bool {
+	return mode == PaymentModePerItem || mode == PaymentModeConsolidatedMonthly
 }
 
 type LoanProviderRepository interface {

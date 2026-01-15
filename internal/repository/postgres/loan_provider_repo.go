@@ -88,6 +88,7 @@ func (r *LoanProviderRepository) Update(provider *domain.LoanProvider) (*domain.
 		Name:                provider.Name,
 		CutoffDay:           provider.CutoffDay,
 		DefaultInterestRate: interestRate,
+		PaymentMode:         provider.PaymentMode,
 	})
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -119,6 +120,7 @@ func sqlcLoanProviderToDomain(p sqlc.LoanProvider) *domain.LoanProvider {
 		Name:                p.Name,
 		CutoffDay:           p.CutoffDay,
 		DefaultInterestRate: pgNumericToDecimal(p.DefaultInterestRate),
+		PaymentMode:         p.PaymentMode,
 		CreatedAt:           p.CreatedAt.Time,
 		UpdatedAt:           p.UpdatedAt.Time,
 	}

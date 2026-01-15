@@ -111,6 +111,9 @@ func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateL
 	loanProviders.GET("/:id", loanProviderHandler.GetLoanProvider)
 	loanProviders.PUT("/:id", loanProviderHandler.UpdateLoanProvider)
 	loanProviders.DELETE("/:id", loanProviderHandler.DeleteLoanProvider)
+	loanProviders.POST("/:id/pay-range", loanPaymentHandler.PayRange)
+	loanProviders.POST("/:id/pay-month", loanPaymentHandler.PayMonth)
+	loanProviders.POST("/:id/unpay-month", loanPaymentHandler.UnpayMonth)
 
 	// Loan routes (dual auth with rate limiting)
 	loans := api.Group("/loans")
@@ -119,6 +122,7 @@ func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateL
 	loans.GET("", loanHandler.GetLoans)
 	loans.POST("/preview", loanHandler.PreviewLoan)
 	loans.GET("/commitments/:year/:month", loanHandler.GetMonthlyCommitments)
+	loans.GET("/trend", loanHandler.GetTrend)
 	loans.GET("/:id", loanHandler.GetLoan)
 	loans.GET("/:id/delete-check", loanHandler.GetDeleteCheck)
 	loans.PUT("/:id", loanHandler.UpdateLoan)

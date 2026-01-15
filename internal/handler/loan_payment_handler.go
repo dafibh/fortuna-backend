@@ -49,6 +49,50 @@ type TogglePaymentPaidRequest struct {
 	PaidDate *string `json:"paidDate,omitempty"` // Optional: YYYY-MM-DD format, defaults to today when marking paid
 }
 
+// PayRangeRequest represents the pay-range request body for multi-month payment
+type PayRangeRequest struct {
+	StartMonth string  `json:"startMonth"` // Format: YYYY-MM
+	EndMonth   string  `json:"endMonth"`   // Format: YYYY-MM
+	PaymentIDs []int32 `json:"paymentIds"`
+}
+
+// PayRangeResponse represents the pay-range response
+type PayRangeResponse struct {
+	MonthsPaid       []string `json:"monthsPaid"`
+	PaidCount        int      `json:"paidCount"`
+	TotalAmount      string   `json:"totalAmount"`
+	PaidAt           string   `json:"paidAt"`
+	NextPayableMonth *string  `json:"nextPayableMonth,omitempty"`
+}
+
+// PayMonthRequest represents the pay-month request body for single month payment
+type PayMonthRequest struct {
+	Month      string  `json:"month"`      // Format: YYYY-MM
+	PaymentIDs []int32 `json:"paymentIds"`
+}
+
+// PayMonthResponse represents the pay-month response
+type PayMonthResponse struct {
+	Month            string  `json:"month"`
+	PaidCount        int     `json:"paidCount"`
+	TotalAmount      string  `json:"totalAmount"`
+	PaidAt           string  `json:"paidAt"`
+	NextPayableMonth *string `json:"nextPayableMonth,omitempty"`
+}
+
+// UnpayMonthRequest represents the unpay-month request body
+type UnpayMonthRequest struct {
+	Month string `json:"month"` // Format: YYYY-MM
+}
+
+// UnpayMonthResponse represents the unpay-month response
+type UnpayMonthResponse struct {
+	Month           string  `json:"month"`
+	UnpaidCount     int     `json:"unpaidCount"`
+	TotalAmount     string  `json:"totalAmount"`
+	PreviousPayable *string `json:"previousPayable,omitempty"`
+}
+
 // GetPaymentsByLoanID handles GET /api/v1/loans/:loanId/payments
 func (h *LoanPaymentHandler) GetPaymentsByLoanID(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
@@ -178,6 +222,237 @@ func (h *LoanPaymentHandler) TogglePaymentPaid(c echo.Context) error {
 	log.Info().Int32("workspace_id", workspaceID).Int("loan_id", loanID).Int("payment_id", paymentID).Bool("paid", req.Paid).Msg("Payment paid status toggled")
 
 	return c.JSON(http.StatusOK, toLoanPaymentResponse(payment))
+}
+
+// PayRange handles POST /api/v1/loan-providers/:id/pay-range
+func (h *LoanPaymentHandler) PayRange(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	providerID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return NewValidationError(c, "Invalid loan provider ID", nil)
+	}
+
+	var req PayRangeRequest
+	if err := c.Bind(&req); err != nil {
+		return NewValidationError(c, "Invalid request body", nil)
+	}
+
+	// Validate required fields
+	if req.StartMonth == "" {
+		return NewValidationError(c, "Validation failed", []ValidationError{
+			{Field: "startMonth", Message: "Start month is required"},
+		})
+	}
+	if req.EndMonth == "" {
+		return NewValidationError(c, "Validation failed", []ValidationError{
+			{Field: "endMonth", Message: "End month is required"},
+		})
+	}
+	if len(req.PaymentIDs) == 0 {
+		return NewValidationError(c, "Validation failed", []ValidationError{
+			{Field: "paymentIds", Message: "At least one payment ID is required"},
+		})
+	}
+
+	result, err := h.paymentService.PayRange(c.Request().Context(), workspaceID, int32(providerID), req.StartMonth, req.EndMonth, req.PaymentIDs)
+	if err != nil {
+		if errors.Is(err, domain.ErrLoanProviderNotFound) {
+			return NewNotFoundError(c, "Loan provider not found")
+		}
+		if errors.Is(err, domain.ErrProviderNotConsolidated) {
+			return NewValidationError(c, "Provider does not use consolidated monthly payment mode", nil)
+		}
+		if errors.Is(err, domain.ErrNoUnpaidMonths) {
+			return NewValidationError(c, "No unpaid months found for this provider", nil)
+		}
+		if errors.Is(err, domain.ErrEndMonthBeforeStart) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "endMonth", Message: "End month must be after start month"},
+			})
+		}
+		if errors.Is(err, domain.ErrPaymentIDsInvalid) {
+			return NewValidationError(c, "One or more payment IDs are invalid or do not belong to the specified month range", nil)
+		}
+
+		// Check for ErrMustPayEarlierMonth
+		var mustPayErr domain.ErrMustPayEarlierMonth
+		if errors.As(err, &mustPayErr) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "startMonth", Message: mustPayErr.Error()},
+			})
+		}
+
+		// Check for ErrCannotSkipMonth
+		var skipErr domain.ErrCannotSkipMonth
+		if errors.As(err, &skipErr) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "paymentIds", Message: skipErr.Error()},
+			})
+		}
+
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("provider_id", providerID).Msg("Failed to pay range")
+		return NewInternalError(c, "Failed to pay range")
+	}
+
+	log.Info().
+		Int32("workspace_id", workspaceID).
+		Int("provider_id", providerID).
+		Strs("months_paid", result.MonthsPaid).
+		Int("paid_count", result.PaidCount).
+		Msg("Multi-month payment completed")
+
+	response := PayRangeResponse{
+		MonthsPaid:       result.MonthsPaid,
+		PaidCount:        result.PaidCount,
+		TotalAmount:      result.TotalAmount.StringFixed(2),
+		PaidAt:           result.PaidAt.Format(time.RFC3339),
+		NextPayableMonth: result.NextPayableMonth,
+	}
+
+	return c.JSON(http.StatusOK, response)
+}
+
+// PayMonth handles POST /api/v1/loan-providers/:id/pay-month
+func (h *LoanPaymentHandler) PayMonth(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	providerID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return NewValidationError(c, "Invalid loan provider ID", nil)
+	}
+
+	var req PayMonthRequest
+	if err := c.Bind(&req); err != nil {
+		return NewValidationError(c, "Invalid request body", nil)
+	}
+
+	// Validate required fields
+	if req.Month == "" {
+		return NewValidationError(c, "Validation failed", []ValidationError{
+			{Field: "month", Message: "Month is required"},
+		})
+	}
+	if len(req.PaymentIDs) == 0 {
+		return NewValidationError(c, "Validation failed", []ValidationError{
+			{Field: "paymentIds", Message: "At least one payment ID is required"},
+		})
+	}
+
+	result, err := h.paymentService.PayMonth(c.Request().Context(), workspaceID, int32(providerID), req.Month, req.PaymentIDs)
+	if err != nil {
+		if errors.Is(err, domain.ErrLoanProviderNotFound) {
+			return NewNotFoundError(c, "Loan provider not found")
+		}
+		if errors.Is(err, domain.ErrProviderNotConsolidated) {
+			return NewValidationError(c, "Provider does not use consolidated monthly payment mode", nil)
+		}
+		if errors.Is(err, domain.ErrNoUnpaidMonths) {
+			return NewValidationError(c, "No unpaid months found for this provider", nil)
+		}
+		if errors.Is(err, domain.ErrPaymentIDsInvalid) {
+			return NewValidationError(c, "One or more payment IDs are invalid or do not belong to the specified month", nil)
+		}
+
+		// Check for ErrMustPayEarlierMonth
+		var mustPayErr domain.ErrMustPayEarlierMonth
+		if errors.As(err, &mustPayErr) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "month", Message: mustPayErr.Error()},
+			})
+		}
+
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("provider_id", providerID).Str("month", req.Month).Msg("Failed to pay month")
+		return NewInternalError(c, "Failed to pay month")
+	}
+
+	log.Info().
+		Int32("workspace_id", workspaceID).
+		Int("provider_id", providerID).
+		Str("month", result.Month).
+		Int("paid_count", result.PaidCount).
+		Msg("Single-month payment completed")
+
+	response := PayMonthResponse{
+		Month:            result.Month,
+		PaidCount:        result.PaidCount,
+		TotalAmount:      result.TotalAmount.StringFixed(2),
+		PaidAt:           result.PaidAt.Format(time.RFC3339),
+		NextPayableMonth: result.NextPayableMonth,
+	}
+
+	return c.JSON(http.StatusOK, response)
+}
+
+// UnpayMonth handles POST /api/v1/loan-providers/:id/unpay-month
+func (h *LoanPaymentHandler) UnpayMonth(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	providerID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return NewValidationError(c, "Invalid loan provider ID", nil)
+	}
+
+	var req UnpayMonthRequest
+	if err := c.Bind(&req); err != nil {
+		return NewValidationError(c, "Invalid request body", nil)
+	}
+
+	// Validate required fields
+	if req.Month == "" {
+		return NewValidationError(c, "Validation failed", []ValidationError{
+			{Field: "month", Message: "Month is required"},
+		})
+	}
+
+	result, err := h.paymentService.UnpayMonth(c.Request().Context(), workspaceID, int32(providerID), req.Month)
+	if err != nil {
+		if errors.Is(err, domain.ErrLoanProviderNotFound) {
+			return NewNotFoundError(c, "Loan provider not found")
+		}
+		if errors.Is(err, domain.ErrProviderNotConsolidated) {
+			return NewValidationError(c, "Provider does not use consolidated monthly payment mode", nil)
+		}
+		if errors.Is(err, domain.ErrNoPaidMonths) {
+			return NewValidationError(c, "No paid months found for this provider", nil)
+		}
+
+		// Check for ErrCannotUnpayEarlierMonth
+		var cannotUnpayErr domain.ErrCannotUnpayEarlierMonth
+		if errors.As(err, &cannotUnpayErr) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "month", Message: cannotUnpayErr.Error()},
+			})
+		}
+
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("provider_id", providerID).Str("month", req.Month).Msg("Failed to unpay month")
+		return NewInternalError(c, "Failed to unpay month")
+	}
+
+	log.Info().
+		Int32("workspace_id", workspaceID).
+		Int("provider_id", providerID).
+		Str("month", result.Month).
+		Int("unpaid_count", result.UnpaidCount).
+		Msg("Single-month unpay completed")
+
+	response := UnpayMonthResponse{
+		Month:           result.Month,
+		UnpaidCount:     result.UnpaidCount,
+		TotalAmount:     result.TotalAmount.StringFixed(2),
+		PreviousPayable: result.PreviousPayable,
+	}
+
+	return c.JSON(http.StatusOK, response)
 }
 
 // Helper function to convert domain.LoanPayment to LoanPaymentResponse

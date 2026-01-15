@@ -1172,3 +1172,280 @@ func TestLoan_GetLastPaymentYearMonth(t *testing.T) {
 		})
 	}
 }
+
+// GetTrend tests
+
+func TestGetTrend_WithMultipleProviders(t *testing.T) {
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	paymentRepo := testutil.NewMockLoanPaymentRepository()
+	service := NewLoanService(nil, loanRepo, providerRepo, paymentRepo)
+
+	workspaceID := int32(1)
+	now := time.Now()
+	currentYear := int32(now.Year())
+	currentMonth := int32(now.Month())
+
+	// Set up mock trend data with multiple providers
+	paymentRepo.SetTrendData([]*domain.TrendRawRow{
+		{
+			DueYear:      currentYear,
+			DueMonth:     currentMonth,
+			ProviderID:   1,
+			ProviderName: "Spaylater",
+			Total:        decimal.NewFromInt(180),
+			IsPaid:       false,
+		},
+		{
+			DueYear:      currentYear,
+			DueMonth:     currentMonth,
+			ProviderID:   2,
+			ProviderName: "Atome",
+			Total:        decimal.NewFromInt(170),
+			IsPaid:       false,
+		},
+	})
+
+	result, err := service.GetTrend(workspaceID, 6)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if len(result.Months) != 6 {
+		t.Errorf("Expected 6 months, got %d", len(result.Months))
+	}
+
+	// Check first month has both providers
+	firstMonth := result.Months[0]
+	if len(firstMonth.Providers) != 2 {
+		t.Errorf("Expected 2 providers in first month, got %d", len(firstMonth.Providers))
+	}
+
+	// Check total is sum of both providers (180 + 170 = 350)
+	expectedTotal := decimal.NewFromInt(350)
+	if !firstMonth.Total.Equal(expectedTotal) {
+		t.Errorf("Expected total %s, got %s", expectedTotal.String(), firstMonth.Total.String())
+	}
+}
+
+func TestGetTrend_GapMonthHandling(t *testing.T) {
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	paymentRepo := testutil.NewMockLoanPaymentRepository()
+	service := NewLoanService(nil, loanRepo, providerRepo, paymentRepo)
+
+	workspaceID := int32(1)
+	now := time.Now()
+	currentYear := int32(now.Year())
+	currentMonth := int32(now.Month())
+
+	// Calculate month+2 (skipping one month)
+	futureYear := currentYear
+	futureMonth := currentMonth + 2
+	if futureMonth > 12 {
+		futureMonth -= 12
+		futureYear++
+	}
+
+	// Set up mock data with a gap - only has data for month+2, not month+1
+	paymentRepo.SetTrendData([]*domain.TrendRawRow{
+		{
+			DueYear:      currentYear,
+			DueMonth:     currentMonth,
+			ProviderID:   1,
+			ProviderName: "Spaylater",
+			Total:        decimal.NewFromInt(100),
+			IsPaid:       true,
+		},
+		{
+			DueYear:      futureYear,
+			DueMonth:     futureMonth,
+			ProviderID:   1,
+			ProviderName: "Spaylater",
+			Total:        decimal.NewFromInt(100),
+			IsPaid:       false,
+		},
+	})
+
+	result, err := service.GetTrend(workspaceID, 6)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// All 6 months should be present
+	if len(result.Months) != 6 {
+		t.Errorf("Expected 6 months, got %d", len(result.Months))
+	}
+
+	// Month 2 (index 1) should be a gap month with RM 0
+	gapMonth := result.Months[1]
+	if !gapMonth.Total.Equal(decimal.Zero) {
+		t.Errorf("Expected gap month total to be 0, got %s", gapMonth.Total.String())
+	}
+
+	if len(gapMonth.Providers) != 0 {
+		t.Errorf("Expected gap month to have no providers, got %d", len(gapMonth.Providers))
+	}
+
+	// Gap months default to isPaid=true (no payments to be unpaid)
+	if !gapMonth.IsPaid {
+		t.Errorf("Expected gap month isPaid to be true")
+	}
+}
+
+func TestGetTrend_IsPaidCalculation(t *testing.T) {
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	paymentRepo := testutil.NewMockLoanPaymentRepository()
+	service := NewLoanService(nil, loanRepo, providerRepo, paymentRepo)
+
+	workspaceID := int32(1)
+	now := time.Now()
+	currentYear := int32(now.Year())
+	currentMonth := int32(now.Month())
+
+	// Month 1: All providers paid
+	// Month 2: One provider unpaid
+	nextYear := currentYear
+	nextMonth := currentMonth + 1
+	if nextMonth > 12 {
+		nextMonth = 1
+		nextYear++
+	}
+
+	paymentRepo.SetTrendData([]*domain.TrendRawRow{
+		// First month - all paid
+		{
+			DueYear:      currentYear,
+			DueMonth:     currentMonth,
+			ProviderID:   1,
+			ProviderName: "Spaylater",
+			Total:        decimal.NewFromInt(100),
+			IsPaid:       true,
+		},
+		{
+			DueYear:      currentYear,
+			DueMonth:     currentMonth,
+			ProviderID:   2,
+			ProviderName: "Atome",
+			Total:        decimal.NewFromInt(50),
+			IsPaid:       true,
+		},
+		// Second month - one unpaid
+		{
+			DueYear:      nextYear,
+			DueMonth:     nextMonth,
+			ProviderID:   1,
+			ProviderName: "Spaylater",
+			Total:        decimal.NewFromInt(100),
+			IsPaid:       true,
+		},
+		{
+			DueYear:      nextYear,
+			DueMonth:     nextMonth,
+			ProviderID:   2,
+			ProviderName: "Atome",
+			Total:        decimal.NewFromInt(50),
+			IsPaid:       false, // Unpaid!
+		},
+	})
+
+	result, err := service.GetTrend(workspaceID, 6)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// First month should be fully paid
+	if !result.Months[0].IsPaid {
+		t.Errorf("Expected first month isPaid to be true (all providers paid)")
+	}
+
+	// Second month should NOT be fully paid (one provider has unpaid items)
+	if result.Months[1].IsPaid {
+		t.Errorf("Expected second month isPaid to be false (one provider unpaid)")
+	}
+}
+
+func TestGetTrend_DefaultsTo12Months(t *testing.T) {
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	paymentRepo := testutil.NewMockLoanPaymentRepository()
+	service := NewLoanService(nil, loanRepo, providerRepo, paymentRepo)
+
+	// months = 0 should default to 12
+	result, err := service.GetTrend(1, 0)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if len(result.Months) != 12 {
+		t.Errorf("Expected 12 months (default), got %d", len(result.Months))
+	}
+}
+
+func TestGetTrend_MaxLimitedTo24Months(t *testing.T) {
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	paymentRepo := testutil.NewMockLoanPaymentRepository()
+	service := NewLoanService(nil, loanRepo, providerRepo, paymentRepo)
+
+	// months > 24 should cap at 24
+	result, err := service.GetTrend(1, 36)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if len(result.Months) != 24 {
+		t.Errorf("Expected 24 months (max), got %d", len(result.Months))
+	}
+}
+
+func TestGetTrend_EmptyData(t *testing.T) {
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	paymentRepo := testutil.NewMockLoanPaymentRepository()
+	service := NewLoanService(nil, loanRepo, providerRepo, paymentRepo)
+
+	// No trend data set - should return all gap months
+	result, err := service.GetTrend(1, 6)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if len(result.Months) != 6 {
+		t.Errorf("Expected 6 months, got %d", len(result.Months))
+	}
+
+	// All months should be zero
+	for i, month := range result.Months {
+		if !month.Total.Equal(decimal.Zero) {
+			t.Errorf("Month %d: expected total 0, got %s", i, month.Total.String())
+		}
+		if len(month.Providers) != 0 {
+			t.Errorf("Month %d: expected 0 providers, got %d", i, len(month.Providers))
+		}
+	}
+}
+
+func TestGetTrend_MonthFormat(t *testing.T) {
+	loanRepo := testutil.NewMockLoanRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	paymentRepo := testutil.NewMockLoanPaymentRepository()
+	service := NewLoanService(nil, loanRepo, providerRepo, paymentRepo)
+
+	result, err := service.GetTrend(1, 3)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// Verify month format is YYYY-MM
+	for _, month := range result.Months {
+		if len(month.Month) != 7 {
+			t.Errorf("Expected month format YYYY-MM (7 chars), got %s", month.Month)
+		}
+		// Check format: should match YYYY-MM pattern
+		if month.Month[4] != '-' {
+			t.Errorf("Expected '-' at position 4, got %s", month.Month)
+		}
+	}
+}

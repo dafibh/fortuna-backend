@@ -95,6 +95,36 @@ func (l *Loan) GetLastPaymentYearMonth() (year, month int) {
 	return
 }
 
+// ProviderBreakdown represents a provider's contribution to a monthly total
+type ProviderBreakdown struct {
+	ID     int32           `json:"id"`
+	Name   string          `json:"name"`
+	Amount decimal.Decimal `json:"amount"`
+}
+
+// MonthlyTrend represents aggregated loan data for a single month
+type MonthlyTrend struct {
+	Month     string              `json:"month"` // Format: "YYYY-MM"
+	Total     decimal.Decimal     `json:"total"`
+	IsPaid    bool                `json:"isPaid"`
+	Providers []ProviderBreakdown `json:"providers"`
+}
+
+// TrendResponse contains the complete trend data for the requested period
+type TrendResponse struct {
+	Months []MonthlyTrend `json:"months"`
+}
+
+// TrendRawRow represents a single row from the trend aggregation query
+type TrendRawRow struct {
+	DueYear      int32
+	DueMonth     int32
+	ProviderID   int32
+	ProviderName string
+	Total        decimal.Decimal
+	IsPaid       bool
+}
+
 type LoanRepository interface {
 	Create(loan *Loan) (*Loan, error)
 	CreateTx(tx interface{}, loan *Loan) (*Loan, error) // Transactional create

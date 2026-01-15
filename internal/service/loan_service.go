@@ -385,3 +385,81 @@ func GeneratePaymentSchedule(loanID int32, monthlyPayment decimal.Decimal, numMo
 
 	return payments
 }
+
+// GetTrend retrieves trend data for loan payments aggregated by month
+// Returns monthly totals with provider breakdown for the specified number of months
+// Starting from current month, includes gap months with RM 0.00
+func (s *LoanService) GetTrend(workspaceID int32, months int) (*domain.TrendResponse, error) {
+	// Validate and apply defaults
+	if months <= 0 {
+		months = 12
+	}
+	if months > 24 {
+		months = 24
+	}
+
+	// Get current year/month as start
+	now := time.Now()
+	startYear := now.Year()
+	startMonth := int(now.Month())
+
+	// Calculate end year/month
+	endYear, endMonth := startYear, startMonth
+	for i := 1; i < months; i++ {
+		endYear, endMonth = nextMonth(endYear, endMonth)
+	}
+
+	// Fetch raw data from repository
+	rawData, err := s.paymentRepo.GetTrendRaw(workspaceID, int32(startYear), int32(startMonth))
+	if err != nil {
+		return nil, err
+	}
+
+	// Generate all months in range (including gaps)
+	allMonths := generateMonthRange(startYear, startMonth, endYear, endMonth)
+
+	// Create a map for quick lookup: "YYYY-MM" -> month data
+	monthMap := make(map[string]*domain.MonthlyTrend)
+	for _, m := range allMonths {
+		monthMap[m] = &domain.MonthlyTrend{
+			Month:     m,
+			Total:     decimal.Zero,
+			IsPaid:    true, // Defaults to true, will be set to false if any unpaid found
+			Providers: []domain.ProviderBreakdown{},
+		}
+	}
+
+	// Process raw data - aggregate by month and provider
+	for _, row := range rawData {
+		monthKey := formatMonth(int(row.DueYear), int(row.DueMonth))
+
+		// Only process months within our range
+		monthData, exists := monthMap[monthKey]
+		if !exists {
+			continue
+		}
+
+		// Add provider breakdown
+		monthData.Providers = append(monthData.Providers, domain.ProviderBreakdown{
+			ID:     row.ProviderID,
+			Name:   row.ProviderName,
+			Amount: row.Total,
+		})
+
+		// Add to total
+		monthData.Total = monthData.Total.Add(row.Total)
+
+		// If any provider has unpaid items, the month is not fully paid
+		if !row.IsPaid {
+			monthData.IsPaid = false
+		}
+	}
+
+	// Convert map to ordered slice
+	result := make([]domain.MonthlyTrend, len(allMonths))
+	for i, m := range allMonths {
+		result[i] = *monthMap[m]
+	}
+
+	return &domain.TrendResponse{Months: result}, nil
+}

@@ -19,7 +19,7 @@ func TestGetPaymentsByLoanID_Success(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	paymentRepo := testutil.NewMockLoanPaymentRepository()
-	paymentService := service.NewLoanPaymentService(paymentRepo, loanRepo)
+	paymentService := service.NewLoanPaymentService(nil, paymentRepo, loanRepo, nil)
 	handler := NewLoanPaymentHandler(paymentService)
 
 	// Add a loan
@@ -85,7 +85,7 @@ func TestGetPaymentsByLoanID_LoanNotFound(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	paymentRepo := testutil.NewMockLoanPaymentRepository()
-	paymentService := service.NewLoanPaymentService(paymentRepo, loanRepo)
+	paymentService := service.NewLoanPaymentService(nil, paymentRepo, loanRepo, nil)
 	handler := NewLoanPaymentHandler(paymentService)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/loans/999/payments", nil)
@@ -110,7 +110,7 @@ func TestGetPaymentsByLoanID_InvalidLoanID(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	paymentRepo := testutil.NewMockLoanPaymentRepository()
-	paymentService := service.NewLoanPaymentService(paymentRepo, loanRepo)
+	paymentService := service.NewLoanPaymentService(nil, paymentRepo, loanRepo, nil)
 	handler := NewLoanPaymentHandler(paymentService)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/loans/invalid/payments", nil)
@@ -135,7 +135,7 @@ func TestGetPaymentsByLoanID_WorkspaceIsolation(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	paymentRepo := testutil.NewMockLoanPaymentRepository()
-	paymentService := service.NewLoanPaymentService(paymentRepo, loanRepo)
+	paymentService := service.NewLoanPaymentService(nil, paymentRepo, loanRepo, nil)
 	handler := NewLoanPaymentHandler(paymentService)
 
 	// Add a loan in workspace 2
@@ -169,7 +169,7 @@ func TestUpdatePaymentAmount_Success(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	paymentRepo := testutil.NewMockLoanPaymentRepository()
-	paymentService := service.NewLoanPaymentService(paymentRepo, loanRepo)
+	paymentService := service.NewLoanPaymentService(nil, paymentRepo, loanRepo, nil)
 	handler := NewLoanPaymentHandler(paymentService)
 
 	// Add loan and payment
@@ -224,7 +224,7 @@ func TestUpdatePaymentAmount_LoanNotFound(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	paymentRepo := testutil.NewMockLoanPaymentRepository()
-	paymentService := service.NewLoanPaymentService(paymentRepo, loanRepo)
+	paymentService := service.NewLoanPaymentService(nil, paymentRepo, loanRepo, nil)
 	handler := NewLoanPaymentHandler(paymentService)
 
 	reqBody := `{"amount": "150.00"}`
@@ -251,7 +251,7 @@ func TestUpdatePaymentAmount_PaymentNotFound(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	paymentRepo := testutil.NewMockLoanPaymentRepository()
-	paymentService := service.NewLoanPaymentService(paymentRepo, loanRepo)
+	paymentService := service.NewLoanPaymentService(nil, paymentRepo, loanRepo, nil)
 	handler := NewLoanPaymentHandler(paymentService)
 
 	// Add loan but no payment
@@ -286,7 +286,7 @@ func TestUpdatePaymentAmount_InvalidAmount(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	paymentRepo := testutil.NewMockLoanPaymentRepository()
-	paymentService := service.NewLoanPaymentService(paymentRepo, loanRepo)
+	paymentService := service.NewLoanPaymentService(nil, paymentRepo, loanRepo, nil)
 	handler := NewLoanPaymentHandler(paymentService)
 
 	// Add loan and payment
@@ -332,7 +332,7 @@ func TestUpdatePaymentAmount_NegativeAmount(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	paymentRepo := testutil.NewMockLoanPaymentRepository()
-	paymentService := service.NewLoanPaymentService(paymentRepo, loanRepo)
+	paymentService := service.NewLoanPaymentService(nil, paymentRepo, loanRepo, nil)
 	handler := NewLoanPaymentHandler(paymentService)
 
 	// Add loan and payment
@@ -378,7 +378,7 @@ func TestTogglePaymentPaid_Success(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	paymentRepo := testutil.NewMockLoanPaymentRepository()
-	paymentService := service.NewLoanPaymentService(paymentRepo, loanRepo)
+	paymentService := service.NewLoanPaymentService(nil, paymentRepo, loanRepo, nil)
 	handler := NewLoanPaymentHandler(paymentService)
 
 	// Add loan and payment
@@ -433,7 +433,7 @@ func TestTogglePaymentPaid_LoanNotFound(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	paymentRepo := testutil.NewMockLoanPaymentRepository()
-	paymentService := service.NewLoanPaymentService(paymentRepo, loanRepo)
+	paymentService := service.NewLoanPaymentService(nil, paymentRepo, loanRepo, nil)
 	handler := NewLoanPaymentHandler(paymentService)
 
 	reqBody := `{"paid": true}`
@@ -460,7 +460,7 @@ func TestTogglePaymentPaid_PaymentNotFound(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	paymentRepo := testutil.NewMockLoanPaymentRepository()
-	paymentService := service.NewLoanPaymentService(paymentRepo, loanRepo)
+	paymentService := service.NewLoanPaymentService(nil, paymentRepo, loanRepo, nil)
 	handler := NewLoanPaymentHandler(paymentService)
 
 	// Add loan but no payment
@@ -495,7 +495,7 @@ func TestTogglePaymentPaid_WithCustomDate(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	paymentRepo := testutil.NewMockLoanPaymentRepository()
-	paymentService := service.NewLoanPaymentService(paymentRepo, loanRepo)
+	paymentService := service.NewLoanPaymentService(nil, paymentRepo, loanRepo, nil)
 	handler := NewLoanPaymentHandler(paymentService)
 
 	// Add loan and payment
@@ -557,7 +557,7 @@ func TestTogglePaymentPaid_InvalidDateFormat(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	paymentRepo := testutil.NewMockLoanPaymentRepository()
-	paymentService := service.NewLoanPaymentService(paymentRepo, loanRepo)
+	paymentService := service.NewLoanPaymentService(nil, paymentRepo, loanRepo, nil)
 	handler := NewLoanPaymentHandler(paymentService)
 
 	// Add loan and payment
@@ -603,7 +603,7 @@ func TestTogglePaymentPaid_WorkspaceIsolation(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	paymentRepo := testutil.NewMockLoanPaymentRepository()
-	paymentService := service.NewLoanPaymentService(paymentRepo, loanRepo)
+	paymentService := service.NewLoanPaymentService(nil, paymentRepo, loanRepo, nil)
 	handler := NewLoanPaymentHandler(paymentService)
 
 	// Add loan in workspace 2
@@ -650,7 +650,7 @@ func TestUpdatePaymentAmount_WorkspaceIsolation(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	paymentRepo := testutil.NewMockLoanPaymentRepository()
-	paymentService := service.NewLoanPaymentService(paymentRepo, loanRepo)
+	paymentService := service.NewLoanPaymentService(nil, paymentRepo, loanRepo, nil)
 	handler := NewLoanPaymentHandler(paymentService)
 
 	// Add loan in workspace 2

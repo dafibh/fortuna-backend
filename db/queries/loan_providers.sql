@@ -23,6 +23,7 @@ SET
     name = $3,
     cutoff_day = $4,
     default_interest_rate = $5,
+    payment_mode = COALESCE(NULLIF(@payment_mode::text, ''), payment_mode),
     updated_at = NOW()
 WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL
 RETURNING *;

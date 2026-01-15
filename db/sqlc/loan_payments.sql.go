@@ -11,6 +11,47 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const batchUpdatePaid = `-- name: BatchUpdatePaid :execrows
+UPDATE loan_payments
+SET paid = TRUE, paid_date = $2, updated_at = NOW()
+WHERE id = ANY($1::int[])
+  AND paid = FALSE
+`
+
+type BatchUpdatePaidParams struct {
+	Column1  []int32     `json:"column_1"`
+	PaidDate pgtype.Date `json:"paid_date"`
+}
+
+// Atomically marks multiple loan payments as paid
+// Used for Pay Month action in consolidated monthly mode
+// Returns the number of rows affected
+func (q *Queries) BatchUpdatePaid(ctx context.Context, arg BatchUpdatePaidParams) (int64, error) {
+	result, err := q.db.Exec(ctx, batchUpdatePaid, arg.Column1, arg.PaidDate)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const batchUpdateUnpaid = `-- name: BatchUpdateUnpaid :execrows
+UPDATE loan_payments
+SET paid = FALSE, paid_date = NULL, updated_at = NOW()
+WHERE id = ANY($1::int[])
+  AND paid = TRUE
+`
+
+// Atomically marks multiple loan payments as unpaid
+// Used for Unpay Month action in consolidated monthly mode
+// Returns the number of rows affected
+func (q *Queries) BatchUpdateUnpaid(ctx context.Context, dollar_1 []int32) (int64, error) {
+	result, err := q.db.Exec(ctx, batchUpdateUnpaid, dollar_1)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const createLoanPayment = `-- name: CreateLoanPayment :one
 INSERT INTO loan_payments (
     loan_id,
@@ -59,6 +100,69 @@ func (q *Queries) CreateLoanPayment(ctx context.Context, arg CreateLoanPaymentPa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
+	return i, err
+}
+
+const getEarliestUnpaidMonth = `-- name: GetEarliestUnpaidMonth :one
+SELECT lp.due_year, lp.due_month
+FROM loan_payments lp
+JOIN loans l ON l.id = lp.loan_id
+WHERE l.workspace_id = $1
+  AND l.provider_id = $2
+  AND lp.paid = FALSE
+  AND l.deleted_at IS NULL
+ORDER BY lp.due_year ASC, lp.due_month ASC
+LIMIT 1
+`
+
+type GetEarliestUnpaidMonthParams struct {
+	WorkspaceID int32 `json:"workspace_id"`
+	ProviderID  int32 `json:"provider_id"`
+}
+
+type GetEarliestUnpaidMonthRow struct {
+	DueYear  int32 `json:"due_year"`
+	DueMonth int32 `json:"due_month"`
+}
+
+// Returns the earliest (year, month) with unpaid payments for a provider
+// This is used for sequential enforcement in consolidated monthly payment mode
+// Handles gap months by finding the earliest unpaid month in ANY loan period
+func (q *Queries) GetEarliestUnpaidMonth(ctx context.Context, arg GetEarliestUnpaidMonthParams) (GetEarliestUnpaidMonthRow, error) {
+	row := q.db.QueryRow(ctx, getEarliestUnpaidMonth, arg.WorkspaceID, arg.ProviderID)
+	var i GetEarliestUnpaidMonthRow
+	err := row.Scan(&i.DueYear, &i.DueMonth)
+	return i, err
+}
+
+const getLatestPaidMonth = `-- name: GetLatestPaidMonth :one
+SELECT lp.due_year, lp.due_month
+FROM loan_payments lp
+JOIN loans l ON l.id = lp.loan_id
+WHERE l.workspace_id = $1
+  AND l.provider_id = $2
+  AND lp.paid = TRUE
+  AND l.deleted_at IS NULL
+ORDER BY lp.due_year DESC, lp.due_month DESC
+LIMIT 1
+`
+
+type GetLatestPaidMonthParams struct {
+	WorkspaceID int32 `json:"workspace_id"`
+	ProviderID  int32 `json:"provider_id"`
+}
+
+type GetLatestPaidMonthRow struct {
+	DueYear  int32 `json:"due_year"`
+	DueMonth int32 `json:"due_month"`
+}
+
+// Returns the latest (year, month) with paid payments for a provider
+// Used for reverse sequential enforcement in unpay action
+func (q *Queries) GetLatestPaidMonth(ctx context.Context, arg GetLatestPaidMonthParams) (GetLatestPaidMonthRow, error) {
+	row := q.db.QueryRow(ctx, getLatestPaidMonth, arg.WorkspaceID, arg.ProviderID)
+	var i GetLatestPaidMonthRow
+	err := row.Scan(&i.DueYear, &i.DueMonth)
 	return i, err
 }
 
@@ -288,6 +392,175 @@ func (q *Queries) GetLoanPaymentsWithDetailsByMonth(ctx context.Context, arg Get
 	return items, nil
 }
 
+const getPaidPaymentsByProviderMonth = `-- name: GetPaidPaymentsByProviderMonth :many
+SELECT lp.id, lp.loan_id, lp.payment_number, lp.amount, lp.due_year, lp.due_month, lp.paid, lp.paid_date, lp.created_at, lp.updated_at FROM loan_payments lp
+JOIN loans l ON l.id = lp.loan_id
+WHERE l.workspace_id = $1
+  AND l.provider_id = $2
+  AND lp.due_year = $3
+  AND lp.due_month = $4
+  AND lp.paid = TRUE
+  AND l.deleted_at IS NULL
+ORDER BY l.item_name, lp.payment_number
+`
+
+type GetPaidPaymentsByProviderMonthParams struct {
+	WorkspaceID int32 `json:"workspace_id"`
+	ProviderID  int32 `json:"provider_id"`
+	DueYear     int32 `json:"due_year"`
+	DueMonth    int32 `json:"due_month"`
+}
+
+// Returns all paid loan payments for a specific provider and month
+// Used for Unpay Month action in consolidated monthly mode
+func (q *Queries) GetPaidPaymentsByProviderMonth(ctx context.Context, arg GetPaidPaymentsByProviderMonthParams) ([]LoanPayment, error) {
+	rows, err := q.db.Query(ctx, getPaidPaymentsByProviderMonth,
+		arg.WorkspaceID,
+		arg.ProviderID,
+		arg.DueYear,
+		arg.DueMonth,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LoanPayment{}
+	for rows.Next() {
+		var i LoanPayment
+		if err := rows.Scan(
+			&i.ID,
+			&i.LoanID,
+			&i.PaymentNumber,
+			&i.Amount,
+			&i.DueYear,
+			&i.DueMonth,
+			&i.Paid,
+			&i.PaidDate,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getPaymentsByIDs = `-- name: GetPaymentsByIDs :many
+SELECT lp.id, lp.loan_id, lp.payment_number, lp.amount, lp.due_year, lp.due_month, lp.paid, lp.paid_date, lp.created_at, lp.updated_at FROM loan_payments lp
+JOIN loans l ON l.id = lp.loan_id
+WHERE lp.id = ANY($1::int[])
+  AND l.workspace_id = $2
+  AND l.deleted_at IS NULL
+`
+
+type GetPaymentsByIDsParams struct {
+	Column1     []int32 `json:"column_1"`
+	WorkspaceID int32   `json:"workspace_id"`
+}
+
+// Returns loan payments by their IDs with workspace validation via join
+func (q *Queries) GetPaymentsByIDs(ctx context.Context, arg GetPaymentsByIDsParams) ([]LoanPayment, error) {
+	rows, err := q.db.Query(ctx, getPaymentsByIDs, arg.Column1, arg.WorkspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LoanPayment{}
+	for rows.Next() {
+		var i LoanPayment
+		if err := rows.Scan(
+			&i.ID,
+			&i.LoanID,
+			&i.PaymentNumber,
+			&i.Amount,
+			&i.DueYear,
+			&i.DueMonth,
+			&i.Paid,
+			&i.PaidDate,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTrendByMonth = `-- name: GetTrendByMonth :many
+SELECT
+  lp.due_year,
+  lp.due_month,
+  l.provider_id,
+  lpr.name AS provider_name,
+  COALESCE(SUM(lp.amount), 0)::NUMERIC(12,2) AS total,
+  BOOL_AND(lp.paid) AS is_paid
+FROM loan_payments lp
+JOIN loans l ON lp.loan_id = l.id
+JOIN loan_providers lpr ON l.provider_id = lpr.id
+WHERE l.workspace_id = $1
+  AND l.deleted_at IS NULL
+  AND lpr.deleted_at IS NULL
+  AND (
+    (lp.due_year > $2) OR
+    (lp.due_year = $2 AND lp.due_month >= $3)
+  )
+GROUP BY lp.due_year, lp.due_month, l.provider_id, lpr.name
+ORDER BY lp.due_year, lp.due_month, l.provider_id
+`
+
+type GetTrendByMonthParams struct {
+	WorkspaceID int32 `json:"workspace_id"`
+	DueYear     int32 `json:"due_year"`
+	DueMonth    int32 `json:"due_month"`
+}
+
+type GetTrendByMonthRow struct {
+	DueYear      int32          `json:"due_year"`
+	DueMonth     int32          `json:"due_month"`
+	ProviderID   int32          `json:"provider_id"`
+	ProviderName string         `json:"provider_name"`
+	Total        pgtype.Numeric `json:"total"`
+	IsPaid       bool           `json:"is_paid"`
+}
+
+// Aggregates loan payments by year/month and provider for trend visualization
+// Returns monthly totals with provider breakdown and isPaid status
+// Gap months (no payments) are handled in the service layer
+func (q *Queries) GetTrendByMonth(ctx context.Context, arg GetTrendByMonthParams) ([]GetTrendByMonthRow, error) {
+	rows, err := q.db.Query(ctx, getTrendByMonth, arg.WorkspaceID, arg.DueYear, arg.DueMonth)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetTrendByMonthRow{}
+	for rows.Next() {
+		var i GetTrendByMonthRow
+		if err := rows.Scan(
+			&i.DueYear,
+			&i.DueMonth,
+			&i.ProviderID,
+			&i.ProviderName,
+			&i.Total,
+			&i.IsPaid,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getUnpaidLoanPaymentsByMonth = `-- name: GetUnpaidLoanPaymentsByMonth :many
 SELECT lp.id, lp.loan_id, lp.payment_number, lp.amount, lp.due_year, lp.due_month, lp.paid, lp.paid_date, lp.created_at, lp.updated_at FROM loan_payments lp
 JOIN loans l ON lp.loan_id = l.id
@@ -334,6 +607,85 @@ func (q *Queries) GetUnpaidLoanPaymentsByMonth(ctx context.Context, arg GetUnpai
 		return nil, err
 	}
 	return items, nil
+}
+
+const getUnpaidPaymentsByProviderMonth = `-- name: GetUnpaidPaymentsByProviderMonth :many
+SELECT lp.id, lp.loan_id, lp.payment_number, lp.amount, lp.due_year, lp.due_month, lp.paid, lp.paid_date, lp.created_at, lp.updated_at FROM loan_payments lp
+JOIN loans l ON l.id = lp.loan_id
+WHERE l.workspace_id = $1
+  AND l.provider_id = $2
+  AND lp.due_year = $3
+  AND lp.due_month = $4
+  AND lp.paid = FALSE
+  AND l.deleted_at IS NULL
+ORDER BY l.item_name, lp.payment_number
+`
+
+type GetUnpaidPaymentsByProviderMonthParams struct {
+	WorkspaceID int32 `json:"workspace_id"`
+	ProviderID  int32 `json:"provider_id"`
+	DueYear     int32 `json:"due_year"`
+	DueMonth    int32 `json:"due_month"`
+}
+
+// Returns all unpaid loan payments for a specific provider and month
+// Used for Pay Month action in consolidated monthly mode
+func (q *Queries) GetUnpaidPaymentsByProviderMonth(ctx context.Context, arg GetUnpaidPaymentsByProviderMonthParams) ([]LoanPayment, error) {
+	rows, err := q.db.Query(ctx, getUnpaidPaymentsByProviderMonth,
+		arg.WorkspaceID,
+		arg.ProviderID,
+		arg.DueYear,
+		arg.DueMonth,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LoanPayment{}
+	for rows.Next() {
+		var i LoanPayment
+		if err := rows.Scan(
+			&i.ID,
+			&i.LoanID,
+			&i.PaymentNumber,
+			&i.Amount,
+			&i.DueYear,
+			&i.DueMonth,
+			&i.Paid,
+			&i.PaidDate,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const sumPaymentAmountsByIDs = `-- name: SumPaymentAmountsByIDs :one
+SELECT COALESCE(SUM(lp.amount), 0)::NUMERIC(12,2) as total
+FROM loan_payments lp
+JOIN loans l ON l.id = lp.loan_id
+WHERE lp.id = ANY($1::int[])
+  AND l.workspace_id = $2
+  AND l.deleted_at IS NULL
+`
+
+type SumPaymentAmountsByIDsParams struct {
+	Column1     []int32 `json:"column_1"`
+	WorkspaceID int32   `json:"workspace_id"`
+}
+
+// Returns the sum of amounts for given payment IDs
+func (q *Queries) SumPaymentAmountsByIDs(ctx context.Context, arg SumPaymentAmountsByIDsParams) (pgtype.Numeric, error) {
+	row := q.db.QueryRow(ctx, sumPaymentAmountsByIDs, arg.Column1, arg.WorkspaceID)
+	var total pgtype.Numeric
+	err := row.Scan(&total)
+	return total, err
 }
 
 const sumUnpaidLoanPaymentsByMonth = `-- name: SumUnpaidLoanPaymentsByMonth :one

@@ -33,9 +33,10 @@ type CreateLoanProviderRequest struct {
 
 // UpdateLoanProviderRequest represents the update loan provider request body
 type UpdateLoanProviderRequest struct {
-	Name                string `json:"name"`
-	CutoffDay           int32  `json:"cutoffDay"`
-	DefaultInterestRate string `json:"defaultInterestRate"`
+	Name                string  `json:"name"`
+	CutoffDay           int32   `json:"cutoffDay"`
+	DefaultInterestRate string  `json:"defaultInterestRate"`
+	PaymentMode         *string `json:"paymentMode,omitempty"`
 }
 
 // LoanProviderResponse represents a loan provider in API responses
@@ -45,6 +46,7 @@ type LoanProviderResponse struct {
 	Name                string  `json:"name"`
 	CutoffDay           int32   `json:"cutoffDay"`
 	DefaultInterestRate string  `json:"defaultInterestRate"`
+	PaymentMode         string  `json:"paymentMode"`
 	CreatedAt           string  `json:"createdAt"`
 	UpdatedAt           string  `json:"updatedAt"`
 	DeletedAt           *string `json:"deletedAt,omitempty"`
@@ -196,6 +198,7 @@ func (h *LoanProviderHandler) UpdateLoanProvider(c echo.Context) error {
 		Name:                req.Name,
 		CutoffDay:           req.CutoffDay,
 		DefaultInterestRate: interestRate,
+		PaymentMode:         req.PaymentMode,
 	}
 
 	provider, err := h.providerService.UpdateProvider(workspaceID, int32(id), input)
@@ -226,6 +229,11 @@ func (h *LoanProviderHandler) UpdateLoanProvider(c echo.Context) error {
 		if errors.Is(err, domain.ErrInterestRateTooHigh) {
 			return NewValidationError(c, "Validation failed", []ValidationError{
 				{Field: "defaultInterestRate", Message: "Interest rate must be 100% or less"},
+			})
+		}
+		if errors.Is(err, domain.ErrInvalidPaymentMode) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "paymentMode", Message: "Payment mode must be 'per_item' or 'consolidated_monthly'"},
 			})
 		}
 		if errors.Is(err, domain.ErrLoanProviderNameExists) {
@@ -274,6 +282,7 @@ func toLoanProviderResponse(provider *domain.LoanProvider) LoanProviderResponse 
 		Name:                provider.Name,
 		CutoffDay:           provider.CutoffDay,
 		DefaultInterestRate: provider.DefaultInterestRate.StringFixed(2),
+		PaymentMode:         provider.PaymentMode,
 		CreatedAt:           provider.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:           provider.UpdatedAt.Format(time.RFC3339),
 	}

@@ -542,6 +542,77 @@ func (h *LoanHandler) PreviewLoan(c echo.Context) error {
 	})
 }
 
+// TrendProviderResponse represents a provider's breakdown in the trend response
+type TrendProviderResponse struct {
+	ID     int32  `json:"id"`
+	Name   string `json:"name"`
+	Amount string `json:"amount"`
+}
+
+// TrendMonthResponse represents a single month in the trend response
+type TrendMonthResponse struct {
+	Month     string                  `json:"month"`
+	Total     string                  `json:"total"`
+	IsPaid    bool                    `json:"isPaid"`
+	Providers []TrendProviderResponse `json:"providers"`
+}
+
+// TrendResponse represents the complete trend API response
+type TrendAPIResponse struct {
+	Months []TrendMonthResponse `json:"months"`
+}
+
+// GetTrend handles GET /api/v1/loans/trend
+// Returns monthly loan payment aggregates with provider breakdown
+func (h *LoanHandler) GetTrend(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	// Parse months query parameter (default 12, max 24)
+	months := 12
+	monthsParam := c.QueryParam("months")
+	if monthsParam != "" {
+		parsed, err := strconv.Atoi(monthsParam)
+		if err != nil || parsed < 1 || parsed > 24 {
+			return NewValidationError(c, "Invalid months parameter", []ValidationError{
+				{Field: "months", Message: "Must be a number between 1 and 24"},
+			})
+		}
+		months = parsed
+	}
+
+	result, err := h.loanService.GetTrend(workspaceID, months)
+	if err != nil {
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("months", months).Msg("Failed to get loan trend")
+		return NewInternalError(c, "Failed to get loan trend")
+	}
+
+	// Convert to API response format (decimal to string)
+	response := TrendAPIResponse{
+		Months: make([]TrendMonthResponse, len(result.Months)),
+	}
+	for i, m := range result.Months {
+		providers := make([]TrendProviderResponse, len(m.Providers))
+		for j, p := range m.Providers {
+			providers[j] = TrendProviderResponse{
+				ID:     p.ID,
+				Name:   p.Name,
+				Amount: p.Amount.StringFixed(2),
+			}
+		}
+		response.Months[i] = TrendMonthResponse{
+			Month:     m.Month,
+			Total:     m.Total.StringFixed(2),
+			IsPaid:    m.IsPaid,
+			Providers: providers,
+		}
+	}
+
+	return c.JSON(http.StatusOK, response)
+}
+
 // Helper function to convert domain.Loan to LoanResponse
 func toLoanResponse(loan *domain.Loan) LoanResponse {
 	lastYear, lastMonth := loan.GetLastPaymentYearMonth()

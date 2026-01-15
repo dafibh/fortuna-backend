@@ -19,7 +19,7 @@ INSERT INTO loan_providers (
     default_interest_rate
 ) VALUES (
     $1, $2, $3, $4
-) RETURNING id, workspace_id, name, cutoff_day, default_interest_rate, created_at, updated_at, deleted_at
+) RETURNING id, workspace_id, name, cutoff_day, default_interest_rate, created_at, updated_at, deleted_at, payment_mode
 `
 
 type CreateLoanProviderParams struct {
@@ -46,6 +46,7 @@ func (q *Queries) CreateLoanProvider(ctx context.Context, arg CreateLoanProvider
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.PaymentMode,
 	)
 	return i, err
 }
@@ -67,7 +68,7 @@ func (q *Queries) DeleteLoanProvider(ctx context.Context, arg DeleteLoanProvider
 }
 
 const getLoanProviderByID = `-- name: GetLoanProviderByID :one
-SELECT id, workspace_id, name, cutoff_day, default_interest_rate, created_at, updated_at, deleted_at FROM loan_providers
+SELECT id, workspace_id, name, cutoff_day, default_interest_rate, created_at, updated_at, deleted_at, payment_mode FROM loan_providers
 WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL
 `
 
@@ -88,12 +89,13 @@ func (q *Queries) GetLoanProviderByID(ctx context.Context, arg GetLoanProviderBy
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.PaymentMode,
 	)
 	return i, err
 }
 
 const listLoanProviders = `-- name: ListLoanProviders :many
-SELECT id, workspace_id, name, cutoff_day, default_interest_rate, created_at, updated_at, deleted_at FROM loan_providers
+SELECT id, workspace_id, name, cutoff_day, default_interest_rate, created_at, updated_at, deleted_at, payment_mode FROM loan_providers
 WHERE workspace_id = $1 AND deleted_at IS NULL
 ORDER BY name ASC
 `
@@ -116,6 +118,7 @@ func (q *Queries) ListLoanProviders(ctx context.Context, workspaceID int32) ([]L
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.PaymentMode,
 		); err != nil {
 			return nil, err
 		}
@@ -133,9 +136,10 @@ SET
     name = $3,
     cutoff_day = $4,
     default_interest_rate = $5,
+    payment_mode = COALESCE(NULLIF($6::text, ''), payment_mode),
     updated_at = NOW()
 WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL
-RETURNING id, workspace_id, name, cutoff_day, default_interest_rate, created_at, updated_at, deleted_at
+RETURNING id, workspace_id, name, cutoff_day, default_interest_rate, created_at, updated_at, deleted_at, payment_mode
 `
 
 type UpdateLoanProviderParams struct {
@@ -144,6 +148,7 @@ type UpdateLoanProviderParams struct {
 	Name                string         `json:"name"`
 	CutoffDay           int32          `json:"cutoff_day"`
 	DefaultInterestRate pgtype.Numeric `json:"default_interest_rate"`
+	PaymentMode         string         `json:"payment_mode"`
 }
 
 func (q *Queries) UpdateLoanProvider(ctx context.Context, arg UpdateLoanProviderParams) (LoanProvider, error) {
@@ -153,6 +158,7 @@ func (q *Queries) UpdateLoanProvider(ctx context.Context, arg UpdateLoanProvider
 		arg.Name,
 		arg.CutoffDay,
 		arg.DefaultInterestRate,
+		arg.PaymentMode,
 	)
 	var i LoanProvider
 	err := row.Scan(
@@ -164,6 +170,7 @@ func (q *Queries) UpdateLoanProvider(ctx context.Context, arg UpdateLoanProvider
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.PaymentMode,
 	)
 	return i, err
 }

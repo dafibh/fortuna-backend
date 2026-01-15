@@ -130,7 +130,7 @@ func main() {
 
 	loanProviderService := service.NewLoanProviderService(loanProviderRepo)
 	loanService := service.NewLoanService(pool, loanRepo, loanProviderRepo, loanPaymentRepo)
-	loanPaymentService := service.NewLoanPaymentService(loanPaymentRepo, loanRepo)
+	loanPaymentService := service.NewLoanPaymentService(pool, loanPaymentRepo, loanRepo, loanProviderRepo)
 	wishlistService := service.NewWishlistService(wishlistRepo)
 	wishlistItemService := service.NewWishlistItemService(wishlistItemRepo, wishlistRepo)
 	wishlistPriceService := service.NewWishlistPriceService(wishlistPriceRepo, wishlistItemRepo)
@@ -171,6 +171,7 @@ func main() {
 	transactionService.SetEventPublisher(wsHub)
 	recurringTemplateService.SetEventPublisher(wsHub)
 	settlementService.SetEventPublisher(wsHub)
+	loanProviderService.SetEventPublisher(wsHub)
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(authService)

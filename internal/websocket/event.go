@@ -20,15 +20,19 @@ const (
 type EntityType string
 
 const (
-	EntityTypeTransaction EntityType = "transaction"
-	EntityTypeRecurring   EntityType = "recurring"
-	EntityTypeProjection  EntityType = "projection"
-	EntityTypeSettlement  EntityType = "settlement"
+	EntityTypeTransaction  EntityType = "transaction"
+	EntityTypeRecurring    EntityType = "recurring"
+	EntityTypeProjection   EntityType = "projection"
+	EntityTypeSettlement   EntityType = "settlement"
+	EntityTypeLoanPayment  EntityType = "loan_payment"
+	EntityTypeLoanProvider EntityType = "loan_provider"
 )
 
 // Additional event types for specific events
 const (
-	EventTypeSynced EventType = "synced"
+	EventTypeSynced      EventType = "synced"
+	EventTypeBatchPaid   EventType = "batch_paid"
+	EventTypeBatchUnpaid EventType = "batch_unpaid"
 )
 
 // Event represents a WebSocket event message sent to clients
@@ -98,4 +102,19 @@ func ProjectionSynced(payload interface{}) Event {
 // SettlementCreated creates a settlement.created event
 func SettlementCreated(payload interface{}) Event {
 	return NewEvent(EventTypeCreated, EntityTypeSettlement, payload)
+}
+
+// LoanPaymentBatchPaid creates a loan_payment.batch_paid event
+func LoanPaymentBatchPaid(payload interface{}) Event {
+	return NewEvent(EventTypeBatchPaid, EntityTypeLoanPayment, payload)
+}
+
+// LoanPaymentBatchUnpaid creates a loan_payment.batch_unpaid event
+func LoanPaymentBatchUnpaid(payload interface{}) Event {
+	return NewEvent(EventTypeBatchUnpaid, EntityTypeLoanPayment, payload)
+}
+
+// LoanProviderUpdated creates a loan_provider.updated event
+func LoanProviderUpdated(payload interface{}) Event {
+	return NewEvent(EventTypeUpdated, EntityTypeLoanProvider, payload)
 }

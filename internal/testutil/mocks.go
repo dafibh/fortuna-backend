@@ -2290,14 +2290,19 @@ func (m *MockWishlistRepository) AddWishlist(wishlist *domain.Wishlist) {
 
 // MockLoanPaymentRepository is a mock implementation of domain.LoanPaymentRepository
 type MockLoanPaymentRepository struct {
-	Payments           map[int32]*domain.LoanPayment
-	ByLoanID           map[int32][]*domain.LoanPayment
-	ByMonth            map[string][]*domain.LoanPayment
-	UnpaidSumsByMonth  map[string]decimal.Decimal
-	NextID             int32
-	CreateFn           func(payment *domain.LoanPayment) (*domain.LoanPayment, error)
-	GetByIDFn          func(id int32) (*domain.LoanPayment, error)
-	SumUnpaidByMonthFn func(workspaceID int32, year, month int) (decimal.Decimal, error)
+	Payments                           map[int32]*domain.LoanPayment
+	ByLoanID                           map[int32][]*domain.LoanPayment
+	ByMonth                            map[string][]*domain.LoanPayment
+	UnpaidSumsByMonth                  map[string]decimal.Decimal
+	TrendData                          []*domain.TrendRawRow
+	NextID                             int32
+	CreateFn                           func(payment *domain.LoanPayment) (*domain.LoanPayment, error)
+	GetByIDFn                          func(id int32) (*domain.LoanPayment, error)
+	SumUnpaidByMonthFn                 func(workspaceID int32, year, month int) (decimal.Decimal, error)
+	GetEarliestUnpaidMonthFn           func(workspaceID int32, providerID int32) (*domain.EarliestUnpaidMonth, error)
+	GetUnpaidPaymentsByProviderMonthFn func(workspaceID int32, providerID int32, year int32, month int32) ([]*domain.LoanPayment, error)
+	BatchUpdatePaidTxFn                func(tx any, paymentIDs []int32, workspaceID int32) (int, decimal.Decimal, error)
+	GetTrendRawFn                      func(workspaceID int32, startYear int32, startMonth int32) ([]*domain.TrendRawRow, error)
 }
 
 // NewMockLoanPaymentRepository creates a new MockLoanPaymentRepository
@@ -2341,7 +2346,7 @@ func (m *MockLoanPaymentRepository) CreateBatch(payments []*domain.LoanPayment) 
 }
 
 // CreateBatchTx creates multiple loan payments within a transaction (mock just calls CreateBatch)
-func (m *MockLoanPaymentRepository) CreateBatchTx(tx interface{}, payments []*domain.LoanPayment) error {
+func (m *MockLoanPaymentRepository) CreateBatchTx(tx any, payments []*domain.LoanPayment) error {
 	return m.CreateBatch(payments)
 }
 
@@ -2504,6 +2509,77 @@ func (m *MockLoanPaymentRepository) SumUnpaidByMonth(workspaceID int32, year, mo
 func (m *MockLoanPaymentRepository) SetUnpaidSumByMonth(workspaceID int32, year, month int, sum decimal.Decimal) {
 	key := paymentMonthKey(workspaceID, year, month)
 	m.UnpaidSumsByMonth[key] = sum
+}
+
+// GetEarliestUnpaidMonth returns the earliest unpaid month for a provider (mock implementation)
+func (m *MockLoanPaymentRepository) GetEarliestUnpaidMonth(workspaceID int32, providerID int32) (*domain.EarliestUnpaidMonth, error) {
+	if m.GetEarliestUnpaidMonthFn != nil {
+		return m.GetEarliestUnpaidMonthFn(workspaceID, providerID)
+	}
+	// Default mock implementation - returns nil to indicate no unpaid months
+	return nil, nil
+}
+
+// GetUnpaidPaymentsByProviderMonth returns unpaid payments for a provider and month (mock implementation)
+func (m *MockLoanPaymentRepository) GetUnpaidPaymentsByProviderMonth(workspaceID int32, providerID int32, year int32, month int32) ([]*domain.LoanPayment, error) {
+	if m.GetUnpaidPaymentsByProviderMonthFn != nil {
+		return m.GetUnpaidPaymentsByProviderMonthFn(workspaceID, providerID, year, month)
+	}
+	// Default mock implementation - returns empty list
+	return []*domain.LoanPayment{}, nil
+}
+
+// BatchUpdatePaidTx marks multiple payments as paid within a transaction (mock implementation)
+func (m *MockLoanPaymentRepository) BatchUpdatePaidTx(tx any, paymentIDs []int32, workspaceID int32) (int, decimal.Decimal, error) {
+	if m.BatchUpdatePaidTxFn != nil {
+		return m.BatchUpdatePaidTxFn(tx, paymentIDs, workspaceID)
+	}
+	// Default mock implementation - update payments in memory
+	count := 0
+	total := decimal.Zero
+	for _, id := range paymentIDs {
+		if payment, ok := m.Payments[id]; ok && !payment.Paid {
+			now := time.Now()
+			payment.Paid = true
+			payment.PaidDate = &now
+			payment.UpdatedAt = now
+			count++
+			total = total.Add(payment.Amount)
+		}
+	}
+	return count, total, nil
+}
+
+// GetTrendRaw returns raw trend data for visualization
+func (m *MockLoanPaymentRepository) GetTrendRaw(workspaceID int32, startYear int32, startMonth int32) ([]*domain.TrendRawRow, error) {
+	if m.GetTrendRawFn != nil {
+		return m.GetTrendRawFn(workspaceID, startYear, startMonth)
+	}
+	// Return pre-set trend data or empty slice
+	if m.TrendData != nil {
+		return m.TrendData, nil
+	}
+	return []*domain.TrendRawRow{}, nil
+}
+
+// SetTrendData sets the mock trend data for testing
+func (m *MockLoanPaymentRepository) SetTrendData(data []*domain.TrendRawRow) {
+	m.TrendData = data
+}
+
+// GetLatestPaidMonth returns the latest paid month for a provider
+func (m *MockLoanPaymentRepository) GetLatestPaidMonth(workspaceID int32, providerID int32) (*domain.LatestPaidMonth, error) {
+	return nil, nil
+}
+
+// GetPaidPaymentsByProviderMonth returns paid payments for a specific provider and month
+func (m *MockLoanPaymentRepository) GetPaidPaymentsByProviderMonth(workspaceID int32, providerID int32, year int32, month int32) ([]*domain.LoanPayment, error) {
+	return []*domain.LoanPayment{}, nil
+}
+
+// BatchUpdateUnpaidTx atomically marks multiple payments as unpaid
+func (m *MockLoanPaymentRepository) BatchUpdateUnpaidTx(tx any, paymentIDs []int32) (int, error) {
+	return len(paymentIDs), nil
 }
 
 // =============================================================================

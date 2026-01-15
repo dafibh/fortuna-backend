@@ -92,6 +92,7 @@ type LoanProvider struct {
 	CreatedAt           pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
 	DeletedAt           pgtype.Timestamptz `json:"deleted_at"`
+	PaymentMode         string             `json:"payment_mode"`
 }
 
 type Month struct {

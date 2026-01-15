@@ -4,17 +4,24 @@ import (
 	"strings"
 
 	"github.com/dafibh/fortuna/fortuna-backend/internal/domain"
+	"github.com/dafibh/fortuna/fortuna-backend/internal/websocket"
 	"github.com/shopspring/decimal"
 )
 
 // LoanProviderService handles loan provider business logic
 type LoanProviderService struct {
-	providerRepo domain.LoanProviderRepository
+	providerRepo   domain.LoanProviderRepository
+	eventPublisher websocket.EventPublisher
 }
 
 // NewLoanProviderService creates a new LoanProviderService
 func NewLoanProviderService(providerRepo domain.LoanProviderRepository) *LoanProviderService {
 	return &LoanProviderService{providerRepo: providerRepo}
+}
+
+// SetEventPublisher sets the event publisher for real-time updates
+func (s *LoanProviderService) SetEventPublisher(publisher websocket.EventPublisher) {
+	s.eventPublisher = publisher
 }
 
 // CreateProviderInput contains input for creating a loan provider
@@ -73,6 +80,7 @@ type UpdateProviderInput struct {
 	Name                string
 	CutoffDay           int32
 	DefaultInterestRate decimal.Decimal
+	PaymentMode         *string // Optional pointer - nil means preserve existing
 }
 
 // UpdateProvider updates a loan provider
@@ -109,7 +117,25 @@ func (s *LoanProviderService) UpdateProvider(workspaceID int32, id int32, input 
 	existing.CutoffDay = input.CutoffDay
 	existing.DefaultInterestRate = input.DefaultInterestRate
 
-	return s.providerRepo.Update(existing)
+	// Handle optional payment mode update
+	if input.PaymentMode != nil {
+		if !domain.IsValidPaymentMode(*input.PaymentMode) {
+			return nil, domain.ErrInvalidPaymentMode
+		}
+		existing.PaymentMode = *input.PaymentMode
+	}
+
+	updated, err := s.providerRepo.Update(existing)
+	if err != nil {
+		return nil, err
+	}
+
+	// Emit WebSocket event for real-time updates
+	if s.eventPublisher != nil {
+		s.eventPublisher.Publish(workspaceID, websocket.LoanProviderUpdated(updated))
+	}
+
+	return updated, nil
 }
 
 // DeleteProvider soft-deletes a loan provider

@@ -13,6 +13,14 @@ import (
 type Querier interface {
 	// Batch toggle multiple transactions from pending to billed
 	BatchToggleToBilled(ctx context.Context, arg BatchToggleToBilledParams) ([]Transaction, error)
+	// Atomically marks multiple loan payments as paid
+	// Used for Pay Month action in consolidated monthly mode
+	// Returns the number of rows affected
+	BatchUpdatePaid(ctx context.Context, arg BatchUpdatePaidParams) (int64, error)
+	// Atomically marks multiple loan payments as unpaid
+	// Used for Unpay Month action in consolidated monthly mode
+	// Returns the number of rows affected
+	BatchUpdateUnpaid(ctx context.Context, dollar_1 []int32) (int64, error)
 	// Bulk update multiple transactions to settled state (is_paid = true)
 	BulkSettleTransactions(ctx context.Context, arg BulkSettleTransactionsParams) ([]Transaction, error)
 	// Copies all allocations from one month to another (atomic, skips deleted categories)
@@ -99,11 +107,18 @@ type Querier interface {
 	GetCurrentPricesByItem(ctx context.Context, arg GetCurrentPricesByItemParams) ([]GetCurrentPricesByItemRow, error)
 	// Get all billed, deferred transactions that need settlement (ordered by date)
 	GetDeferredForSettlement(ctx context.Context, workspaceID int32) ([]GetDeferredForSettlementRow, error)
+	// Returns the earliest (year, month) with unpaid payments for a provider
+	// This is used for sequential enforcement in consolidated monthly payment mode
+	// Handles gap months by finding the earliest unpaid month in ANY loan period
+	GetEarliestUnpaidMonth(ctx context.Context, arg GetEarliestUnpaidMonthParams) (GetEarliestUnpaidMonthRow, error)
 	GetExclusionsByTemplate(ctx context.Context, arg GetExclusionsByTemplateParams) ([]ProjectionExclusion, error)
 	GetFirstItemImage(ctx context.Context, arg GetFirstItemImageParams) (pgtype.Text, error)
 	// Get billed transactions with immediate intent for the current month
 	GetImmediateForSettlement(ctx context.Context, arg GetImmediateForSettlementParams) ([]GetImmediateForSettlementRow, error)
 	GetLatestMonth(ctx context.Context, workspaceID int32) (Month, error)
+	// Returns the latest (year, month) with paid payments for a provider
+	// Used for reverse sequential enforcement in unpay action
+	GetLatestPaidMonth(ctx context.Context, arg GetLatestPaidMonthParams) (GetLatestPaidMonthRow, error)
 	GetLoanByID(ctx context.Context, arg GetLoanByIDParams) (Loan, error)
 	GetLoanDeleteStats(ctx context.Context, loanID int32) (GetLoanDeleteStatsRow, error)
 	GetLoanPaymentByID(ctx context.Context, id int32) (LoanPayment, error)
@@ -119,6 +134,11 @@ type Querier interface {
 	GetMonthlyTransactionSummaries(ctx context.Context, workspaceID int32) ([]GetMonthlyTransactionSummariesRow, error)
 	// Get CC transactions that are billed but overdue (2+ months old)
 	GetOverdueCC(ctx context.Context, workspaceID int32) ([]GetOverdueCCRow, error)
+	// Returns all paid loan payments for a specific provider and month
+	// Used for Unpay Month action in consolidated monthly mode
+	GetPaidPaymentsByProviderMonth(ctx context.Context, arg GetPaidPaymentsByProviderMonthParams) ([]LoanPayment, error)
+	// Returns loan payments by their IDs with workspace validation via join
+	GetPaymentsByIDs(ctx context.Context, arg GetPaymentsByIDsParams) ([]LoanPayment, error)
 	// Get pending CC transactions (billed_at IS NULL) for a specific month range
 	GetPendingCCByMonth(ctx context.Context, arg GetPendingCCByMonthParams) ([]GetPendingCCByMonthRow, error)
 	// Get pending (not yet billed) deferred CC transactions for visibility
@@ -146,7 +166,14 @@ type Querier interface {
 	GetTransactionsForAggregation(ctx context.Context, arg GetTransactionsForAggregationParams) ([]GetTransactionsForAggregationRow, error)
 	// Returns transactions with category name joined for display
 	GetTransactionsWithCategory(ctx context.Context, arg GetTransactionsWithCategoryParams) ([]GetTransactionsWithCategoryRow, error)
+	// Aggregates loan payments by year/month and provider for trend visualization
+	// Returns monthly totals with provider breakdown and isPaid status
+	// Gap months (no payments) are handled in the service layer
+	GetTrendByMonth(ctx context.Context, arg GetTrendByMonthParams) ([]GetTrendByMonthRow, error)
 	GetUnpaidLoanPaymentsByMonth(ctx context.Context, arg GetUnpaidLoanPaymentsByMonthParams) ([]LoanPayment, error)
+	// Returns all unpaid loan payments for a specific provider and month
+	// Used for Pay Month action in consolidated monthly mode
+	GetUnpaidPaymentsByProviderMonth(ctx context.Context, arg GetUnpaidPaymentsByProviderMonthParams) ([]LoanPayment, error)
 	GetUserByAuth0ID(ctx context.Context, auth0ID string) (User, error)
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	GetWishlistByID(ctx context.Context, arg GetWishlistByIDParams) (Wishlist, error)
@@ -184,6 +211,8 @@ type Querier interface {
 	// Sum paid expenses within a date range for in-hand balance calculation
 	// Excludes transfers (they move money between accounts, not actual spending)
 	SumPaidExpensesByDateRange(ctx context.Context, arg SumPaidExpensesByDateRangeParams) (pgtype.Numeric, error)
+	// Returns the sum of amounts for given payment IDs
+	SumPaymentAmountsByIDs(ctx context.Context, arg SumPaymentAmountsByIDsParams) (pgtype.Numeric, error)
 	// Only count paid transactions, excludes transfers
 	SumTransactionsByTypeAndDateRange(ctx context.Context, arg SumTransactionsByTypeAndDateRangeParams) (pgtype.Numeric, error)
 	// Sum unpaid expenses within a date range (ALL unpaid, including deferred CC)
