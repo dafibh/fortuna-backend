@@ -68,19 +68,8 @@ type Loan struct {
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
 	DeletedAt         pgtype.Timestamptz `json:"deleted_at"`
-}
-
-type LoanPayment struct {
-	ID            int32              `json:"id"`
-	LoanID        int32              `json:"loan_id"`
-	PaymentNumber int32              `json:"payment_number"`
-	Amount        pgtype.Numeric     `json:"amount"`
-	DueYear       int32              `json:"due_year"`
-	DueMonth      int32              `json:"due_month"`
-	Paid          bool               `json:"paid"`
-	PaidDate      pgtype.Date        `json:"paid_date"`
-	CreatedAt     pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	AccountID         pgtype.Int4        `json:"account_id"`
+	SettlementIntent  pgtype.Text        `json:"settlement_intent"`
 }
 
 type LoanProvider struct {
@@ -155,6 +144,19 @@ type Transaction struct {
 	Source           pgtype.Text        `json:"source"`
 	TemplateID       pgtype.Int4        `json:"template_id"`
 	IsProjected      pgtype.Bool        `json:"is_projected"`
+	LoanID           pgtype.Int4        `json:"loan_id"`
+	GroupID          pgtype.Int4        `json:"group_id"`
+}
+
+type TransactionGroup struct {
+	ID             int32              `json:"id"`
+	WorkspaceID    int32              `json:"workspace_id"`
+	Name           string             `json:"name"`
+	Month          string             `json:"month"`
+	AutoDetected   bool               `json:"auto_detected"`
+	LoanProviderID pgtype.Int4        `json:"loan_provider_id"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
 }
 
 type User struct {

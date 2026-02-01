@@ -1077,3 +1077,96 @@ func TestGenerateMonthRange(t *testing.T) {
 		})
 	}
 }
+
+// Tests for GetEarliestUnpaidMonth service method
+
+func TestGetEarliestUnpaidMonth_Success(t *testing.T) {
+	paymentRepo := testutil.NewMockLoanPaymentRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	svc := NewLoanPaymentService(nil, paymentRepo, nil, providerRepo)
+
+	workspaceID := int32(1)
+	providerID := int32(10)
+
+	// Setup provider
+	providerRepo.Providers[providerID] = &domain.LoanProvider{
+		ID:          providerID,
+		WorkspaceID: workspaceID,
+		Name:        "Test Provider",
+		PaymentMode: domain.PaymentModeConsolidatedMonthly,
+	}
+
+	// Setup earliest unpaid month
+	paymentRepo.GetEarliestUnpaidMonthFn = func(wsID int32, pID int32) (*domain.EarliestUnpaidMonth, error) {
+		if wsID == workspaceID && pID == providerID {
+			return &domain.EarliestUnpaidMonth{Year: 2026, Month: 2}, nil
+		}
+		return nil, nil
+	}
+
+	result, err := svc.GetEarliestUnpaidMonth(workspaceID, providerID)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.Equal(t, int32(2026), result.Year)
+	assert.Equal(t, int32(2), result.Month)
+}
+
+func TestGetEarliestUnpaidMonth_ProviderNotFound(t *testing.T) {
+	paymentRepo := testutil.NewMockLoanPaymentRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	svc := NewLoanPaymentService(nil, paymentRepo, nil, providerRepo)
+
+	workspaceID := int32(1)
+	providerID := int32(999)
+
+	result, err := svc.GetEarliestUnpaidMonth(workspaceID, providerID)
+	assert.Error(t, err)
+	assert.Equal(t, domain.ErrLoanProviderNotFound, err)
+	assert.Nil(t, result)
+}
+
+func TestGetEarliestUnpaidMonth_WrongWorkspace(t *testing.T) {
+	paymentRepo := testutil.NewMockLoanPaymentRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	svc := NewLoanPaymentService(nil, paymentRepo, nil, providerRepo)
+
+	providerID := int32(10)
+
+	// Provider belongs to workspace 1
+	providerRepo.Providers[providerID] = &domain.LoanProvider{
+		ID:          providerID,
+		WorkspaceID: 1,
+		Name:        "Test Provider",
+	}
+
+	// Try to access from workspace 2
+	result, err := svc.GetEarliestUnpaidMonth(2, providerID)
+	assert.Error(t, err)
+	assert.Equal(t, domain.ErrLoanProviderNotFound, err)
+	assert.Nil(t, result)
+}
+
+func TestGetEarliestUnpaidMonth_AllPaid(t *testing.T) {
+	paymentRepo := testutil.NewMockLoanPaymentRepository()
+	providerRepo := testutil.NewMockLoanProviderRepository()
+	svc := NewLoanPaymentService(nil, paymentRepo, nil, providerRepo)
+
+	workspaceID := int32(1)
+	providerID := int32(10)
+
+	// Setup provider
+	providerRepo.Providers[providerID] = &domain.LoanProvider{
+		ID:          providerID,
+		WorkspaceID: workspaceID,
+		Name:        "Test Provider",
+	}
+
+	// All months are paid - return nil
+	paymentRepo.GetEarliestUnpaidMonthFn = func(wsID int32, pID int32) (*domain.EarliestUnpaidMonth, error) {
+		return nil, nil
+	}
+
+	result, err := svc.GetEarliestUnpaidMonth(workspaceID, providerID)
+	assert.NoError(t, err)
+	assert.Nil(t, result)
+}

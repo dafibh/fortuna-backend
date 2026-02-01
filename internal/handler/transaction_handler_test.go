@@ -744,6 +744,100 @@ func TestTogglePaidStatus_WorkspaceIsolation(t *testing.T) {
 	}
 }
 
+func TestGetTransactions_WithMonth_TriggersAutoGrouping(t *testing.T) {
+	e := echo.New()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	groupRepo := testutil.NewMockTransactionGroupRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
+	groupService := service.NewTransactionGroupService(groupRepo, transactionRepo)
+	handler := NewTransactionHandler(transactionService)
+	handler.SetTransactionGroupService(groupService)
+
+	autoGroupCalled := false
+	groupRepo.GetConsolidatedProvidersByMonthFn = func(wsID int32, month string) ([]domain.AutoDetectionCandidate, error) {
+		autoGroupCalled = true
+		if month != "2026-02" {
+			t.Errorf("expected month '2026-02', got %q", month)
+		}
+		return nil, nil // no candidates
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/transactions?month=2026-02", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", 1)
+
+	err := handler.GetTransactions(c)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", rec.Code)
+	}
+	if !autoGroupCalled {
+		t.Error("Expected EnsureAutoGroups to be called when month param is present")
+	}
+}
+
+func TestGetTransactions_WithoutMonth_DoesNotTriggerAutoGrouping(t *testing.T) {
+	e := echo.New()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	groupRepo := testutil.NewMockTransactionGroupRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
+	groupService := service.NewTransactionGroupService(groupRepo, transactionRepo)
+	handler := NewTransactionHandler(transactionService)
+	handler.SetTransactionGroupService(groupService)
+
+	autoGroupCalled := false
+	groupRepo.GetConsolidatedProvidersByMonthFn = func(wsID int32, month string) ([]domain.AutoDetectionCandidate, error) {
+		autoGroupCalled = true
+		return nil, nil
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/transactions", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", 1)
+
+	err := handler.GetTransactions(c)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if autoGroupCalled {
+		t.Error("Expected EnsureAutoGroups NOT to be called when no month param")
+	}
+}
+
+func TestGetTransactions_WithoutGroupService_StillWorks(t *testing.T) {
+	e := echo.New()
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	transactionService := service.NewTransactionService(transactionRepo, accountRepo, categoryRepo)
+	handler := NewTransactionHandler(transactionService)
+	// No group service set
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/transactions?month=2026-02", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	setupAuthContextWithWorkspace(c, "auth0|test", "test@example.com", "Test User", "", 1)
+
+	err := handler.GetTransactions(c)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", rec.Code)
+	}
+}
+
 // ============================================
 // Transfer Handler Tests
 // ============================================

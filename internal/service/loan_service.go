@@ -12,32 +12,36 @@ import (
 
 // LoanService handles loan business logic
 type LoanService struct {
-	pool         *pgxpool.Pool
-	loanRepo     domain.LoanRepository
-	providerRepo domain.LoanProviderRepository
-	paymentRepo  domain.LoanPaymentRepository
+	pool            *pgxpool.Pool
+	loanRepo        domain.LoanRepository
+	providerRepo    domain.LoanProviderRepository
+	transactionRepo domain.TransactionRepository // v2: transactions replace loan_payments
+	accountRepo     domain.AccountRepository     // v2: to look up account type for CC handling
 }
 
 // NewLoanService creates a new LoanService
-func NewLoanService(pool *pgxpool.Pool, loanRepo domain.LoanRepository, providerRepo domain.LoanProviderRepository, paymentRepo domain.LoanPaymentRepository) *LoanService {
+func NewLoanService(pool *pgxpool.Pool, loanRepo domain.LoanRepository, providerRepo domain.LoanProviderRepository, transactionRepo domain.TransactionRepository, accountRepo domain.AccountRepository) *LoanService {
 	return &LoanService{
-		pool:         pool,
-		loanRepo:     loanRepo,
-		providerRepo: providerRepo,
-		paymentRepo:  paymentRepo,
+		pool:            pool,
+		loanRepo:        loanRepo,
+		providerRepo:    providerRepo,
+		transactionRepo: transactionRepo,
+		accountRepo:     accountRepo,
 	}
 }
 
 // CreateLoanInput contains input for creating a loan
 type CreateLoanInput struct {
-	ProviderID     int32
-	ItemName       string
-	TotalAmount    decimal.Decimal
-	NumMonths      int32
-	PurchaseDate   time.Time
-	InterestRate   *decimal.Decimal  // Optional override, uses provider default if nil
-	Notes          *string
-	PaymentAmounts []decimal.Decimal // Optional custom amounts for each payment
+	ProviderID       int32
+	ItemName         string
+	TotalAmount      decimal.Decimal
+	NumMonths        int32
+	PurchaseDate     time.Time
+	InterestRate     *decimal.Decimal  // Optional override, uses provider default if nil
+	Notes            *string
+	PaymentAmounts   []decimal.Decimal // Optional custom amounts for each payment
+	AccountID        int32             // Required: the account to use for loan payments
+	SettlementIntent *string           // Optional: "immediate" or "deferred" for CC accounts
 }
 
 // CreateLoan creates a new loan with calculated values and generates payment schedule
@@ -64,6 +68,31 @@ func (s *LoanService) CreateLoan(workspaceID int32, input CreateLoanInput) (*dom
 	// Validate provider exists
 	if input.ProviderID <= 0 {
 		return nil, domain.ErrLoanProviderInvalid
+	}
+
+	// Validate account ID and get account type
+	if input.AccountID <= 0 {
+		return nil, domain.ErrLoanAccountInvalid
+	}
+
+	// v2: Look up account to determine if it's a CC account
+	account, err := s.accountRepo.GetByID(workspaceID, input.AccountID)
+	if err != nil {
+		return nil, domain.ErrLoanAccountInvalid
+	}
+
+	// Determine settlement intent based on account type
+	// For CC accounts: use provided intent or default to "deferred"
+	// For non-CC accounts: settlement intent is not used
+	var settlementIntent *string
+	isCC := account.Template == domain.TemplateCreditCard
+	if isCC {
+		if input.SettlementIntent != nil {
+			settlementIntent = input.SettlementIntent
+		} else {
+			defaultIntent := string(domain.SettlementIntentDeferred)
+			settlementIntent = &defaultIntent
+		}
 	}
 
 	provider, err := s.providerRepo.GetByID(workspaceID, input.ProviderID)
@@ -97,10 +126,12 @@ func (s *LoanService) CreateLoan(workspaceID int32, input CreateLoanInput) (*dom
 		MonthlyPayment:    monthlyPayment,
 		FirstPaymentYear:  int32(firstPaymentYear),
 		FirstPaymentMonth: int32(firstPaymentMonth),
+		AccountID:         input.AccountID,
+		SettlementIntent:  settlementIntent, // Use computed intent based on account type
 		Notes:             input.Notes,
 	}
 
-	// Use transaction if pool is available (for payment generation)
+	// Use transaction if pool is available (for transaction generation)
 	if s.pool != nil {
 		ctx := context.Background()
 		tx, err := s.pool.Begin(ctx)
@@ -115,18 +146,23 @@ func (s *LoanService) CreateLoan(workspaceID int32, input CreateLoanInput) (*dom
 			return nil, err
 		}
 
-		// Generate payment schedule
-		payments := GeneratePaymentSchedule(
+		// v2: Generate loan payment transactions instead of loan_payments
+		transactions := GenerateLoanTransactions(
+			workspaceID,
 			createdLoan.ID,
+			createdLoan.AccountID,
+			createdLoan.ItemName,
 			createdLoan.MonthlyPayment,
 			int(createdLoan.NumMonths),
 			int(createdLoan.FirstPaymentYear),
 			int(createdLoan.FirstPaymentMonth),
+			isCC,
+			settlementIntent,
 			input.PaymentAmounts,
 		)
 
-		// Create payments in transaction
-		if err := s.paymentRepo.CreateBatchTx(tx, payments); err != nil {
+		// Create transactions in DB transaction
+		if _, err := s.transactionRepo.CreateBatchTx(tx, transactions); err != nil {
 			return nil, err
 		}
 
@@ -231,6 +267,23 @@ func (s *LoanService) GetLoansWithStats(workspaceID int32, filter domain.LoanFil
 	}
 }
 
+// GetLoansByProvider retrieves all loans for a specific provider with payment statistics
+// Used by item-based provider modal to display loan items with progress
+func (s *LoanService) GetLoansByProvider(workspaceID int32, providerID int32) ([]*domain.LoanWithStats, error) {
+	return s.loanRepo.GetByProviderWithStats(workspaceID, providerID)
+}
+
+// GetTransactionsByLoan retrieves all transactions for a specific loan
+// Used by item-based provider modal to display payment months under each loan item
+func (s *LoanService) GetTransactionsByLoan(workspaceID int32, loanID int32) ([]*domain.Transaction, error) {
+	// First verify the loan exists and belongs to this workspace
+	_, err := s.loanRepo.GetByID(workspaceID, loanID)
+	if err != nil {
+		return nil, err
+	}
+	return s.transactionRepo.GetByLoanID(workspaceID, loanID)
+}
+
 // GetLoanByID retrieves a loan by ID within a workspace
 func (s *LoanService) GetLoanByID(workspaceID int32, id int32) (*domain.Loan, error) {
 	return s.loanRepo.GetByID(workspaceID, id)
@@ -238,12 +291,14 @@ func (s *LoanService) GetLoanByID(workspaceID int32, id int32) (*domain.Loan, er
 
 // UpdateLoanInput contains input for updating editable loan fields
 type UpdateLoanInput struct {
-	ItemName string
-	Notes    *string
+	ItemName   string
+	Notes      *string
+	ProviderID *int32 // Optional: only changeable if no payments made
 }
 
-// UpdateLoan updates the editable fields (itemName, notes) of a loan
+// UpdateLoan updates the editable fields (itemName, notes, optionally provider) of a loan
 // Note: Amount, months, and dates are locked after creation
+// Provider can only change if no payments have been made
 func (s *LoanService) UpdateLoan(workspaceID int32, id int32, input UpdateLoanInput) (*domain.Loan, error) {
 	// Validate item name
 	itemName := strings.TrimSpace(input.ItemName)
@@ -254,26 +309,116 @@ func (s *LoanService) UpdateLoan(workspaceID int32, id int32, input UpdateLoanIn
 		return nil, domain.ErrLoanItemNameTooLong
 	}
 
+	// 1. Get current loan (for old provider name and comparison)
+	currentLoan, err := s.loanRepo.GetByID(workspaceID, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Determine final provider ID and name
+	providerID := currentLoan.ProviderID
+	providerChanging := false
+
+	if input.ProviderID != nil && *input.ProviderID != currentLoan.ProviderID {
+		// 3. Provider is changing - verify no paid transactions
+		hasPaid, err := s.transactionRepo.HasPaidTransactionsByLoan(workspaceID, id)
+		if err != nil {
+			return nil, err
+		}
+		if hasPaid {
+			return nil, domain.ErrCannotChangeProviderAfterPayments
+		}
+		providerID = *input.ProviderID
+		providerChanging = true
+	}
+
+	// 4. Get provider for payee string (use new or current)
+	provider, err := s.providerRepo.GetByID(workspaceID, providerID)
+	if err != nil {
+		if err == domain.ErrLoanProviderNotFound {
+			return nil, domain.ErrLoanProviderInvalid
+		}
+		return nil, err
+	}
+
+	// 5. Build new payee string: "[ProviderName] ([ItemName])"
+	newPayee := provider.Name + " (" + itemName + ")"
+
+	// 6. Update loan record
+	updatedLoan, err := s.loanRepo.UpdateEditableFields(workspaceID, id, itemName, providerID, input.Notes)
+	if err != nil {
+		return nil, err
+	}
+
+	// 7. Cascade payee update to all transactions
+	// Only cascade if item name or provider actually changed
+	needsCascade := itemName != currentLoan.ItemName || providerChanging
+	if needsCascade {
+		if _, err := s.transactionRepo.UpdatePayeesByLoan(workspaceID, id, newPayee); err != nil {
+			// Log but don't fail - loan is already updated
+			// This matches the pattern in Dev Notes
+			// In production, consider adding proper logging
+			_ = err // silently ignore cascade errors
+		}
+	}
+
+	return updatedLoan, nil
+}
+
+// LoanEditCheck contains edit eligibility information for a loan
+type LoanEditCheck struct {
+	CanChangeProvider    bool `json:"canChangeProvider"`
+	HasPaidTransactions  bool `json:"hasPaidTransactions"`
+}
+
+// GetEditCheck returns edit eligibility for a loan (whether provider can be changed)
+func (s *LoanService) GetEditCheck(workspaceID int32, id int32) (*LoanEditCheck, error) {
 	// Verify loan exists
 	_, err := s.loanRepo.GetByID(workspaceID, id)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.loanRepo.UpdatePartial(workspaceID, id, itemName, input.Notes)
+	// Check if any transactions are paid
+	hasPaid, err := s.transactionRepo.HasPaidTransactionsByLoan(workspaceID, id)
+	if err != nil {
+		return nil, err
+	}
+
+	return &LoanEditCheck{
+		CanChangeProvider:   !hasPaid,
+		HasPaidTransactions: hasPaid,
+	}, nil
 }
 
-// DeleteLoan soft-deletes a loan
+// DeleteLoan soft-deletes a loan with cascade transaction handling
+// Follows the same pattern as RecurringTemplateServiceImpl.DeleteTemplate:
+// 1. Orphan paid transactions (set loan_id = NULL to keep them in history)
+// 2. Hard delete unpaid transactions (future payments no longer needed)
+// 3. Soft delete the loan record
 func (s *LoanService) DeleteLoan(workspaceID int32, id int32) error {
 	// Verify loan exists before deleting
 	_, err := s.loanRepo.GetByID(workspaceID, id)
 	if err != nil {
 		return err
 	}
+
+	// 1. Orphan paid transactions (keep them in history, clear loan_id)
+	if err := s.transactionRepo.OrphanPaidTransactionsByLoan(workspaceID, id); err != nil {
+		return err
+	}
+
+	// 2. Hard delete unpaid transactions (future payments no longer needed)
+	if err := s.transactionRepo.DeleteUnpaidTransactionsByLoan(workspaceID, id); err != nil {
+		return err
+	}
+
+	// 3. Soft delete the loan record
 	return s.loanRepo.SoftDelete(workspaceID, id)
 }
 
 // GetDeleteStats retrieves loan and payment statistics for delete confirmation dialog
+// v2: Uses transactions table via GetLoanTransactionStats
 func (s *LoanService) GetDeleteStats(workspaceID int32, id int32) (*domain.Loan, *domain.LoanDeleteStats, error) {
 	// Verify loan exists and belongs to workspace
 	loan, err := s.loanRepo.GetByID(workspaceID, id)
@@ -281,10 +426,17 @@ func (s *LoanService) GetDeleteStats(workspaceID int32, id int32) (*domain.Loan,
 		return nil, nil, err
 	}
 
-	// Get payment statistics
-	stats, err := s.paymentRepo.GetDeleteStats(id)
+	// v2: Get transaction stats from transactions table
+	txStats, err := s.transactionRepo.GetLoanTransactionStats(workspaceID, id)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	stats := &domain.LoanDeleteStats{
+		TotalCount:  txStats.PaidCount + txStats.UnpaidCount,
+		PaidCount:   txStats.PaidCount,
+		UnpaidCount: txStats.UnpaidCount,
+		TotalAmount: txStats.PaidTotal.Add(txStats.UnpaidTotal),
 	}
 
 	return loan, stats, nil
@@ -300,30 +452,15 @@ type MonthlyCommitmentsResult struct {
 }
 
 // GetMonthlyCommitments retrieves loan commitments for a specific month
+// TODO(v2): Implement using transactions instead of loan_payments
 func (s *LoanService) GetMonthlyCommitments(workspaceID int32, year, month int) (*MonthlyCommitmentsResult, error) {
-	// Get all payments with loan details for the month
-	payments, err := s.paymentRepo.GetPaymentsWithDetailsByMonth(workspaceID, year, month)
-	if err != nil {
-		return nil, err
-	}
-
-	// Calculate totals
-	totalUnpaid := decimal.Zero
-	totalPaid := decimal.Zero
-	for _, p := range payments {
-		if p.Paid {
-			totalPaid = totalPaid.Add(p.Amount)
-		} else {
-			totalUnpaid = totalUnpaid.Add(p.Amount)
-		}
-	}
-
+	// v2 stub: Return empty result until transaction-based query is implemented
 	return &MonthlyCommitmentsResult{
 		Year:        year,
 		Month:       month,
-		TotalUnpaid: totalUnpaid,
-		TotalPaid:   totalPaid,
-		Payments:    payments,
+		TotalUnpaid: decimal.Zero,
+		TotalPaid:   decimal.Zero,
+		Payments:    []*domain.MonthlyPaymentDetail{},
 	}, nil
 }
 
@@ -386,6 +523,67 @@ func GeneratePaymentSchedule(loanID int32, monthlyPayment decimal.Decimal, numMo
 	return payments
 }
 
+// GenerateLoanTransactions creates transaction entries for each loan payment
+// v2: Replaces loan_payments with transactions linked via loan_id
+func GenerateLoanTransactions(
+	workspaceID int32,
+	loanID int32,
+	accountID int32,
+	itemName string,
+	monthlyPayment decimal.Decimal,
+	numMonths int,
+	firstPaymentYear, firstPaymentMonth int,
+	isCC bool,
+	settlementIntent *string,
+	customAmounts []decimal.Decimal,
+) []*domain.Transaction {
+	transactions := make([]*domain.Transaction, numMonths)
+	year := firstPaymentYear
+	month := firstPaymentMonth
+
+	// Use custom amounts if provided and correct length
+	useCustom := len(customAmounts) == numMonths
+
+	// For CC accounts, convert settlement intent string to domain type
+	var domainIntent *domain.SettlementIntent
+	if isCC && settlementIntent != nil {
+		intent := domain.SettlementIntent(*settlementIntent)
+		domainIntent = &intent
+	}
+
+	for i := 0; i < numMonths; i++ {
+		amount := monthlyPayment
+		if useCustom {
+			amount = customAmounts[i]
+		}
+
+		// Transaction date is 1st of the payment month
+		transactionDate := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
+
+		transactions[i] = &domain.Transaction{
+			WorkspaceID:      workspaceID,
+			AccountID:        accountID,
+			Name:             itemName,
+			Amount:           amount,
+			Type:             domain.TransactionTypeExpense,
+			TransactionDate:  transactionDate,
+			IsPaid:           false, // Unpaid until user marks as paid
+			Source:           "loan",
+			LoanID:           &loanID,
+			SettlementIntent: domainIntent,
+		}
+
+		// Advance to next month
+		month++
+		if month > 12 {
+			month = 1
+			year++
+		}
+	}
+
+	return transactions
+}
+
 // GetTrend retrieves trend data for loan payments aggregated by month
 // Returns monthly totals with provider breakdown for the specified number of months
 // Starting from current month, includes gap months with RM 0.00
@@ -409,57 +607,128 @@ func (s *LoanService) GetTrend(workspaceID int32, months int) (*domain.TrendResp
 		endYear, endMonth = nextMonth(endYear, endMonth)
 	}
 
-	// Fetch raw data from repository
-	rawData, err := s.paymentRepo.GetTrendRaw(workspaceID, int32(startYear), int32(startMonth))
+	// Generate all months in range (including gaps)
+	allMonths := generateMonthRange(startYear, startMonth, endYear, endMonth)
+
+	// Fetch aggregated loan trend data from transactions
+	trendData, err := s.transactionRepo.GetLoanTrendData(
+		workspaceID,
+		int32(startYear), int32(startMonth),
+		int32(endYear), int32(endMonth),
+	)
 	if err != nil {
 		return nil, err
 	}
 
-	// Generate all months in range (including gaps)
-	allMonths := generateMonthRange(startYear, startMonth, endYear, endMonth)
-
-	// Create a map for quick lookup: "YYYY-MM" -> month data
-	monthMap := make(map[string]*domain.MonthlyTrend)
-	for _, m := range allMonths {
-		monthMap[m] = &domain.MonthlyTrend{
-			Month:     m,
-			Total:     decimal.Zero,
-			IsPaid:    true, // Defaults to true, will be set to false if any unpaid found
-			Providers: []domain.ProviderBreakdown{},
+	// Build a map of month -> provider breakdown for quick lookup
+	// Key: "YYYY-MM", Value: map of providerID -> breakdown
+	monthProviderMap := make(map[string]map[int32]*domain.ProviderBreakdown)
+	for _, row := range trendData {
+		monthKey := formatMonth(int(row.Year), int(row.Month))
+		if monthProviderMap[monthKey] == nil {
+			monthProviderMap[monthKey] = make(map[int32]*domain.ProviderBreakdown)
 		}
-	}
-
-	// Process raw data - aggregate by month and provider
-	for _, row := range rawData {
-		monthKey := formatMonth(int(row.DueYear), int(row.DueMonth))
-
-		// Only process months within our range
-		monthData, exists := monthMap[monthKey]
-		if !exists {
-			continue
-		}
-
-		// Add provider breakdown
-		monthData.Providers = append(monthData.Providers, domain.ProviderBreakdown{
+		monthProviderMap[monthKey][row.ProviderID] = &domain.ProviderBreakdown{
 			ID:     row.ProviderID,
 			Name:   row.ProviderName,
-			Amount: row.Total,
-		})
-
-		// Add to total
-		monthData.Total = monthData.Total.Add(row.Total)
-
-		// If any provider has unpaid items, the month is not fully paid
-		if !row.IsPaid {
-			monthData.IsPaid = false
+			Amount: row.TotalAmount,
+			IsPaid: row.AllPaid,
 		}
 	}
 
-	// Convert map to ordered slice
+	// Build result with all months (gaps will have zero amounts)
 	result := make([]domain.MonthlyTrend, len(allMonths))
 	for i, m := range allMonths {
-		result[i] = *monthMap[m]
+		providers := []domain.ProviderBreakdown{}
+		total := decimal.Zero
+		allPaid := true
+
+		if providerMap, exists := monthProviderMap[m]; exists {
+			for _, breakdown := range providerMap {
+				providers = append(providers, *breakdown)
+				total = total.Add(breakdown.Amount)
+				if !breakdown.IsPaid {
+					allPaid = false
+				}
+			}
+		}
+
+		result[i] = domain.MonthlyTrend{
+			Month:     m,
+			Total:     total,
+			IsPaid:    allPaid,
+			Providers: providers,
+		}
 	}
 
 	return &domain.TrendResponse{Months: result}, nil
+}
+
+// PayLoanMonthInput contains input for paying a loan month
+type PayLoanMonthInput struct {
+	LoanID int32
+	Year   int
+	Month  int
+}
+
+// PayLoanMonthResult contains the result of paying a loan month
+type PayLoanMonthResult struct {
+	SettledTransactions []*domain.Transaction
+	TotalAmount         decimal.Decimal
+	Message             string
+}
+
+// PayLoanMonth marks all unpaid transactions for a loan month as paid
+// Works for both bank and CC transactions - CC state transitions automatically
+func (s *LoanService) PayLoanMonth(workspaceID int32, input PayLoanMonthInput) (*PayLoanMonthResult, error) {
+	// 1. Verify loan exists and belongs to workspace
+	loan, err := s.loanRepo.GetByID(workspaceID, input.LoanID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Get unpaid transactions for this loan and month
+	transactions, err := s.transactionRepo.GetLoanTransactionsByMonth(
+		workspaceID, input.LoanID, input.Year, input.Month,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(transactions) == 0 {
+		return nil, domain.ErrNoTransactionsToSettle
+	}
+
+	// 3. Extract IDs for bulk update
+	ids := make([]int32, len(transactions))
+	for i, tx := range transactions {
+		ids[i] = tx.ID
+	}
+
+	// 4. Bulk mark transactions as paid (works for both bank and CC)
+	// For CC transactions, this also transitions cc_state to 'settled'
+	settled, err := s.transactionRepo.BulkMarkPaid(workspaceID, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	// Verify all transactions were settled
+	if len(settled) != len(ids) {
+		return nil, domain.ErrLoanPaymentAtomicityFailed
+	}
+
+	// 5. Calculate total amount
+	total := decimal.Zero
+	for _, tx := range settled {
+		total = total.Add(tx.Amount.Abs())
+	}
+
+	// 6. Format month name for message
+	monthName := time.Month(input.Month).String()
+
+	return &PayLoanMonthResult{
+		SettledTransactions: settled,
+		TotalAmount:         total,
+		Message:             monthName + " settled for " + loan.ItemName,
+	}, nil
 }

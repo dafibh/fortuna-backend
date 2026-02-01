@@ -16,7 +16,8 @@ import (
 
 // TransactionHandler handles transaction-related HTTP requests
 type TransactionHandler struct {
-	transactionService *service.TransactionService
+	transactionService      *service.TransactionService
+	transactionGroupService *service.TransactionGroupService
 }
 
 // NewTransactionHandler creates a new TransactionHandler
@@ -24,6 +25,11 @@ func NewTransactionHandler(transactionService *service.TransactionService) *Tran
 	return &TransactionHandler{
 		transactionService: transactionService,
 	}
+}
+
+// SetTransactionGroupService sets the group service for auto-detection on GetTransactions
+func (h *TransactionHandler) SetTransactionGroupService(groupService *service.TransactionGroupService) {
+	h.transactionGroupService = groupService
 }
 
 // CreateTransactionRequest represents the create transaction request body
@@ -66,6 +72,10 @@ type TransactionResponse struct {
 	CCState          *string `json:"ccState,omitempty"`          // Computed: "pending", "billed", or "settled"
 	BilledAt         *string `json:"billedAt,omitempty"`         // Timestamp when marked as billed
 	SettlementIntent *string `json:"settlementIntent,omitempty"` // "immediate" or "deferred"
+
+	// Transaction Grouping fields
+	GroupID   *int32  `json:"groupId,omitempty"`   // ID of the transaction group
+	GroupName *string `json:"groupName,omitempty"` // Name of the transaction group
 }
 
 // CreateTransferRequest represents the create transfer request body
@@ -270,6 +280,11 @@ func (h *TransactionHandler) GetTransactions(c echo.Context) error {
 		endOfMonth := startOfMonth.AddDate(0, 1, -1) // Last day of month
 		filters.StartDate = &startOfMonth
 		filters.EndDate = &endOfMonth
+
+		// Fire-and-forget: auto-detect BNPL groups for this month
+		if h.transactionGroupService != nil {
+			_ = h.transactionGroupService.EnsureAutoGroups(workspaceID, monthStr)
+		}
 	} else {
 		// Use startDate/endDate if month not provided
 		if startDateStr != "" {
@@ -783,6 +798,13 @@ func toTransactionResponse(transaction *domain.Transaction) TransactionResponse 
 	if transaction.SettlementIntent != nil {
 		settlementIntent := string(*transaction.SettlementIntent)
 		resp.SettlementIntent = &settlementIntent
+	}
+	// Transaction Grouping fields
+	if transaction.GroupID != nil {
+		resp.GroupID = transaction.GroupID
+	}
+	if transaction.GroupName != nil {
+		resp.GroupName = transaction.GroupName
 	}
 	return resp
 }

@@ -15,12 +15,13 @@ import (
 
 // TransactionService handles transaction-related business logic
 type TransactionService struct {
-	transactionRepo domain.TransactionRepository
-	accountRepo     domain.AccountRepository
-	categoryRepo    domain.BudgetCategoryRepository
-	templateRepo    domain.RecurringTemplateRepository
-	exclusionRepo   domain.ProjectionExclusionRepository
-	eventPublisher  websocket.EventPublisher
+	transactionRepo      domain.TransactionRepository
+	accountRepo          domain.AccountRepository
+	categoryRepo         domain.BudgetCategoryRepository
+	templateRepo         domain.RecurringTemplateRepository
+	exclusionRepo        domain.ProjectionExclusionRepository
+	transactionGroupRepo domain.TransactionGroupRepository
+	eventPublisher       websocket.EventPublisher
 }
 
 // NewTransactionService creates a new TransactionService
@@ -40,6 +41,11 @@ func (s *TransactionService) SetRecurringTemplateRepository(templateRepo domain.
 // SetExclusionRepository sets the exclusion repository for projection deletion tracking
 func (s *TransactionService) SetExclusionRepository(exclusionRepo domain.ProjectionExclusionRepository) {
 	s.exclusionRepo = exclusionRepo
+}
+
+// SetTransactionGroupRepository sets the transaction group repository for auto-ungroup on date change
+func (s *TransactionService) SetTransactionGroupRepository(groupRepo domain.TransactionGroupRepository) {
+	s.transactionGroupRepo = groupRepo
 }
 
 // SetEventPublisher sets the event publisher for real-time updates
@@ -352,6 +358,42 @@ func (s *TransactionService) UpdateTransaction(workspaceID int32, id int32, inpu
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// Auto-ungroup if date changed to a different month (AC #5)
+	if updated.GroupID != nil && s.transactionGroupRepo != nil {
+		group, groupErr := s.transactionGroupRepo.GetByID(workspaceID, *updated.GroupID)
+		if groupErr == nil {
+			txMonth := updated.TransactionDate.Format("2006-01")
+			if txMonth != group.Month {
+				// Month mismatch — ungroup the transaction
+				_ = s.transactionGroupRepo.UnassignGroupFromTransactions(workspaceID, []int32{updated.ID})
+				updated.GroupID = nil
+
+				// Check if group is now empty and auto-delete
+				refreshed, refreshErr := s.transactionGroupRepo.GetByID(workspaceID, group.ID)
+				if refreshErr == nil && refreshed.ChildCount == 0 {
+					_ = s.transactionGroupRepo.Delete(workspaceID, group.ID)
+					s.publishEvent(workspaceID, websocket.TransactionGroupDeleted(map[string]interface{}{
+						"id":   group.ID,
+						"mode": "auto_empty",
+					}))
+				} else if refreshErr == nil {
+					s.publishEvent(workspaceID, websocket.TransactionGroupChildrenChanged(map[string]interface{}{
+						"id":          refreshed.ID,
+						"childCount":  refreshed.ChildCount,
+						"totalAmount": refreshed.TotalAmount.StringFixed(2),
+					}))
+				}
+
+				log.Info().
+					Int32("transaction_id", updated.ID).
+					Int32("group_id", group.ID).
+					Str("old_month", group.Month).
+					Str("new_month", txMonth).
+					Msg("Transaction auto-ungrouped due to date change")
+			}
+		}
 	}
 
 	// Publish event for real-time updates

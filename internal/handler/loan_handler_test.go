@@ -14,11 +14,43 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+// createTestLoanService creates a LoanService with mock repositories for testing
+// Sets up a default bank account with ID 1 in workspaceID 1
+func createTestLoanService(loanRepo *testutil.MockLoanRepository, providerRepo *testutil.MockLoanProviderRepository) *service.LoanService {
+	svc, _ := createTestLoanServiceWithTransactionRepo(loanRepo, providerRepo)
+	return svc
+}
+
+func createTestLoanServiceWithTransactionRepo(loanRepo *testutil.MockLoanRepository, providerRepo *testutil.MockLoanProviderRepository) (*service.LoanService, *testutil.MockTransactionRepository) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+
+	// Add a bank account (ID 1) for testing
+	accountRepo.Create(&domain.Account{
+		ID:          1,
+		WorkspaceID: 1,
+		Name:        "Test Bank Account",
+		Template:    domain.TemplateBank,
+		AccountType: domain.AccountTypeAsset,
+	})
+
+	// Add a CC account (ID 2) for testing settlement intent
+	accountRepo.Create(&domain.Account{
+		ID:          2,
+		WorkspaceID: 1,
+		Name:        "Test Credit Card",
+		Template:    domain.TemplateCreditCard,
+		AccountType: domain.AccountTypeLiability,
+	})
+
+	return service.NewLoanService(nil, loanRepo, providerRepo, transactionRepo, accountRepo), transactionRepo
+}
+
 func TestCreateLoan_Success(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	loanService := service.NewLoanService(nil, loanRepo, providerRepo, nil)
+	loanService := createTestLoanService(loanRepo, providerRepo)
 	handler := NewLoanHandler(loanService)
 
 	// Add a provider
@@ -35,7 +67,8 @@ func TestCreateLoan_Success(t *testing.T) {
 		"itemName": "iPhone Case",
 		"totalAmount": "300.00",
 		"numMonths": 3,
-		"purchaseDate": "2024-03-20"
+		"purchaseDate": "2024-03-20",
+		"accountId": 1
 	}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/loans", strings.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
@@ -75,7 +108,7 @@ func TestCreateLoan_WithInterestRateOverride(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	loanService := service.NewLoanService(nil, loanRepo, providerRepo, nil)
+	loanService := createTestLoanService(loanRepo, providerRepo)
 	handler := NewLoanHandler(loanService)
 
 	providerRepo.AddLoanProvider(&domain.LoanProvider{
@@ -92,7 +125,8 @@ func TestCreateLoan_WithInterestRateOverride(t *testing.T) {
 		"totalAmount": "1000.00",
 		"numMonths": 10,
 		"purchaseDate": "2024-03-10",
-		"interestRate": "10.00"
+		"interestRate": "10.00",
+		"accountId": 1
 	}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/loans", strings.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
@@ -129,7 +163,7 @@ func TestCreateLoan_EmptyItemName(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	loanService := service.NewLoanService(nil, loanRepo, providerRepo, nil)
+	loanService := createTestLoanService(loanRepo, providerRepo)
 	handler := NewLoanHandler(loanService)
 
 	providerRepo.AddLoanProvider(&domain.LoanProvider{
@@ -144,7 +178,8 @@ func TestCreateLoan_EmptyItemName(t *testing.T) {
 		"itemName": "",
 		"totalAmount": "100.00",
 		"numMonths": 3,
-		"purchaseDate": "2024-03-20"
+		"purchaseDate": "2024-03-20",
+		"accountId": 1
 	}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/loans", strings.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
@@ -167,7 +202,7 @@ func TestCreateLoan_InvalidProvider(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	loanService := service.NewLoanService(nil, loanRepo, providerRepo, nil)
+	loanService := createTestLoanService(loanRepo, providerRepo)
 	handler := NewLoanHandler(loanService)
 
 	reqBody := `{
@@ -175,7 +210,8 @@ func TestCreateLoan_InvalidProvider(t *testing.T) {
 		"itemName": "Test",
 		"totalAmount": "100.00",
 		"numMonths": 3,
-		"purchaseDate": "2024-03-20"
+		"purchaseDate": "2024-03-20",
+		"accountId": 1
 	}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/loans", strings.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
@@ -198,7 +234,7 @@ func TestGetLoans_Success(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	loanService := service.NewLoanService(nil, loanRepo, providerRepo, nil)
+	loanService := createTestLoanService(loanRepo, providerRepo)
 	handler := NewLoanHandler(loanService)
 
 	// Set up loans with stats
@@ -331,7 +367,7 @@ func TestGetLoans_WithStatusFilter(t *testing.T) {
 			e := echo.New()
 			loanRepo := testutil.NewMockLoanRepository()
 			providerRepo := testutil.NewMockLoanProviderRepository()
-			loanService := service.NewLoanService(nil, loanRepo, providerRepo, nil)
+			loanService := createTestLoanService(loanRepo, providerRepo)
 			handler := NewLoanHandler(loanService)
 
 			tt.setupMock(loanRepo)
@@ -369,7 +405,7 @@ func TestGetLoan_Success(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	loanService := service.NewLoanService(nil, loanRepo, providerRepo, nil)
+	loanService := createTestLoanService(loanRepo, providerRepo)
 	handler := NewLoanHandler(loanService)
 
 	loanRepo.AddLoan(&domain.Loan{
@@ -411,7 +447,7 @@ func TestGetLoan_NotFound(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	loanService := service.NewLoanService(nil, loanRepo, providerRepo, nil)
+	loanService := createTestLoanService(loanRepo, providerRepo)
 	handler := NewLoanHandler(loanService)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/loans/999", nil)
@@ -436,7 +472,7 @@ func TestDeleteLoan_Success(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	loanService := service.NewLoanService(nil, loanRepo, providerRepo, nil)
+	loanService := createTestLoanService(loanRepo, providerRepo)
 	handler := NewLoanHandler(loanService)
 
 	loanRepo.AddLoan(&domain.Loan{
@@ -467,7 +503,7 @@ func TestDeleteLoan_NotFound(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	loanService := service.NewLoanService(nil, loanRepo, providerRepo, nil)
+	loanService := createTestLoanService(loanRepo, providerRepo)
 	handler := NewLoanHandler(loanService)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/loans/999", nil)
@@ -492,7 +528,7 @@ func TestPreviewLoan_Success(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	loanService := service.NewLoanService(nil, loanRepo, providerRepo, nil)
+	loanService := createTestLoanService(loanRepo, providerRepo)
 	handler := NewLoanHandler(loanService)
 
 	providerRepo.AddLoanProvider(&domain.LoanProvider{
@@ -543,7 +579,7 @@ func TestPreviewLoan_InvalidProvider(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	loanService := service.NewLoanService(nil, loanRepo, providerRepo, nil)
+	loanService := createTestLoanService(loanRepo, providerRepo)
 	handler := NewLoanHandler(loanService)
 
 	reqBody := `{
@@ -573,7 +609,7 @@ func TestGetLoans_WorkspaceIsolation(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	loanService := service.NewLoanService(nil, loanRepo, providerRepo, nil)
+	loanService := createTestLoanService(loanRepo, providerRepo)
 	handler := NewLoanHandler(loanService)
 
 	// Set up loans with stats for workspace 1
@@ -619,8 +655,15 @@ func TestUpdateLoan_Success(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	loanService := service.NewLoanService(nil, loanRepo, providerRepo, nil)
+	loanService := createTestLoanService(loanRepo, providerRepo)
 	handler := NewLoanHandler(loanService)
+
+	// Add provider that the loan references
+	providerRepo.AddProvider(&domain.LoanProvider{
+		ID:          1,
+		WorkspaceID: 1,
+		Name:        "Test Provider",
+	})
 
 	loanRepo.AddLoan(&domain.Loan{
 		ID:          1,
@@ -663,7 +706,7 @@ func TestUpdateLoan_EmptyItemName(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	loanService := service.NewLoanService(nil, loanRepo, providerRepo, nil)
+	loanService := createTestLoanService(loanRepo, providerRepo)
 	handler := NewLoanHandler(loanService)
 
 	loanRepo.AddLoan(&domain.Loan{
@@ -697,7 +740,7 @@ func TestUpdateLoan_NotFound(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	loanService := service.NewLoanService(nil, loanRepo, providerRepo, nil)
+	loanService := createTestLoanService(loanRepo, providerRepo)
 	handler := NewLoanHandler(loanService)
 
 	reqBody := `{"itemName": "New Name"}`
@@ -724,7 +767,7 @@ func TestUpdateLoan_WorkspaceIsolation(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	loanService := service.NewLoanService(nil, loanRepo, providerRepo, nil)
+	loanService := createTestLoanService(loanRepo, providerRepo)
 	handler := NewLoanHandler(loanService)
 
 	// Create a loan in workspace 2
@@ -760,7 +803,7 @@ func TestGetLoan_WorkspaceIsolation(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	loanService := service.NewLoanService(nil, loanRepo, providerRepo, nil)
+	loanService := createTestLoanService(loanRepo, providerRepo)
 	handler := NewLoanHandler(loanService)
 
 	// Create a loan in workspace 2
@@ -813,39 +856,45 @@ func TestGetDeleteCheck_Success(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	paymentRepo := testutil.NewMockLoanPaymentRepository()
-	loanService := service.NewLoanService(nil, loanRepo, providerRepo, paymentRepo)
+	loanService, transactionRepo := createTestLoanServiceWithTransactionRepo(loanRepo, providerRepo)
 	handler := NewLoanHandler(loanService)
 
+	loanID := int32(1)
+	workspaceID := int32(1)
 	loanRepo.AddLoan(&domain.Loan{
-		ID:          1,
-		WorkspaceID: 1,
-		ProviderID:  1,
-		ItemName:    "Test Loan",
-		TotalAmount: decimal.NewFromInt(300),
+		ID:             loanID,
+		WorkspaceID:    workspaceID,
+		ProviderID:     1,
+		ItemName:       "Test Loan",
+		TotalAmount:    decimal.NewFromInt(300),
+		NumMonths:      3,
+		MonthlyPayment: decimal.NewFromInt(100),
 	})
 
-	// Add payments
-	paymentRepo.AddPayment(&domain.LoanPayment{
-		ID:            1,
-		LoanID:        1,
-		PaymentNumber: 1,
-		Amount:        decimal.NewFromInt(100),
-		Paid:          true,
+	// v2: Add transactions for the loan: 1 paid, 2 unpaid
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:          1,
+		WorkspaceID: workspaceID,
+		LoanID:      &loanID,
+		Amount:      decimal.NewFromInt(-100),
+		IsPaid:      true,
+		Name:        "Test Loan Payment 1",
 	})
-	paymentRepo.AddPayment(&domain.LoanPayment{
-		ID:            2,
-		LoanID:        1,
-		PaymentNumber: 2,
-		Amount:        decimal.NewFromInt(100),
-		Paid:          true,
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:          2,
+		WorkspaceID: workspaceID,
+		LoanID:      &loanID,
+		Amount:      decimal.NewFromInt(-100),
+		IsPaid:      false,
+		Name:        "Test Loan Payment 2",
 	})
-	paymentRepo.AddPayment(&domain.LoanPayment{
-		ID:            3,
-		LoanID:        1,
-		PaymentNumber: 3,
-		Amount:        decimal.NewFromInt(100),
-		Paid:          false,
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:          3,
+		WorkspaceID: workspaceID,
+		LoanID:      &loanID,
+		Amount:      decimal.NewFromInt(-100),
+		IsPaid:      false,
+		Name:        "Test Loan Payment 3",
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/loans/1/delete-check", nil)
@@ -878,12 +927,13 @@ func TestGetDeleteCheck_Success(t *testing.T) {
 		t.Errorf("Expected 'Test Loan', got %s", response.ItemName)
 	}
 
-	if response.PaidCount != 2 {
-		t.Errorf("Expected paid count 2, got %d", response.PaidCount)
+	// v2: Stats come from transactions table
+	if response.PaidCount != 1 {
+		t.Errorf("Expected paid count 1, got %d", response.PaidCount)
 	}
 
-	if response.UnpaidCount != 1 {
-		t.Errorf("Expected unpaid count 1, got %d", response.UnpaidCount)
+	if response.UnpaidCount != 2 {
+		t.Errorf("Expected unpaid count 2, got %d", response.UnpaidCount)
 	}
 
 	if response.TotalAmount != "300.00" {
@@ -895,8 +945,7 @@ func TestGetDeleteCheck_NotFound(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	paymentRepo := testutil.NewMockLoanPaymentRepository()
-	loanService := service.NewLoanService(nil, loanRepo, providerRepo, paymentRepo)
+	loanService := createTestLoanService(loanRepo, providerRepo)
 	handler := NewLoanHandler(loanService)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/loans/999/delete-check", nil)
@@ -921,8 +970,7 @@ func TestGetDeleteCheck_WorkspaceIsolation(t *testing.T) {
 	e := echo.New()
 	loanRepo := testutil.NewMockLoanRepository()
 	providerRepo := testutil.NewMockLoanProviderRepository()
-	paymentRepo := testutil.NewMockLoanPaymentRepository()
-	loanService := service.NewLoanService(nil, loanRepo, providerRepo, paymentRepo)
+	loanService := createTestLoanService(loanRepo, providerRepo)
 	handler := NewLoanHandler(loanService)
 
 	// Create a loan in workspace 2

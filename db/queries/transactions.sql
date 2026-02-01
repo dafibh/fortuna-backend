@@ -3,9 +3,9 @@ INSERT INTO transactions (
     workspace_id, account_id, name, amount, type,
     transaction_date, is_paid, notes, transfer_pair_id, category_id, is_cc_payment,
     billed_at, settlement_intent,
-    source, template_id, is_projected
+    source, template_id, is_projected, loan_id
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
 ) RETURNING *;
 
 -- name: GetTransactionByID :one
@@ -167,7 +167,7 @@ WHERE t.workspace_id = $1
   AND t.deleted_at IS NULL;
 
 -- name: GetTransactionsWithCategory :many
--- Returns transactions with category name joined for display
+-- Returns transactions with category name and group name joined for display
 SELECT
     t.id,
     t.workspace_id,
@@ -189,9 +189,13 @@ SELECT
     t.source,
     t.template_id,
     t.is_projected,
-    bc.name AS category_name
+    t.loan_id,
+    t.group_id,
+    bc.name AS category_name,
+    tg.name AS group_name
 FROM transactions t
 LEFT JOIN budget_categories bc ON t.category_id = bc.id AND bc.deleted_at IS NULL
+LEFT JOIN transaction_groups tg ON t.group_id = tg.id
 WHERE t.workspace_id = @workspace_id
   AND t.deleted_at IS NULL
   AND (sqlc.narg('account_id')::INTEGER IS NULL OR t.account_id = sqlc.narg('account_id'))
@@ -407,6 +411,237 @@ WHERE t.workspace_id = $1
   AND t.deleted_at IS NULL
 ORDER BY t.transaction_date ASC;
 
+-- ========================================
+-- Loan Transaction Operations (CL v2)
+-- ========================================
+
+-- name: GetLoanTransactionsByMonth :many
+-- Get unpaid transactions for a specific loan and month
+SELECT * FROM transactions
+WHERE workspace_id = @workspace_id
+  AND loan_id = @loan_id
+  AND EXTRACT(YEAR FROM transaction_date)::INTEGER = @year::INTEGER
+  AND EXTRACT(MONTH FROM transaction_date)::INTEGER = @month::INTEGER
+  AND deleted_at IS NULL
+  AND is_paid = false
+ORDER BY transaction_date;
+
+-- name: GetTransactionsByLoanID :many
+-- Get all transactions for a specific loan (both paid and unpaid) for item-based modal
+SELECT * FROM transactions
+WHERE workspace_id = $1
+  AND loan_id = $2
+  AND deleted_at IS NULL
+ORDER BY transaction_date ASC;
+
+-- name: BulkMarkTransactionsPaid :many
+-- Bulk mark transactions as paid by IDs (works for both bank and CC transactions)
+-- For CC transactions, this also effectively sets cc_state to 'settled' since it's computed from is_paid
+UPDATE transactions
+SET is_paid = true, updated_at = NOW()
+WHERE workspace_id = $1
+  AND id = ANY($2::int[])
+  AND deleted_at IS NULL
+RETURNING *;
+
+-- name: OrphanPaidTransactionsByLoan :exec
+-- Unlink paid transactions from loan (keep them, clear loan_id)
+-- Used when deleting a loan to preserve payment history
+UPDATE transactions
+SET loan_id = NULL,
+    updated_at = NOW()
+WHERE workspace_id = $1
+  AND loan_id = $2
+  AND is_paid = true
+  AND deleted_at IS NULL;
+
+-- name: DeleteUnpaidTransactionsByLoan :exec
+-- Hard delete unpaid transactions for a loan
+-- Used when deleting a loan (unpaid future payments are removed)
+DELETE FROM transactions
+WHERE workspace_id = $1
+  AND loan_id = $2
+  AND is_paid = false;
+
+-- name: UpdateTransactionPayeesByLoan :execrows
+-- Cascade item name/provider change to transaction payees
+-- Pattern: "[Provider] ([Item Name])"
+UPDATE transactions
+SET name = $3,
+    updated_at = NOW()
+WHERE workspace_id = $1
+  AND loan_id = $2
+  AND deleted_at IS NULL;
+
+-- name: HasPaidTransactionsByLoan :one
+-- Check if any transactions for this loan are paid (for provider change validation)
+SELECT EXISTS (
+    SELECT 1 FROM transactions
+    WHERE workspace_id = $1
+      AND loan_id = $2
+      AND is_paid = true
+      AND deleted_at IS NULL
+)::BOOLEAN as has_paid;
+
+-- name: GetLoanTransactionStats :one
+-- Get paid/unpaid transaction counts for delete confirmation
+SELECT
+    COUNT(*) FILTER (WHERE is_paid = true)::INTEGER as paid_count,
+    COUNT(*) FILTER (WHERE is_paid = false)::INTEGER as unpaid_count,
+    COALESCE(SUM(ABS(amount)) FILTER (WHERE is_paid = true), 0)::NUMERIC(12,2) as paid_total,
+    COALESCE(SUM(ABS(amount)) FILTER (WHERE is_paid = false), 0)::NUMERIC(12,2) as unpaid_total
+FROM transactions
+WHERE workspace_id = $1
+  AND loan_id = $2
+  AND deleted_at IS NULL;
+
+-- name: GetLoanPaymentsFromTransactions :many
+-- Convert loan transactions to LoanPayment format for frontend compatibility
+-- Derives payment_number from row order, extracts year/month from transaction_date
+-- Note: Only uses loan_id since service layer already verified loan ownership
+SELECT
+    t.id,
+    t.loan_id,
+    ROW_NUMBER() OVER (PARTITION BY t.loan_id ORDER BY t.transaction_date ASC, t.id ASC)::INTEGER as payment_number,
+    t.amount,
+    EXTRACT(YEAR FROM t.transaction_date)::INTEGER as due_year,
+    EXTRACT(MONTH FROM t.transaction_date)::INTEGER as due_month,
+    t.is_paid as paid,
+    CASE WHEN t.is_paid = true THEN t.updated_at ELSE NULL END as paid_date,
+    t.created_at,
+    t.updated_at
+FROM transactions t
+WHERE t.loan_id = $1
+  AND t.deleted_at IS NULL
+ORDER BY t.transaction_date ASC, t.id ASC;
+
+-- name: GetLoanTrendData :many
+-- Aggregate loan transactions by month and provider for trend visualization
+-- Returns monthly totals with provider breakdown
+SELECT
+    EXTRACT(YEAR FROM t.transaction_date)::INTEGER as year,
+    EXTRACT(MONTH FROM t.transaction_date)::INTEGER as month,
+    l.provider_id,
+    lp.name as provider_name,
+    COALESCE(SUM(ABS(t.amount)), 0)::NUMERIC(12,2) as total_amount,
+    BOOL_AND(t.is_paid) as all_paid
+FROM transactions t
+JOIN loans l ON t.loan_id = l.id AND l.deleted_at IS NULL
+JOIN loan_providers lp ON l.provider_id = lp.id AND lp.deleted_at IS NULL
+WHERE t.workspace_id = @workspace_id
+  AND t.loan_id IS NOT NULL
+  AND t.deleted_at IS NULL
+  AND (
+    -- Filter by date range: from start to end month (inclusive)
+    (EXTRACT(YEAR FROM t.transaction_date) * 12 + EXTRACT(MONTH FROM t.transaction_date)) >=
+    (CAST(@start_year AS INTEGER) * 12 + CAST(@start_month AS INTEGER))
+    AND
+    (EXTRACT(YEAR FROM t.transaction_date) * 12 + EXTRACT(MONTH FROM t.transaction_date)) <=
+    (CAST(@end_year AS INTEGER) * 12 + CAST(@end_month AS INTEGER))
+  )
+GROUP BY
+    EXTRACT(YEAR FROM t.transaction_date),
+    EXTRACT(MONTH FROM t.transaction_date),
+    l.provider_id,
+    lp.name
+ORDER BY year ASC, month ASC, lp.name ASC;
+
+-- name: GetEarliestUnpaidLoanMonth :one
+-- Get earliest unpaid month for a provider (for sequential enforcement)
+SELECT
+    EXTRACT(YEAR FROM t.transaction_date)::INTEGER as year,
+    EXTRACT(MONTH FROM t.transaction_date)::INTEGER as month
+FROM transactions t
+JOIN loans l ON t.loan_id = l.id AND l.deleted_at IS NULL
+WHERE t.workspace_id = $1
+  AND l.provider_id = $2
+  AND t.loan_id IS NOT NULL
+  AND t.is_paid = false
+  AND t.deleted_at IS NULL
+ORDER BY t.transaction_date ASC
+LIMIT 1;
+
+-- name: GetLatestPaidLoanMonth :one
+-- Get latest paid month for a provider (for reverse sequential enforcement on unpay)
+SELECT
+    EXTRACT(YEAR FROM t.transaction_date)::INTEGER as year,
+    EXTRACT(MONTH FROM t.transaction_date)::INTEGER as month
+FROM transactions t
+JOIN loans l ON t.loan_id = l.id AND l.deleted_at IS NULL
+WHERE t.workspace_id = $1
+  AND l.provider_id = $2
+  AND t.loan_id IS NOT NULL
+  AND t.is_paid = true
+  AND t.deleted_at IS NULL
+ORDER BY t.transaction_date DESC
+LIMIT 1;
+
+-- name: GetUnpaidLoanPaymentsByProviderMonth :many
+-- Get unpaid loan payments for a specific provider and month (for pay-month action)
+SELECT
+    t.id,
+    t.loan_id,
+    ROW_NUMBER() OVER (PARTITION BY t.loan_id ORDER BY t.transaction_date ASC, t.id ASC)::INTEGER as payment_number,
+    t.amount,
+    EXTRACT(YEAR FROM t.transaction_date)::INTEGER as due_year,
+    EXTRACT(MONTH FROM t.transaction_date)::INTEGER as due_month,
+    t.is_paid as paid,
+    CASE WHEN t.is_paid = true THEN t.updated_at ELSE NULL END as paid_date,
+    t.created_at,
+    t.updated_at
+FROM transactions t
+JOIN loans l ON t.loan_id = l.id AND l.deleted_at IS NULL
+WHERE t.workspace_id = @workspace_id
+  AND l.provider_id = @provider_id
+  AND EXTRACT(YEAR FROM t.transaction_date)::INTEGER = CAST(@year AS INTEGER)
+  AND EXTRACT(MONTH FROM t.transaction_date)::INTEGER = CAST(@month AS INTEGER)
+  AND t.is_paid = false
+  AND t.deleted_at IS NULL
+ORDER BY t.transaction_date ASC, t.id ASC;
+
+-- name: GetPaidLoanPaymentsByProviderMonth :many
+-- Get paid loan payments for a specific provider and month (for unpay-month action)
+SELECT
+    t.id,
+    t.loan_id,
+    ROW_NUMBER() OVER (PARTITION BY t.loan_id ORDER BY t.transaction_date ASC, t.id ASC)::INTEGER as payment_number,
+    t.amount,
+    EXTRACT(YEAR FROM t.transaction_date)::INTEGER as due_year,
+    EXTRACT(MONTH FROM t.transaction_date)::INTEGER as due_month,
+    t.is_paid as paid,
+    CASE WHEN t.is_paid = true THEN t.updated_at ELSE NULL END as paid_date,
+    t.created_at,
+    t.updated_at
+FROM transactions t
+JOIN loans l ON t.loan_id = l.id AND l.deleted_at IS NULL
+WHERE t.workspace_id = @workspace_id
+  AND l.provider_id = @provider_id
+  AND EXTRACT(YEAR FROM t.transaction_date)::INTEGER = CAST(@year AS INTEGER)
+  AND EXTRACT(MONTH FROM t.transaction_date)::INTEGER = CAST(@month AS INTEGER)
+  AND t.is_paid = true
+  AND t.deleted_at IS NULL
+ORDER BY t.transaction_date ASC, t.id ASC;
+
+-- name: BatchMarkLoanTransactionsPaid :many
+-- Bulk mark loan transactions as paid by IDs with timestamp
+UPDATE transactions
+SET is_paid = true, updated_at = NOW()
+WHERE workspace_id = $1
+  AND id = ANY($2::int[])
+  AND loan_id IS NOT NULL
+  AND deleted_at IS NULL
+RETURNING *;
+
+-- name: BatchMarkLoanTransactionsUnpaid :many
+-- Bulk mark loan transactions as unpaid by IDs
+UPDATE transactions
+SET is_paid = false, updated_at = NOW()
+WHERE workspace_id = $1
+  AND id = ANY($2::int[])
+  AND loan_id IS NOT NULL
+  AND deleted_at IS NULL
+RETURNING *;
+
 -- name: GetTransactionsForAggregation :many
 -- Returns all transactions in a date range with category name for aggregation (no pagination)
 -- Used by dashboard future spending calculations
@@ -431,9 +666,13 @@ SELECT
     t.source,
     t.template_id,
     t.is_projected,
-    bc.name AS category_name
+    t.loan_id,
+    t.group_id,
+    bc.name AS category_name,
+    tg.name AS group_name
 FROM transactions t
 LEFT JOIN budget_categories bc ON t.category_id = bc.id AND bc.deleted_at IS NULL
+LEFT JOIN transaction_groups tg ON t.group_id = tg.id
 WHERE t.workspace_id = @workspace_id
   AND t.deleted_at IS NULL
   AND t.transaction_date >= @start_date::DATE

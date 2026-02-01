@@ -25,22 +25,25 @@ func NewLoanHandler(loanService *service.LoanService) *LoanHandler {
 }
 
 // UpdateLoanRequest represents the update loan request body
-// Only itemName and notes are editable; other fields are locked after creation
+// Only itemName, notes, and providerId (if no payments made) are editable; other fields are locked after creation
 type UpdateLoanRequest struct {
-	ItemName string  `json:"itemName"`
-	Notes    *string `json:"notes,omitempty"`
+	ItemName   string  `json:"itemName"`
+	Notes      *string `json:"notes,omitempty"`
+	ProviderID *int32  `json:"providerId,omitempty"` // Optional: only changeable if no payments made
 }
 
 // CreateLoanRequest represents the create loan request body
 type CreateLoanRequest struct {
-	ProviderID     int32    `json:"providerId"`
-	ItemName       string   `json:"itemName"`
-	TotalAmount    string   `json:"totalAmount"`
-	NumMonths      int32    `json:"numMonths"`
-	PurchaseDate   string   `json:"purchaseDate"`
-	InterestRate   *string  `json:"interestRate,omitempty"`
-	Notes          *string  `json:"notes,omitempty"`
-	PaymentAmounts []string `json:"paymentAmounts,omitempty"` // Optional custom amounts for each payment
+	ProviderID       int32    `json:"providerId"`
+	ItemName         string   `json:"itemName"`
+	TotalAmount      string   `json:"totalAmount"`
+	NumMonths        int32    `json:"numMonths"`
+	PurchaseDate     string   `json:"purchaseDate"`
+	InterestRate     *string  `json:"interestRate,omitempty"`
+	Notes            *string  `json:"notes,omitempty"`
+	PaymentAmounts   []string `json:"paymentAmounts,omitempty"` // Optional custom amounts for each payment
+	AccountID        int32    `json:"accountId"`                // Required: the account to use for loan payments
+	SettlementIntent *string  `json:"settlementIntent,omitempty"` // Optional: "immediate" or "deferred" for CC accounts
 }
 
 // PreviewLoanRequest represents the preview loan request body
@@ -67,6 +70,8 @@ type LoanResponse struct {
 	FirstPaymentMonth int32   `json:"firstPaymentMonth"`
 	LastPaymentYear   int     `json:"lastPaymentYear"`
 	LastPaymentMonth  int     `json:"lastPaymentMonth"`
+	AccountID         int32   `json:"accountId"`
+	SettlementIntent  *string `json:"settlementIntent,omitempty"`
 	Notes             *string `json:"notes,omitempty"`
 	CreatedAt         string  `json:"createdAt"`
 	UpdatedAt         string  `json:"updatedAt"`
@@ -96,6 +101,8 @@ type LoanWithStatsResponse struct {
 	FirstPaymentMonth int32   `json:"firstPaymentMonth"`
 	LastPaymentYear   int32   `json:"lastPaymentYear"`
 	LastPaymentMonth  int32   `json:"lastPaymentMonth"`
+	AccountID         int32   `json:"accountId"`
+	SettlementIntent  *string `json:"settlementIntent,omitempty"`
 	Notes             *string `json:"notes,omitempty"`
 	CreatedAt         string  `json:"createdAt"`
 	UpdatedAt         string  `json:"updatedAt"`
@@ -173,14 +180,16 @@ func (h *LoanHandler) CreateLoan(c echo.Context) error {
 	}
 
 	input := service.CreateLoanInput{
-		ProviderID:     req.ProviderID,
-		ItemName:       req.ItemName,
-		TotalAmount:    totalAmount,
-		NumMonths:      req.NumMonths,
-		PurchaseDate:   purchaseDate,
-		InterestRate:   interestRate,
-		Notes:          req.Notes,
-		PaymentAmounts: paymentAmounts,
+		ProviderID:       req.ProviderID,
+		ItemName:         req.ItemName,
+		TotalAmount:      totalAmount,
+		NumMonths:        req.NumMonths,
+		PurchaseDate:     purchaseDate,
+		InterestRate:     interestRate,
+		Notes:            req.Notes,
+		PaymentAmounts:   paymentAmounts,
+		AccountID:        req.AccountID,
+		SettlementIntent: req.SettlementIntent,
 	}
 
 	loan, err := h.loanService.CreateLoan(workspaceID, input)
@@ -208,6 +217,11 @@ func (h *LoanHandler) CreateLoan(c echo.Context) error {
 		if errors.Is(err, domain.ErrLoanProviderInvalid) {
 			return NewValidationError(c, "Validation failed", []ValidationError{
 				{Field: "providerId", Message: "Invalid loan provider"},
+			})
+		}
+		if errors.Is(err, domain.ErrLoanAccountInvalid) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "accountId", Message: "Account is required"},
 			})
 		}
 		log.Error().Err(err).Int32("workspace_id", workspaceID).Msg("Failed to create loan")
@@ -310,8 +324,9 @@ func (h *LoanHandler) UpdateLoan(c echo.Context) error {
 	}
 
 	input := service.UpdateLoanInput{
-		ItemName: req.ItemName,
-		Notes:    req.Notes,
+		ItemName:   req.ItemName,
+		Notes:      req.Notes,
+		ProviderID: req.ProviderID,
 	}
 
 	loan, err := h.loanService.UpdateLoan(workspaceID, int32(id), input)
@@ -329,6 +344,16 @@ func (h *LoanHandler) UpdateLoan(c echo.Context) error {
 				{Field: "itemName", Message: "Item name must be 200 characters or less"},
 			})
 		}
+		if errors.Is(err, domain.ErrCannotChangeProviderAfterPayments) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "providerId", Message: "Cannot change provider after payments are made"},
+			})
+		}
+		if errors.Is(err, domain.ErrLoanProviderInvalid) {
+			return NewValidationError(c, "Validation failed", []ValidationError{
+				{Field: "providerId", Message: "Invalid loan provider"},
+			})
+		}
 		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("loan_id", id).Msg("Failed to update loan")
 		return NewInternalError(c, "Failed to update loan")
 	}
@@ -336,6 +361,40 @@ func (h *LoanHandler) UpdateLoan(c echo.Context) error {
 	log.Info().Int32("workspace_id", workspaceID).Int32("loan_id", loan.ID).Str("item", loan.ItemName).Msg("Loan updated")
 
 	return c.JSON(http.StatusOK, toLoanResponse(loan))
+}
+
+// EditCheckResponse represents the response for edit check endpoint
+type EditCheckResponse struct {
+	CanChangeProvider   bool `json:"canChangeProvider"`
+	HasPaidTransactions bool `json:"hasPaidTransactions"`
+}
+
+// GetEditCheck handles GET /api/v1/loans/:id/edit-check
+// Returns whether the loan's provider can be changed (true if no payments made)
+func (h *LoanHandler) GetEditCheck(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return NewValidationError(c, "Invalid loan ID", nil)
+	}
+
+	editCheck, err := h.loanService.GetEditCheck(workspaceID, int32(id))
+	if err != nil {
+		if errors.Is(err, domain.ErrLoanNotFound) {
+			return NewNotFoundError(c, "Loan not found")
+		}
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("loan_id", id).Msg("Failed to get edit check")
+		return NewInternalError(c, "Failed to get edit check")
+	}
+
+	return c.JSON(http.StatusOK, EditCheckResponse{
+		CanChangeProvider:   editCheck.CanChangeProvider,
+		HasPaidTransactions: editCheck.HasPaidTransactions,
+	})
 }
 
 // DeleteCheckResponse represents the response for delete check endpoint
@@ -613,6 +672,185 @@ func (h *LoanHandler) GetTrend(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
+// PayLoanMonthRequest represents the request body for paying a loan month
+type PayLoanMonthRequest struct {
+	Year  int `json:"year"`
+	Month int `json:"month"`
+}
+
+// PayLoanMonthResponse represents the response for paying a loan month
+type PayLoanMonthResponse struct {
+	Settled     []TransactionBriefResponse `json:"settled"`
+	TotalAmount string                     `json:"totalAmount"`
+	Message     string                     `json:"message"`
+}
+
+// TransactionBriefResponse represents a minimal transaction in the payment response
+type TransactionBriefResponse struct {
+	ID              int32  `json:"id"`
+	Name            string `json:"name"`
+	Amount          string `json:"amount"`
+	IsPaid          bool   `json:"isPaid"`
+	TransactionDate string `json:"transactionDate"`
+}
+
+// PayLoanMonth handles POST /api/v1/loans/:id/pay-month
+// Marks all unpaid transactions for the specified loan month as paid
+func (h *LoanHandler) PayLoanMonth(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return NewValidationError(c, "Invalid loan ID", nil)
+	}
+
+	var req PayLoanMonthRequest
+	if err := c.Bind(&req); err != nil {
+		return NewValidationError(c, "Invalid request body", nil)
+	}
+
+	// Validate year and month
+	if req.Year < 2000 || req.Year > 2100 {
+		return NewValidationError(c, "Validation failed", []ValidationError{
+			{Field: "year", Message: "Year must be between 2000 and 2100"},
+		})
+	}
+	if req.Month < 1 || req.Month > 12 {
+		return NewValidationError(c, "Validation failed", []ValidationError{
+			{Field: "month", Message: "Month must be between 1 and 12"},
+		})
+	}
+
+	input := service.PayLoanMonthInput{
+		LoanID: int32(id),
+		Year:   req.Year,
+		Month:  req.Month,
+	}
+
+	result, err := h.loanService.PayLoanMonth(workspaceID, input)
+	if err != nil {
+		if errors.Is(err, domain.ErrLoanNotFound) {
+			return NewNotFoundError(c, "Loan not found")
+		}
+		if errors.Is(err, domain.ErrNoTransactionsToSettle) {
+			return NewValidationError(c, "No unpaid transactions found", []ValidationError{
+				{Field: "month", Message: "No unpaid transactions found for this month"},
+			})
+		}
+		if errors.Is(err, domain.ErrLoanPaymentAtomicityFailed) {
+			log.Error().Err(err).Int32("workspace_id", workspaceID).Int("loan_id", id).Msg("Loan payment atomicity failed")
+			return NewInternalError(c, "Failed to settle all transactions")
+		}
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("loan_id", id).Msg("Failed to pay loan month")
+		return NewInternalError(c, "Failed to pay loan month")
+	}
+
+	// Build response
+	settled := make([]TransactionBriefResponse, len(result.SettledTransactions))
+	for i, tx := range result.SettledTransactions {
+		settled[i] = TransactionBriefResponse{
+			ID:              tx.ID,
+			Name:            tx.Name,
+			Amount:          tx.Amount.StringFixed(2),
+			IsPaid:          tx.IsPaid,
+			TransactionDate: tx.TransactionDate.Format(time.RFC3339),
+		}
+	}
+
+	log.Info().
+		Int32("workspace_id", workspaceID).
+		Int("loan_id", id).
+		Int("year", req.Year).
+		Int("month", req.Month).
+		Int("settled_count", len(settled)).
+		Msg("Loan month paid")
+
+	return c.JSON(http.StatusOK, PayLoanMonthResponse{
+		Settled:     settled,
+		TotalAmount: result.TotalAmount.StringFixed(2),
+		Message:     result.Message,
+	})
+}
+
+// GetLoansByProvider handles GET /api/v1/loan-providers/:id/loans
+// Returns all loans for a provider with payment statistics for item-based modal
+func (h *LoanHandler) GetLoansByProvider(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	providerID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return NewValidationError(c, "Invalid provider ID", nil)
+	}
+
+	loans, err := h.loanService.GetLoansByProvider(workspaceID, int32(providerID))
+	if err != nil {
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("provider_id", providerID).Msg("Failed to get loans by provider")
+		return NewInternalError(c, "Failed to get loans")
+	}
+
+	response := make([]LoanWithStatsResponse, len(loans))
+	for i, loan := range loans {
+		response[i] = toLoanWithStatsResponse(loan)
+	}
+
+	return c.JSON(http.StatusOK, response)
+}
+
+// LoanTransactionResponse represents a transaction in the loan transactions endpoint
+type LoanTransactionResponse struct {
+	ID              int32  `json:"id"`
+	Name            string `json:"name"`
+	Amount          string `json:"amount"`
+	TransactionDate string `json:"transactionDate"`
+	IsPaid          bool   `json:"isPaid"`
+	Year            int    `json:"year"`
+	Month           int    `json:"month"`
+}
+
+// GetLoanTransactions handles GET /api/v1/loans/:id/transactions
+// Returns all transactions for a loan for item-based modal display
+func (h *LoanHandler) GetLoanTransactions(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	loanID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return NewValidationError(c, "Invalid loan ID", nil)
+	}
+
+	transactions, err := h.loanService.GetTransactionsByLoan(workspaceID, int32(loanID))
+	if err != nil {
+		if errors.Is(err, domain.ErrLoanNotFound) {
+			return NewNotFoundError(c, "Loan not found")
+		}
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("loan_id", loanID).Msg("Failed to get loan transactions")
+		return NewInternalError(c, "Failed to get transactions")
+	}
+
+	response := make([]LoanTransactionResponse, len(transactions))
+	for i, tx := range transactions {
+		response[i] = LoanTransactionResponse{
+			ID:              tx.ID,
+			Name:            tx.Name,
+			Amount:          tx.Amount.StringFixed(2),
+			TransactionDate: tx.TransactionDate.Format("2006-01-02"),
+			IsPaid:          tx.IsPaid,
+			Year:            tx.TransactionDate.Year(),
+			Month:           int(tx.TransactionDate.Month()),
+		}
+	}
+
+	return c.JSON(http.StatusOK, response)
+}
+
 // Helper function to convert domain.Loan to LoanResponse
 func toLoanResponse(loan *domain.Loan) LoanResponse {
 	lastYear, lastMonth := loan.GetLastPaymentYearMonth()
@@ -630,6 +868,8 @@ func toLoanResponse(loan *domain.Loan) LoanResponse {
 		FirstPaymentMonth: loan.FirstPaymentMonth,
 		LastPaymentYear:   lastYear,
 		LastPaymentMonth:  lastMonth,
+		AccountID:         loan.AccountID,
+		SettlementIntent:  loan.SettlementIntent,
 		Notes:             loan.Notes,
 		CreatedAt:         loan.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:         loan.UpdatedAt.Format(time.RFC3339),
@@ -657,6 +897,8 @@ func toLoanWithStatsResponse(loanWithStats *domain.LoanWithStats) LoanWithStatsR
 		FirstPaymentMonth: loanWithStats.FirstPaymentMonth,
 		LastPaymentYear:   loanWithStats.LastPaymentYear,
 		LastPaymentMonth:  loanWithStats.LastPaymentMonth,
+		AccountID:         loanWithStats.AccountID,
+		SettlementIntent:  loanWithStats.SettlementIntent,
 		Notes:             loanWithStats.Notes,
 		CreatedAt:         loanWithStats.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:         loanWithStats.UpdatedAt.Format(time.RFC3339),

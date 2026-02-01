@@ -54,11 +54,13 @@ INSERT INTO loans (
     monthly_payment,
     first_payment_year,
     first_payment_month,
+    account_id,
+    settlement_intent,
     notes
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
 )
-RETURNING id, workspace_id, provider_id, item_name, total_amount, num_months, purchase_date, interest_rate, monthly_payment, first_payment_year, first_payment_month, notes, created_at, updated_at, deleted_at
+RETURNING id, workspace_id, provider_id, item_name, total_amount, num_months, purchase_date, interest_rate, monthly_payment, first_payment_year, first_payment_month, notes, created_at, updated_at, deleted_at, account_id, settlement_intent
 `
 
 type CreateLoanParams struct {
@@ -72,6 +74,8 @@ type CreateLoanParams struct {
 	MonthlyPayment    pgtype.Numeric `json:"monthly_payment"`
 	FirstPaymentYear  int32          `json:"first_payment_year"`
 	FirstPaymentMonth int32          `json:"first_payment_month"`
+	AccountID         pgtype.Int4    `json:"account_id"`
+	SettlementIntent  pgtype.Text    `json:"settlement_intent"`
 	Notes             pgtype.Text    `json:"notes"`
 }
 
@@ -87,6 +91,8 @@ func (q *Queries) CreateLoan(ctx context.Context, arg CreateLoanParams) (Loan, e
 		arg.MonthlyPayment,
 		arg.FirstPaymentYear,
 		arg.FirstPaymentMonth,
+		arg.AccountID,
+		arg.SettlementIntent,
 		arg.Notes,
 	)
 	var i Loan
@@ -106,6 +112,8 @@ func (q *Queries) CreateLoan(ctx context.Context, arg CreateLoanParams) (Loan, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.AccountID,
+		&i.SettlementIntent,
 	)
 	return i, err
 }
@@ -139,20 +147,22 @@ SELECT
     l.monthly_payment,
     l.first_payment_year,
     l.first_payment_month,
+    l.account_id,
+    l.settlement_intent,
     l.notes,
     l.created_at,
     l.updated_at,
     l.deleted_at,
     (l.first_payment_year + ((l.first_payment_month - 1 + l.num_months - 1) / 12))::INTEGER as last_payment_year,
     (((l.first_payment_month - 1 + l.num_months - 1) % 12) + 1)::INTEGER as last_payment_month,
-    COUNT(lp.id)::INTEGER as total_count,
-    COUNT(lp.id) FILTER (WHERE lp.paid = true)::INTEGER as paid_count,
-    COALESCE(SUM(lp.amount) FILTER (WHERE lp.paid = false), 0)::NUMERIC(12,2) as remaining_balance
+    COUNT(t.id)::INTEGER as total_count,
+    COUNT(t.id) FILTER (WHERE t.is_paid = true)::INTEGER as paid_count,
+    COALESCE(SUM(t.amount) FILTER (WHERE t.is_paid = false), 0)::NUMERIC(12,2) as remaining_balance
 FROM loans l
-LEFT JOIN loan_payments lp ON lp.loan_id = l.id
+LEFT JOIN transactions t ON t.loan_id = l.id AND t.deleted_at IS NULL
 WHERE l.workspace_id = $1 AND l.deleted_at IS NULL
 GROUP BY l.id
-HAVING COALESCE(SUM(lp.amount) FILTER (WHERE lp.paid = false), 0) > 0
+HAVING COALESCE(SUM(t.amount) FILTER (WHERE t.is_paid = false), 0) > 0
 ORDER BY l.created_at DESC
 `
 
@@ -168,6 +178,8 @@ type GetActiveLoansWithStatsRow struct {
 	MonthlyPayment    pgtype.Numeric     `json:"monthly_payment"`
 	FirstPaymentYear  int32              `json:"first_payment_year"`
 	FirstPaymentMonth int32              `json:"first_payment_month"`
+	AccountID         pgtype.Int4        `json:"account_id"`
+	SettlementIntent  pgtype.Text        `json:"settlement_intent"`
 	Notes             pgtype.Text        `json:"notes"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
@@ -179,6 +191,7 @@ type GetActiveLoansWithStatsRow struct {
 	RemainingBalance  pgtype.Numeric     `json:"remaining_balance"`
 }
 
+// Get active loans (with remaining balance) with payment stats calculated from transactions
 func (q *Queries) GetActiveLoansWithStats(ctx context.Context, workspaceID int32) ([]GetActiveLoansWithStatsRow, error) {
 	rows, err := q.db.Query(ctx, getActiveLoansWithStats, workspaceID)
 	if err != nil {
@@ -200,6 +213,8 @@ func (q *Queries) GetActiveLoansWithStats(ctx context.Context, workspaceID int32
 			&i.MonthlyPayment,
 			&i.FirstPaymentYear,
 			&i.FirstPaymentMonth,
+			&i.AccountID,
+			&i.SettlementIntent,
 			&i.Notes,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -233,20 +248,22 @@ SELECT
     l.monthly_payment,
     l.first_payment_year,
     l.first_payment_month,
+    l.account_id,
+    l.settlement_intent,
     l.notes,
     l.created_at,
     l.updated_at,
     l.deleted_at,
     (l.first_payment_year + ((l.first_payment_month - 1 + l.num_months - 1) / 12))::INTEGER as last_payment_year,
     (((l.first_payment_month - 1 + l.num_months - 1) % 12) + 1)::INTEGER as last_payment_month,
-    COUNT(lp.id)::INTEGER as total_count,
-    COUNT(lp.id) FILTER (WHERE lp.paid = true)::INTEGER as paid_count,
-    COALESCE(SUM(lp.amount) FILTER (WHERE lp.paid = false), 0)::NUMERIC(12,2) as remaining_balance
+    COUNT(t.id)::INTEGER as total_count,
+    COUNT(t.id) FILTER (WHERE t.is_paid = true)::INTEGER as paid_count,
+    COALESCE(SUM(t.amount) FILTER (WHERE t.is_paid = false), 0)::NUMERIC(12,2) as remaining_balance
 FROM loans l
-LEFT JOIN loan_payments lp ON lp.loan_id = l.id
+LEFT JOIN transactions t ON t.loan_id = l.id AND t.deleted_at IS NULL
 WHERE l.workspace_id = $1 AND l.deleted_at IS NULL
 GROUP BY l.id
-HAVING COALESCE(SUM(lp.amount) FILTER (WHERE lp.paid = false), 0) = 0
+HAVING COALESCE(SUM(t.amount) FILTER (WHERE t.is_paid = false), 0) = 0
 ORDER BY l.created_at DESC
 `
 
@@ -262,6 +279,8 @@ type GetCompletedLoansWithStatsRow struct {
 	MonthlyPayment    pgtype.Numeric     `json:"monthly_payment"`
 	FirstPaymentYear  int32              `json:"first_payment_year"`
 	FirstPaymentMonth int32              `json:"first_payment_month"`
+	AccountID         pgtype.Int4        `json:"account_id"`
+	SettlementIntent  pgtype.Text        `json:"settlement_intent"`
 	Notes             pgtype.Text        `json:"notes"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
@@ -273,6 +292,7 @@ type GetCompletedLoansWithStatsRow struct {
 	RemainingBalance  pgtype.Numeric     `json:"remaining_balance"`
 }
 
+// Get completed loans (no remaining balance) with payment stats calculated from transactions
 func (q *Queries) GetCompletedLoansWithStats(ctx context.Context, workspaceID int32) ([]GetCompletedLoansWithStatsRow, error) {
 	rows, err := q.db.Query(ctx, getCompletedLoansWithStats, workspaceID)
 	if err != nil {
@@ -294,6 +314,8 @@ func (q *Queries) GetCompletedLoansWithStats(ctx context.Context, workspaceID in
 			&i.MonthlyPayment,
 			&i.FirstPaymentYear,
 			&i.FirstPaymentMonth,
+			&i.AccountID,
+			&i.SettlementIntent,
 			&i.Notes,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -315,7 +337,7 @@ func (q *Queries) GetCompletedLoansWithStats(ctx context.Context, workspaceID in
 }
 
 const getLoanByID = `-- name: GetLoanByID :one
-SELECT id, workspace_id, provider_id, item_name, total_amount, num_months, purchase_date, interest_rate, monthly_payment, first_payment_year, first_payment_month, notes, created_at, updated_at, deleted_at FROM loans
+SELECT id, workspace_id, provider_id, item_name, total_amount, num_months, purchase_date, interest_rate, monthly_payment, first_payment_year, first_payment_month, notes, created_at, updated_at, deleted_at, account_id, settlement_intent FROM loans
 WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL
 `
 
@@ -343,11 +365,14 @@ func (q *Queries) GetLoanByID(ctx context.Context, arg GetLoanByIDParams) (Loan,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.AccountID,
+		&i.SettlementIntent,
 	)
 	return i, err
 }
 
 const getLoansWithStats = `-- name: GetLoansWithStats :many
+
 SELECT
     l.id,
     l.workspace_id,
@@ -360,6 +385,8 @@ SELECT
     l.monthly_payment,
     l.first_payment_year,
     l.first_payment_month,
+    l.account_id,
+    l.settlement_intent,
     l.notes,
     l.created_at,
     l.updated_at,
@@ -367,12 +394,12 @@ SELECT
     -- Calculated last payment month/year
     (l.first_payment_year + ((l.first_payment_month - 1 + l.num_months - 1) / 12))::INTEGER as last_payment_year,
     (((l.first_payment_month - 1 + l.num_months - 1) % 12) + 1)::INTEGER as last_payment_month,
-    -- Payment stats
-    COUNT(lp.id)::INTEGER as total_count,
-    COUNT(lp.id) FILTER (WHERE lp.paid = true)::INTEGER as paid_count,
-    COALESCE(SUM(lp.amount) FILTER (WHERE lp.paid = false), 0)::NUMERIC(12,2) as remaining_balance
+    -- Payment stats from transactions
+    COUNT(t.id)::INTEGER as total_count,
+    COUNT(t.id) FILTER (WHERE t.is_paid = true)::INTEGER as paid_count,
+    COALESCE(SUM(t.amount) FILTER (WHERE t.is_paid = false), 0)::NUMERIC(12,2) as remaining_balance
 FROM loans l
-LEFT JOIN loan_payments lp ON lp.loan_id = l.id
+LEFT JOIN transactions t ON t.loan_id = l.id AND t.deleted_at IS NULL
 WHERE l.workspace_id = $1 AND l.deleted_at IS NULL
 GROUP BY l.id
 ORDER BY l.created_at DESC
@@ -390,6 +417,8 @@ type GetLoansWithStatsRow struct {
 	MonthlyPayment    pgtype.Numeric     `json:"monthly_payment"`
 	FirstPaymentYear  int32              `json:"first_payment_year"`
 	FirstPaymentMonth int32              `json:"first_payment_month"`
+	AccountID         pgtype.Int4        `json:"account_id"`
+	SettlementIntent  pgtype.Text        `json:"settlement_intent"`
 	Notes             pgtype.Text        `json:"notes"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
@@ -401,6 +430,8 @@ type GetLoansWithStatsRow struct {
 	RemainingBalance  pgtype.Numeric     `json:"remaining_balance"`
 }
 
+// CL v2: Use transactions with loan_id instead of loan_payments table
+// Get all loans with payment stats calculated from transactions
 func (q *Queries) GetLoansWithStats(ctx context.Context, workspaceID int32) ([]GetLoansWithStatsRow, error) {
 	rows, err := q.db.Query(ctx, getLoansWithStats, workspaceID)
 	if err != nil {
@@ -422,6 +453,114 @@ func (q *Queries) GetLoansWithStats(ctx context.Context, workspaceID int32) ([]G
 			&i.MonthlyPayment,
 			&i.FirstPaymentYear,
 			&i.FirstPaymentMonth,
+			&i.AccountID,
+			&i.SettlementIntent,
+			&i.Notes,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.LastPaymentYear,
+			&i.LastPaymentMonth,
+			&i.TotalCount,
+			&i.PaidCount,
+			&i.RemainingBalance,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getLoansWithStatsByProvider = `-- name: GetLoansWithStatsByProvider :many
+SELECT
+    l.id,
+    l.workspace_id,
+    l.provider_id,
+    l.item_name,
+    l.total_amount,
+    l.num_months,
+    l.purchase_date,
+    l.interest_rate,
+    l.monthly_payment,
+    l.first_payment_year,
+    l.first_payment_month,
+    l.account_id,
+    l.settlement_intent,
+    l.notes,
+    l.created_at,
+    l.updated_at,
+    l.deleted_at,
+    (l.first_payment_year + ((l.first_payment_month - 1 + l.num_months - 1) / 12))::INTEGER as last_payment_year,
+    (((l.first_payment_month - 1 + l.num_months - 1) % 12) + 1)::INTEGER as last_payment_month,
+    COUNT(t.id)::INTEGER as total_count,
+    COUNT(t.id) FILTER (WHERE t.is_paid = true)::INTEGER as paid_count,
+    COALESCE(SUM(t.amount) FILTER (WHERE t.is_paid = false), 0)::NUMERIC(12,2) as remaining_balance
+FROM loans l
+LEFT JOIN transactions t ON t.loan_id = l.id AND t.deleted_at IS NULL
+WHERE l.workspace_id = $1 AND l.provider_id = $2 AND l.deleted_at IS NULL
+GROUP BY l.id
+ORDER BY (COUNT(t.id) FILTER (WHERE t.is_paid = false) > 0) DESC, l.item_name ASC
+`
+
+type GetLoansWithStatsByProviderParams struct {
+	WorkspaceID int32 `json:"workspace_id"`
+	ProviderID  int32 `json:"provider_id"`
+}
+
+type GetLoansWithStatsByProviderRow struct {
+	ID                int32              `json:"id"`
+	WorkspaceID       int32              `json:"workspace_id"`
+	ProviderID        int32              `json:"provider_id"`
+	ItemName          string             `json:"item_name"`
+	TotalAmount       pgtype.Numeric     `json:"total_amount"`
+	NumMonths         int32              `json:"num_months"`
+	PurchaseDate      pgtype.Date        `json:"purchase_date"`
+	InterestRate      pgtype.Numeric     `json:"interest_rate"`
+	MonthlyPayment    pgtype.Numeric     `json:"monthly_payment"`
+	FirstPaymentYear  int32              `json:"first_payment_year"`
+	FirstPaymentMonth int32              `json:"first_payment_month"`
+	AccountID         pgtype.Int4        `json:"account_id"`
+	SettlementIntent  pgtype.Text        `json:"settlement_intent"`
+	Notes             pgtype.Text        `json:"notes"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt         pgtype.Timestamptz `json:"deleted_at"`
+	LastPaymentYear   int32              `json:"last_payment_year"`
+	LastPaymentMonth  int32              `json:"last_payment_month"`
+	TotalCount        int32              `json:"total_count"`
+	PaidCount         int32              `json:"paid_count"`
+	RemainingBalance  pgtype.Numeric     `json:"remaining_balance"`
+}
+
+// Get all loans for a specific provider with payment stats calculated from transactions
+// Orders unpaid items first, then by item name
+func (q *Queries) GetLoansWithStatsByProvider(ctx context.Context, arg GetLoansWithStatsByProviderParams) ([]GetLoansWithStatsByProviderRow, error) {
+	rows, err := q.db.Query(ctx, getLoansWithStatsByProvider, arg.WorkspaceID, arg.ProviderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetLoansWithStatsByProviderRow{}
+	for rows.Next() {
+		var i GetLoansWithStatsByProviderRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.ProviderID,
+			&i.ItemName,
+			&i.TotalAmount,
+			&i.NumMonths,
+			&i.PurchaseDate,
+			&i.InterestRate,
+			&i.MonthlyPayment,
+			&i.FirstPaymentYear,
+			&i.FirstPaymentMonth,
+			&i.AccountID,
+			&i.SettlementIntent,
 			&i.Notes,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -443,7 +582,7 @@ func (q *Queries) GetLoansWithStats(ctx context.Context, workspaceID int32) ([]G
 }
 
 const listActiveLoans = `-- name: ListActiveLoans :many
-SELECT l.id, l.workspace_id, l.provider_id, l.item_name, l.total_amount, l.num_months, l.purchase_date, l.interest_rate, l.monthly_payment, l.first_payment_year, l.first_payment_month, l.notes, l.created_at, l.updated_at, l.deleted_at FROM loans l
+SELECT l.id, l.workspace_id, l.provider_id, l.item_name, l.total_amount, l.num_months, l.purchase_date, l.interest_rate, l.monthly_payment, l.first_payment_year, l.first_payment_month, l.notes, l.created_at, l.updated_at, l.deleted_at, l.account_id, l.settlement_intent FROM loans l
 WHERE l.workspace_id = $1
   AND l.deleted_at IS NULL
   AND (
@@ -491,6 +630,8 @@ func (q *Queries) ListActiveLoans(ctx context.Context, arg ListActiveLoansParams
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.AccountID,
+			&i.SettlementIntent,
 		); err != nil {
 			return nil, err
 		}
@@ -503,7 +644,7 @@ func (q *Queries) ListActiveLoans(ctx context.Context, arg ListActiveLoansParams
 }
 
 const listCompletedLoans = `-- name: ListCompletedLoans :many
-SELECT l.id, l.workspace_id, l.provider_id, l.item_name, l.total_amount, l.num_months, l.purchase_date, l.interest_rate, l.monthly_payment, l.first_payment_year, l.first_payment_month, l.notes, l.created_at, l.updated_at, l.deleted_at FROM loans l
+SELECT l.id, l.workspace_id, l.provider_id, l.item_name, l.total_amount, l.num_months, l.purchase_date, l.interest_rate, l.monthly_payment, l.first_payment_year, l.first_payment_month, l.notes, l.created_at, l.updated_at, l.deleted_at, l.account_id, l.settlement_intent FROM loans l
 WHERE l.workspace_id = $1
   AND l.deleted_at IS NULL
   AND (
@@ -548,6 +689,8 @@ func (q *Queries) ListCompletedLoans(ctx context.Context, arg ListCompletedLoans
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.AccountID,
+			&i.SettlementIntent,
 		); err != nil {
 			return nil, err
 		}
@@ -560,7 +703,7 @@ func (q *Queries) ListCompletedLoans(ctx context.Context, arg ListCompletedLoans
 }
 
 const listLoans = `-- name: ListLoans :many
-SELECT id, workspace_id, provider_id, item_name, total_amount, num_months, purchase_date, interest_rate, monthly_payment, first_payment_year, first_payment_month, notes, created_at, updated_at, deleted_at FROM loans
+SELECT id, workspace_id, provider_id, item_name, total_amount, num_months, purchase_date, interest_rate, monthly_payment, first_payment_year, first_payment_month, notes, created_at, updated_at, deleted_at, account_id, settlement_intent FROM loans
 WHERE workspace_id = $1 AND deleted_at IS NULL
 ORDER BY created_at DESC
 `
@@ -590,6 +733,8 @@ func (q *Queries) ListLoans(ctx context.Context, workspaceID int32) ([]Loan, err
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.AccountID,
+			&i.SettlementIntent,
 		); err != nil {
 			return nil, err
 		}
@@ -614,7 +759,7 @@ SET item_name = $3,
     notes = $11,
     updated_at = NOW()
 WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL
-RETURNING id, workspace_id, provider_id, item_name, total_amount, num_months, purchase_date, interest_rate, monthly_payment, first_payment_year, first_payment_month, notes, created_at, updated_at, deleted_at
+RETURNING id, workspace_id, provider_id, item_name, total_amount, num_months, purchase_date, interest_rate, monthly_payment, first_payment_year, first_payment_month, notes, created_at, updated_at, deleted_at, account_id, settlement_intent
 `
 
 type UpdateLoanParams struct {
@@ -662,6 +807,59 @@ func (q *Queries) UpdateLoan(ctx context.Context, arg UpdateLoanParams) (Loan, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.AccountID,
+		&i.SettlementIntent,
+	)
+	return i, err
+}
+
+const updateLoanEditableFields = `-- name: UpdateLoanEditableFields :one
+UPDATE loans
+SET item_name = $3,
+    provider_id = $4,
+    notes = $5,
+    updated_at = NOW()
+WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL
+RETURNING id, workspace_id, provider_id, item_name, total_amount, num_months, purchase_date, interest_rate, monthly_payment, first_payment_year, first_payment_month, notes, created_at, updated_at, deleted_at, account_id, settlement_intent
+`
+
+type UpdateLoanEditableFieldsParams struct {
+	ID          int32       `json:"id"`
+	WorkspaceID int32       `json:"workspace_id"`
+	ItemName    string      `json:"item_name"`
+	ProviderID  int32       `json:"provider_id"`
+	Notes       pgtype.Text `json:"notes"`
+}
+
+// Updates editable fields with optional provider change
+// Provider can only change if no payments have been made (validated at service layer)
+func (q *Queries) UpdateLoanEditableFields(ctx context.Context, arg UpdateLoanEditableFieldsParams) (Loan, error) {
+	row := q.db.QueryRow(ctx, updateLoanEditableFields,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.ItemName,
+		arg.ProviderID,
+		arg.Notes,
+	)
+	var i Loan
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.ProviderID,
+		&i.ItemName,
+		&i.TotalAmount,
+		&i.NumMonths,
+		&i.PurchaseDate,
+		&i.InterestRate,
+		&i.MonthlyPayment,
+		&i.FirstPaymentYear,
+		&i.FirstPaymentMonth,
+		&i.Notes,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.AccountID,
+		&i.SettlementIntent,
 	)
 	return i, err
 }
@@ -672,7 +870,7 @@ SET item_name = $3,
     notes = $4,
     updated_at = NOW()
 WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL
-RETURNING id, workspace_id, provider_id, item_name, total_amount, num_months, purchase_date, interest_rate, monthly_payment, first_payment_year, first_payment_month, notes, created_at, updated_at, deleted_at
+RETURNING id, workspace_id, provider_id, item_name, total_amount, num_months, purchase_date, interest_rate, monthly_payment, first_payment_year, first_payment_month, notes, created_at, updated_at, deleted_at, account_id, settlement_intent
 `
 
 type UpdateLoanPartialParams struct {
@@ -707,6 +905,8 @@ func (q *Queries) UpdateLoanPartial(ctx context.Context, arg UpdateLoanPartialPa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.AccountID,
+		&i.SettlementIntent,
 	)
 	return i, err
 }

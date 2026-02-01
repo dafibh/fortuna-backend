@@ -219,7 +219,7 @@ func (q *Queries) GetCategoriesWithAllocations(ctx context.Context, arg GetCateg
 }
 
 const getCategoryTransactions = `-- name: GetCategoryTransactions :many
-SELECT t.id, t.workspace_id, t.account_id, t.name, t.amount, t.type, t.transaction_date, t.is_paid, t.notes, t.created_at, t.updated_at, t.deleted_at, t.transfer_pair_id, t.category_id, t.is_cc_payment, t.billed_at, t.settlement_intent, t.source, t.template_id, t.is_projected, a.name AS account_name
+SELECT t.id, t.workspace_id, t.account_id, t.name, t.amount, t.type, t.transaction_date, t.is_paid, t.notes, t.created_at, t.updated_at, t.deleted_at, t.transfer_pair_id, t.category_id, t.is_cc_payment, t.billed_at, t.settlement_intent, t.source, t.template_id, t.is_projected, t.loan_id, t.group_id, a.name AS account_name
 FROM transactions t
 JOIN accounts a ON t.account_id = a.id
 WHERE t.workspace_id = $1
@@ -259,6 +259,8 @@ type GetCategoryTransactionsRow struct {
 	Source           pgtype.Text        `json:"source"`
 	TemplateID       pgtype.Int4        `json:"template_id"`
 	IsProjected      pgtype.Bool        `json:"is_projected"`
+	LoanID           pgtype.Int4        `json:"loan_id"`
+	GroupID          pgtype.Int4        `json:"group_id"`
 	AccountName      string             `json:"account_name"`
 }
 
@@ -298,6 +300,8 @@ func (q *Queries) GetCategoryTransactions(ctx context.Context, arg GetCategoryTr
 			&i.Source,
 			&i.TemplateID,
 			&i.IsProjected,
+			&i.LoanID,
+			&i.GroupID,
 			&i.AccountName,
 		); err != nil {
 			return nil, err

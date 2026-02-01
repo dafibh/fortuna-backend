@@ -11,16 +11,16 @@ import (
 )
 
 type Querier interface {
+	AssignGroupToTransactions(ctx context.Context, arg AssignGroupToTransactionsParams) error
+	// Bulk mark loan transactions as paid by IDs with timestamp
+	BatchMarkLoanTransactionsPaid(ctx context.Context, arg BatchMarkLoanTransactionsPaidParams) ([]Transaction, error)
+	// Bulk mark loan transactions as unpaid by IDs
+	BatchMarkLoanTransactionsUnpaid(ctx context.Context, arg BatchMarkLoanTransactionsUnpaidParams) ([]Transaction, error)
 	// Batch toggle multiple transactions from pending to billed
 	BatchToggleToBilled(ctx context.Context, arg BatchToggleToBilledParams) ([]Transaction, error)
-	// Atomically marks multiple loan payments as paid
-	// Used for Pay Month action in consolidated monthly mode
-	// Returns the number of rows affected
-	BatchUpdatePaid(ctx context.Context, arg BatchUpdatePaidParams) (int64, error)
-	// Atomically marks multiple loan payments as unpaid
-	// Used for Unpay Month action in consolidated monthly mode
-	// Returns the number of rows affected
-	BatchUpdateUnpaid(ctx context.Context, dollar_1 []int32) (int64, error)
+	// Bulk mark transactions as paid by IDs (works for both bank and CC transactions)
+	// For CC transactions, this also effectively sets cc_state to 'settled' since it's computed from is_paid
+	BulkMarkTransactionsPaid(ctx context.Context, arg BulkMarkTransactionsPaidParams) ([]Transaction, error)
 	// Bulk update multiple transactions to settled state (is_paid = true)
 	BulkSettleTransactions(ctx context.Context, arg BulkSettleTransactionsParams) ([]Transaction, error)
 	// Copies all allocations from one month to another (atomic, skips deleted categories)
@@ -28,6 +28,7 @@ type Querier interface {
 	CountActiveLoansByProvider(ctx context.Context, arg CountActiveLoansByProviderParams) (int64, error)
 	// Returns the count of allocations for a specific month (for lazy initialization check)
 	CountAllocationsForMonth(ctx context.Context, arg CountAllocationsForMonthParams) (int64, error)
+	CountGroupChildren(ctx context.Context, arg CountGroupChildrenParams) (int32, error)
 	CountNotesByItem(ctx context.Context, arg CountNotesByItemParams) (int64, error)
 	// Count transactions assigned to a specific category
 	CountTransactionsByCategory(ctx context.Context, arg CountTransactionsByCategoryParams) (int64, error)
@@ -36,8 +37,8 @@ type Querier interface {
 	CreateAPIToken(ctx context.Context, arg CreateAPITokenParams) (ApiToken, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
 	CreateBudgetCategory(ctx context.Context, arg CreateBudgetCategoryParams) (BudgetCategory, error)
+	CreateGroup(ctx context.Context, arg CreateGroupParams) (TransactionGroup, error)
 	CreateLoan(ctx context.Context, arg CreateLoanParams) (Loan, error)
-	CreateLoanPayment(ctx context.Context, arg CreateLoanPaymentParams) (LoanPayment, error)
 	CreateLoanProvider(ctx context.Context, arg CreateLoanProviderParams) (LoanProvider, error)
 	CreateMonth(ctx context.Context, arg CreateMonthParams) (Month, error)
 	CreateOrGetUserByAuth0ID(ctx context.Context, arg CreateOrGetUserByAuth0IDParams) (User, error)
@@ -53,6 +54,7 @@ type Querier interface {
 	CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams) (Workspace, error)
 	DeleteBudgetAllocation(ctx context.Context, arg DeleteBudgetAllocationParams) error
 	DeleteExclusionsByTemplate(ctx context.Context, templateID int32) error
+	DeleteGroup(ctx context.Context, arg DeleteGroupParams) error
 	DeleteLoan(ctx context.Context, arg DeleteLoanParams) error
 	DeleteLoanProvider(ctx context.Context, arg DeleteLoanProviderParams) error
 	// Delete projections beyond a specific date (used when changing template end_date)
@@ -61,6 +63,9 @@ type Querier interface {
 	// Paid projections are preserved and orphaned instead
 	DeleteProjectionsByTemplate(ctx context.Context, arg DeleteProjectionsByTemplateParams) error
 	DeleteRecurringTemplate(ctx context.Context, arg DeleteRecurringTemplateParams) error
+	// Hard delete unpaid transactions for a loan
+	// Used when deleting a loan (unpaid future payments are removed)
+	DeleteUnpaidTransactionsByLoan(ctx context.Context, arg DeleteUnpaidTransactionsByLoanParams) error
 	DeleteWishlist(ctx context.Context, arg DeleteWishlistParams) error
 	DeleteWishlistItem(ctx context.Context, arg DeleteWishlistItemParams) error
 	DeleteWishlistItemNote(ctx context.Context, arg DeleteWishlistItemNoteParams) error
@@ -76,12 +81,14 @@ type Querier interface {
 	GetAccountTransactionSummaries(ctx context.Context, workspaceID int32) ([]GetAccountTransactionSummariesRow, error)
 	GetAccountsByWorkspace(ctx context.Context, workspaceID int32) ([]Account, error)
 	GetAccountsByWorkspaceAll(ctx context.Context, workspaceID int32) ([]Account, error)
+	// Get active loans (with remaining balance) with payment stats calculated from transactions
 	GetActiveLoansWithStats(ctx context.Context, workspaceID int32) ([]GetActiveLoansWithStatsRow, error)
 	GetActiveRecurringTemplates(ctx context.Context, workspaceID int32) ([]RecurringTemplate, error)
 	// Get all active templates across all workspaces (for daily sync goroutine)
 	GetAllActiveTemplates(ctx context.Context) ([]RecurringTemplate, error)
 	GetAllBudgetCategories(ctx context.Context, workspaceID int32) ([]BudgetCategory, error)
 	GetAllMonths(ctx context.Context, workspaceID int32) ([]Month, error)
+	GetAutoDetectedGroupByProviderMonth(ctx context.Context, arg GetAutoDetectedGroupByProviderMonthParams) (GetAutoDetectedGroupByProviderMonthRow, error)
 	GetBestPriceForItem(ctx context.Context, arg GetBestPriceForItemParams) (string, error)
 	// Get billed CC transactions with deferred settlement intent for a month range
 	GetBilledCCByMonth(ctx context.Context, arg GetBilledCCByMonthParams) ([]GetBilledCCByMonthRow, error)
@@ -103,42 +110,53 @@ type Querier interface {
 	GetCategoriesWithAllocations(ctx context.Context, arg GetCategoriesWithAllocationsParams) ([]GetCategoriesWithAllocationsRow, error)
 	// Returns all transactions for a specific category in a month
 	GetCategoryTransactions(ctx context.Context, arg GetCategoryTransactionsParams) ([]GetCategoryTransactionsRow, error)
+	// Get completed loans (no remaining balance) with payment stats calculated from transactions
 	GetCompletedLoansWithStats(ctx context.Context, workspaceID int32) ([]GetCompletedLoansWithStatsRow, error)
+	GetConsolidatedProvidersByMonth(ctx context.Context, arg GetConsolidatedProvidersByMonthParams) ([]GetConsolidatedProvidersByMonthRow, error)
 	GetCurrentPricesByItem(ctx context.Context, arg GetCurrentPricesByItemParams) ([]GetCurrentPricesByItemRow, error)
 	// Get all billed, deferred transactions that need settlement (ordered by date)
 	GetDeferredForSettlement(ctx context.Context, workspaceID int32) ([]GetDeferredForSettlementRow, error)
-	// Returns the earliest (year, month) with unpaid payments for a provider
-	// This is used for sequential enforcement in consolidated monthly payment mode
-	// Handles gap months by finding the earliest unpaid month in ANY loan period
-	GetEarliestUnpaidMonth(ctx context.Context, arg GetEarliestUnpaidMonthParams) (GetEarliestUnpaidMonthRow, error)
+	// Get earliest unpaid month for a provider (for sequential enforcement)
+	GetEarliestUnpaidLoanMonth(ctx context.Context, arg GetEarliestUnpaidLoanMonthParams) (GetEarliestUnpaidLoanMonthRow, error)
 	GetExclusionsByTemplate(ctx context.Context, arg GetExclusionsByTemplateParams) ([]ProjectionExclusion, error)
 	GetFirstItemImage(ctx context.Context, arg GetFirstItemImageParams) (pgtype.Text, error)
+	GetGroupByID(ctx context.Context, arg GetGroupByIDParams) (GetGroupByIDRow, error)
+	GetGroupsByMonth(ctx context.Context, arg GetGroupsByMonthParams) ([]GetGroupsByMonthRow, error)
 	// Get billed transactions with immediate intent for the current month
 	GetImmediateForSettlement(ctx context.Context, arg GetImmediateForSettlementParams) ([]GetImmediateForSettlementRow, error)
 	GetLatestMonth(ctx context.Context, workspaceID int32) (Month, error)
-	// Returns the latest (year, month) with paid payments for a provider
-	// Used for reverse sequential enforcement in unpay action
-	GetLatestPaidMonth(ctx context.Context, arg GetLatestPaidMonthParams) (GetLatestPaidMonthRow, error)
+	// Get latest paid month for a provider (for reverse sequential enforcement on unpay)
+	GetLatestPaidLoanMonth(ctx context.Context, arg GetLatestPaidLoanMonthParams) (GetLatestPaidLoanMonthRow, error)
 	GetLoanByID(ctx context.Context, arg GetLoanByIDParams) (Loan, error)
-	GetLoanDeleteStats(ctx context.Context, loanID int32) (GetLoanDeleteStatsRow, error)
-	GetLoanPaymentByID(ctx context.Context, id int32) (LoanPayment, error)
-	GetLoanPaymentByLoanAndNumber(ctx context.Context, arg GetLoanPaymentByLoanAndNumberParams) (LoanPayment, error)
-	GetLoanPaymentsByLoanID(ctx context.Context, loanID int32) ([]LoanPayment, error)
-	GetLoanPaymentsByMonth(ctx context.Context, arg GetLoanPaymentsByMonthParams) ([]LoanPayment, error)
-	GetLoanPaymentsWithDetailsByMonth(ctx context.Context, arg GetLoanPaymentsWithDetailsByMonthParams) ([]GetLoanPaymentsWithDetailsByMonthRow, error)
+	// Convert loan transactions to LoanPayment format for frontend compatibility
+	// Derives payment_number from row order, extracts year/month from transaction_date
+	// Note: Only uses loan_id since service layer already verified loan ownership
+	GetLoanPaymentsFromTransactions(ctx context.Context, loanID pgtype.Int4) ([]GetLoanPaymentsFromTransactionsRow, error)
 	GetLoanProviderByID(ctx context.Context, arg GetLoanProviderByIDParams) (LoanProvider, error)
+	// Get paid/unpaid transaction counts for delete confirmation
+	GetLoanTransactionStats(ctx context.Context, arg GetLoanTransactionStatsParams) (GetLoanTransactionStatsRow, error)
+	// ========================================
+	// Loan Transaction Operations (CL v2)
+	// ========================================
+	// Get unpaid transactions for a specific loan and month
+	GetLoanTransactionsByMonth(ctx context.Context, arg GetLoanTransactionsByMonthParams) ([]Transaction, error)
+	// Aggregate loan transactions by month and provider for trend visualization
+	// Returns monthly totals with provider breakdown
+	GetLoanTrendData(ctx context.Context, arg GetLoanTrendDataParams) ([]GetLoanTrendDataRow, error)
+	// CL v2: Use transactions with loan_id instead of loan_payments table
+	// Get all loans with payment stats calculated from transactions
 	GetLoansWithStats(ctx context.Context, workspaceID int32) ([]GetLoansWithStatsRow, error)
+	// Get all loans for a specific provider with payment stats calculated from transactions
+	// Orders unpaid items first, then by item name
+	GetLoansWithStatsByProvider(ctx context.Context, arg GetLoansWithStatsByProviderParams) ([]GetLoansWithStatsByProviderRow, error)
 	GetMonthByYearMonth(ctx context.Context, arg GetMonthByYearMonthParams) (Month, error)
 	// Batch query to get income/expense totals grouped by year/month for N+1 prevention
 	// Only count paid transactions, excludes transfers
 	GetMonthlyTransactionSummaries(ctx context.Context, workspaceID int32) ([]GetMonthlyTransactionSummariesRow, error)
 	// Get CC transactions that are billed but overdue (2+ months old)
 	GetOverdueCC(ctx context.Context, workspaceID int32) ([]GetOverdueCCRow, error)
-	// Returns all paid loan payments for a specific provider and month
-	// Used for Unpay Month action in consolidated monthly mode
-	GetPaidPaymentsByProviderMonth(ctx context.Context, arg GetPaidPaymentsByProviderMonthParams) ([]LoanPayment, error)
-	// Returns loan payments by their IDs with workspace validation via join
-	GetPaymentsByIDs(ctx context.Context, arg GetPaymentsByIDsParams) ([]LoanPayment, error)
+	// Get paid loan payments for a specific provider and month (for unpay-month action)
+	GetPaidLoanPaymentsByProviderMonth(ctx context.Context, arg GetPaidLoanPaymentsByProviderMonthParams) ([]GetPaidLoanPaymentsByProviderMonthRow, error)
 	// Get pending CC transactions (billed_at IS NULL) for a specific month range
 	GetPendingCCByMonth(ctx context.Context, arg GetPendingCCByMonthParams) ([]GetPendingCCByMonthRow, error)
 	// Get pending (not yet billed) deferred CC transactions for visibility
@@ -160,20 +178,18 @@ type Querier interface {
 	GetTransactionByID(ctx context.Context, arg GetTransactionByIDParams) (Transaction, error)
 	// Get multiple transactions by their IDs
 	GetTransactionsByIDs(ctx context.Context, arg GetTransactionsByIDsParams) ([]Transaction, error)
+	// Get all transactions for a specific loan (both paid and unpaid) for item-based modal
+	GetTransactionsByLoanID(ctx context.Context, arg GetTransactionsByLoanIDParams) ([]Transaction, error)
 	GetTransactionsByWorkspace(ctx context.Context, arg GetTransactionsByWorkspaceParams) ([]Transaction, error)
 	// Returns all transactions in a date range with category name for aggregation (no pagination)
 	// Used by dashboard future spending calculations
 	GetTransactionsForAggregation(ctx context.Context, arg GetTransactionsForAggregationParams) ([]GetTransactionsForAggregationRow, error)
-	// Returns transactions with category name joined for display
+	// Returns transactions with category name and group name joined for display
 	GetTransactionsWithCategory(ctx context.Context, arg GetTransactionsWithCategoryParams) ([]GetTransactionsWithCategoryRow, error)
-	// Aggregates loan payments by year/month and provider for trend visualization
-	// Returns monthly totals with provider breakdown and isPaid status
-	// Gap months (no payments) are handled in the service layer
-	GetTrendByMonth(ctx context.Context, arg GetTrendByMonthParams) ([]GetTrendByMonthRow, error)
-	GetUnpaidLoanPaymentsByMonth(ctx context.Context, arg GetUnpaidLoanPaymentsByMonthParams) ([]LoanPayment, error)
-	// Returns all unpaid loan payments for a specific provider and month
-	// Used for Pay Month action in consolidated monthly mode
-	GetUnpaidPaymentsByProviderMonth(ctx context.Context, arg GetUnpaidPaymentsByProviderMonthParams) ([]LoanPayment, error)
+	GetUngroupedTransactionIDsByProviderMonth(ctx context.Context, arg GetUngroupedTransactionIDsByProviderMonthParams) ([]int32, error)
+	GetUngroupedTransactionsByMonth(ctx context.Context, arg GetUngroupedTransactionsByMonthParams) ([]Transaction, error)
+	// Get unpaid loan payments for a specific provider and month (for pay-month action)
+	GetUnpaidLoanPaymentsByProviderMonth(ctx context.Context, arg GetUnpaidLoanPaymentsByProviderMonthParams) ([]GetUnpaidLoanPaymentsByProviderMonthRow, error)
 	GetUserByAuth0ID(ctx context.Context, auth0ID string) (User, error)
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	GetWishlistByID(ctx context.Context, arg GetWishlistByIDParams) (Wishlist, error)
@@ -185,6 +201,8 @@ type Querier interface {
 	GetWorkspaceByUserAuth0ID(ctx context.Context, auth0ID string) (Workspace, error)
 	GetWorkspaceByUserID(ctx context.Context, userID pgtype.UUID) (Workspace, error)
 	HardDeleteAccount(ctx context.Context, arg HardDeleteAccountParams) error
+	// Check if any transactions for this loan are paid (for provider change validation)
+	HasPaidTransactionsByLoan(ctx context.Context, arg HasPaidTransactionsByLoanParams) (bool, error)
 	IsMonthExcluded(ctx context.Context, arg IsMonthExcludedParams) (bool, error)
 	ListActiveLoans(ctx context.Context, arg ListActiveLoansParams) ([]Loan, error)
 	ListCompletedLoans(ctx context.Context, arg ListCompletedLoansParams) ([]Loan, error)
@@ -200,10 +218,14 @@ type Querier interface {
 	MoveWishlistItem(ctx context.Context, arg MoveWishlistItemParams) (WishlistItem, error)
 	// Unlink actual transactions from template (keep them, clear template_id)
 	OrphanActualsByTemplate(ctx context.Context, arg OrphanActualsByTemplateParams) error
+	// Unlink paid transactions from loan (keep them, clear loan_id)
+	// Used when deleting a loan to preserve payment history
+	OrphanPaidTransactionsByLoan(ctx context.Context, arg OrphanPaidTransactionsByLoanParams) error
 	RevokeAPIToken(ctx context.Context, arg RevokeAPITokenParams) (int64, error)
 	SoftDeleteAccount(ctx context.Context, arg SoftDeleteAccountParams) (int64, error)
 	SoftDeleteBudgetCategory(ctx context.Context, arg SoftDeleteBudgetCategoryParams) error
 	SoftDeleteTransaction(ctx context.Context, arg SoftDeleteTransactionParams) (int64, error)
+	SoftDeleteTransactionsByGroupID(ctx context.Context, arg SoftDeleteTransactionsByGroupIDParams) (int64, error)
 	SoftDeleteTransferPair(ctx context.Context, arg SoftDeleteTransferPairParams) (int64, error)
 	// Sum deferred CC expenses within a date range
 	// Used for next month projections
@@ -211,8 +233,6 @@ type Querier interface {
 	// Sum paid expenses within a date range for in-hand balance calculation
 	// Excludes transfers (they move money between accounts, not actual spending)
 	SumPaidExpensesByDateRange(ctx context.Context, arg SumPaidExpensesByDateRangeParams) (pgtype.Numeric, error)
-	// Returns the sum of amounts for given payment IDs
-	SumPaymentAmountsByIDs(ctx context.Context, arg SumPaymentAmountsByIDsParams) (pgtype.Numeric, error)
 	// Only count paid transactions, excludes transfers
 	SumTransactionsByTypeAndDateRange(ctx context.Context, arg SumTransactionsByTypeAndDateRangeParams) (pgtype.Numeric, error)
 	// Sum unpaid expenses within a date range (ALL unpaid, including deferred CC)
@@ -224,26 +244,32 @@ type Querier interface {
 	// EXCLUDES transfers (they move money between accounts, not actual spending)
 	// Includes: non-CC unpaid expenses + immediate CC expenses
 	SumUnpaidExpensesForDisposable(ctx context.Context, arg SumUnpaidExpensesForDisposableParams) (pgtype.Numeric, error)
-	SumUnpaidLoanPaymentsByMonth(ctx context.Context, arg SumUnpaidLoanPaymentsByMonthParams) (pgtype.Numeric, error)
 	// ========================================
 	// CC Lifecycle Operations (v2 - Simplified)
 	// CC State: pending (billed_at IS NULL), billed (billed_at IS NOT NULL, is_paid=false), settled (is_paid=true)
 	// ========================================
 	// Toggle billed status for a CC transaction (pending <-> billed)
 	ToggleBilledStatus(ctx context.Context, arg ToggleBilledStatusParams) (Transaction, error)
-	ToggleLoanPaymentPaid(ctx context.Context, arg ToggleLoanPaymentPaidParams) (LoanPayment, error)
 	ToggleTransactionPaidStatus(ctx context.Context, arg ToggleTransactionPaidStatusParams) (Transaction, error)
+	UnassignAllFromGroup(ctx context.Context, arg UnassignAllFromGroupParams) (int64, error)
+	UnassignGroupFromTransactions(ctx context.Context, arg UnassignGroupFromTransactionsParams) error
 	UpdateAPITokenLastUsed(ctx context.Context, id pgtype.UUID) error
 	UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error)
 	UpdateBudgetCategory(ctx context.Context, arg UpdateBudgetCategoryParams) (BudgetCategory, error)
+	UpdateGroupName(ctx context.Context, arg UpdateGroupNameParams) (TransactionGroup, error)
 	UpdateLoan(ctx context.Context, arg UpdateLoanParams) (Loan, error)
+	// Updates editable fields with optional provider change
+	// Provider can only change if no payments have been made (validated at service layer)
+	UpdateLoanEditableFields(ctx context.Context, arg UpdateLoanEditableFieldsParams) (Loan, error)
 	// Only updates editable fields (item_name, notes) - amount/months/dates are locked after creation
 	UpdateLoanPartial(ctx context.Context, arg UpdateLoanPartialParams) (Loan, error)
-	UpdateLoanPaymentAmount(ctx context.Context, arg UpdateLoanPaymentAmountParams) (LoanPayment, error)
 	UpdateLoanProvider(ctx context.Context, arg UpdateLoanProviderParams) (LoanProvider, error)
 	UpdateMonthStartingBalance(ctx context.Context, arg UpdateMonthStartingBalanceParams) error
 	UpdateRecurringTemplate(ctx context.Context, arg UpdateRecurringTemplateParams) (RecurringTemplate, error)
 	UpdateTransaction(ctx context.Context, arg UpdateTransactionParams) (Transaction, error)
+	// Cascade item name/provider change to transaction payees
+	// Pattern: "[Provider] ([Item Name])"
+	UpdateTransactionPayeesByLoan(ctx context.Context, arg UpdateTransactionPayeesByLoanParams) (int64, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
 	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) (User, error)
 	UpdateWishlist(ctx context.Context, arg UpdateWishlistParams) (Wishlist, error)

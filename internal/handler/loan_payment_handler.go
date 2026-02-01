@@ -93,6 +93,12 @@ type UnpayMonthResponse struct {
 	PreviousPayable *string `json:"previousPayable,omitempty"`
 }
 
+// EarliestUnpaidMonthResponse represents the earliest unpaid month response
+type EarliestUnpaidMonthResponse struct {
+	Year  int32 `json:"year"`
+	Month int32 `json:"month"`
+}
+
 // GetPaymentsByLoanID handles GET /api/v1/loans/:loanId/payments
 func (h *LoanPaymentHandler) GetPaymentsByLoanID(c echo.Context) error {
 	workspaceID := middleware.GetWorkspaceID(c)
@@ -450,6 +456,40 @@ func (h *LoanPaymentHandler) UnpayMonth(c echo.Context) error {
 		UnpaidCount:     result.UnpaidCount,
 		TotalAmount:     result.TotalAmount.StringFixed(2),
 		PreviousPayable: result.PreviousPayable,
+	}
+
+	return c.JSON(http.StatusOK, response)
+}
+
+// GetEarliestUnpaidMonth handles GET /api/v1/loan-providers/:id/earliest-unpaid
+func (h *LoanPaymentHandler) GetEarliestUnpaidMonth(c echo.Context) error {
+	workspaceID := middleware.GetWorkspaceID(c)
+	if workspaceID == 0 {
+		return NewUnauthorizedError(c, "Workspace required")
+	}
+
+	providerID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return NewValidationError(c, "Invalid loan provider ID", nil)
+	}
+
+	result, err := h.paymentService.GetEarliestUnpaidMonth(workspaceID, int32(providerID))
+	if err != nil {
+		if errors.Is(err, domain.ErrLoanProviderNotFound) {
+			return NewNotFoundError(c, "Loan provider not found")
+		}
+		log.Error().Err(err).Int32("workspace_id", workspaceID).Int("provider_id", providerID).Msg("Failed to get earliest unpaid month")
+		return NewInternalError(c, "Failed to get earliest unpaid month")
+	}
+
+	// Return null if no unpaid months
+	if result == nil {
+		return c.JSON(http.StatusOK, nil)
+	}
+
+	response := EarliestUnpaidMonthResponse{
+		Year:  result.Year,
+		Month: result.Month,
 	}
 
 	return c.JSON(http.StatusOK, response)

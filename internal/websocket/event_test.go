@@ -116,6 +116,51 @@ func TestEvent_ToJSON(t *testing.T) {
 	assert.NotNil(t, decoded["timestamp"])
 }
 
+func TestTransactionGroupEvent_Helpers(t *testing.T) {
+	payload := map[string]interface{}{
+		"id":         float64(1),
+		"name":       "Groceries",
+		"month":      "2026-01",
+		"childCount": float64(3),
+	}
+
+	t.Run("TransactionGroupCreated", func(t *testing.T) {
+		evt := TransactionGroupCreated(payload)
+		assert.Equal(t, "transaction_group.created", evt.Type)
+		assert.Equal(t, EntityTypeTransactionGroup, evt.Entity)
+		assert.Equal(t, payload, evt.Payload)
+	})
+
+	t.Run("TransactionGroupUpdated", func(t *testing.T) {
+		evt := TransactionGroupUpdated(payload)
+		assert.Equal(t, "transaction_group.updated", evt.Type)
+		assert.Equal(t, EntityTypeTransactionGroup, evt.Entity)
+		assert.Equal(t, payload, evt.Payload)
+	})
+
+	t.Run("TransactionGroupDeleted", func(t *testing.T) {
+		evt := TransactionGroupDeleted(payload)
+		assert.Equal(t, "transaction_group.deleted", evt.Type)
+		assert.Equal(t, EntityTypeTransactionGroup, evt.Entity)
+		assert.Equal(t, payload, evt.Payload)
+	})
+
+	t.Run("TransactionGroupChildrenChanged", func(t *testing.T) {
+		evt := TransactionGroupChildrenChanged(payload)
+		assert.Equal(t, "transaction_group.children_changed", evt.Type)
+		assert.Equal(t, EntityTypeTransactionGroup, evt.Entity)
+		assert.Equal(t, payload, evt.Payload)
+	})
+}
+
+func TestEntityTypeTransactionGroup_String(t *testing.T) {
+	assert.Equal(t, "transaction_group", string(EntityTypeTransactionGroup))
+}
+
+func TestEventTypeChildrenChanged_String(t *testing.T) {
+	assert.Equal(t, "children_changed", string(EventTypeChildrenChanged))
+}
+
 func TestTransactionEvent_Helpers(t *testing.T) {
 	txPayload := map[string]interface{}{
 		"id":     float64(1),

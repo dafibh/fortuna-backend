@@ -6,7 +6,7 @@ import (
 )
 
 // RegisterRoutes sets up all API routes
-func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateLimiter *middleware.RateLimiter, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler, recurringTemplateHandler *RecurringTemplateHandler, loanProviderHandler *LoanProviderHandler, loanHandler *LoanHandler, loanPaymentHandler *LoanPaymentHandler, wishlistHandler *WishlistHandler, wishlistItemHandler *WishlistItemHandler, wishlistPriceHandler *WishlistPriceHandler, wishlistNoteHandler *WishlistNoteHandler, imageHandler *ImageHandler, wsHandler *WebSocketHandler, apiTokenHandler *APITokenHandler, settlementHandler *SettlementHandler) {
+func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateLimiter *middleware.RateLimiter, authHandler *AuthHandler, profileHandler *ProfileHandler, accountHandler *AccountHandler, transactionHandler *TransactionHandler, monthHandler *MonthHandler, dashboardHandler *DashboardHandler, budgetCategoryHandler *BudgetCategoryHandler, budgetHandler *BudgetHandler, ccHandler *CCHandler, recurringTemplateHandler *RecurringTemplateHandler, loanProviderHandler *LoanProviderHandler, loanHandler *LoanHandler, loanPaymentHandler *LoanPaymentHandler, wishlistHandler *WishlistHandler, wishlistItemHandler *WishlistItemHandler, wishlistPriceHandler *WishlistPriceHandler, wishlistNoteHandler *WishlistNoteHandler, imageHandler *ImageHandler, wsHandler *WebSocketHandler, apiTokenHandler *APITokenHandler, settlementHandler *SettlementHandler, transactionGroupHandler *TransactionGroupHandler) {
 	// WebSocket route (auth via query param token)
 	e.GET("/ws", wsHandler.HandleWS)
 
@@ -94,6 +94,16 @@ func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateL
 	settlements.Use(dualAuth.Authenticate(), middleware.RateLimitMiddleware(rateLimiter))
 	settlements.POST("", settlementHandler.Create)
 
+	// Transaction Group routes (dual auth with rate limiting)
+	transactionGroups := api.Group("/transaction-groups")
+	transactionGroups.Use(dualAuth.Authenticate(), middleware.RateLimitMiddleware(rateLimiter))
+	transactionGroups.GET("", transactionGroupHandler.GetGroupsByMonth)
+	transactionGroups.POST("", transactionGroupHandler.CreateGroup)
+	transactionGroups.PUT("/:id", transactionGroupHandler.RenameGroup)
+	transactionGroups.POST("/:id/transactions", transactionGroupHandler.AddTransactions)
+	transactionGroups.DELETE("/:id", transactionGroupHandler.DeleteGroup)
+	transactionGroups.DELETE("/:id/transactions", transactionGroupHandler.RemoveTransactions)
+
 	// Recurring Templates routes (dual auth with rate limiting)
 	recurringTemplates := api.Group("/recurring-templates")
 	recurringTemplates.Use(dualAuth.Authenticate(), middleware.RateLimitMiddleware(rateLimiter))
@@ -111,9 +121,11 @@ func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateL
 	loanProviders.GET("/:id", loanProviderHandler.GetLoanProvider)
 	loanProviders.PUT("/:id", loanProviderHandler.UpdateLoanProvider)
 	loanProviders.DELETE("/:id", loanProviderHandler.DeleteLoanProvider)
+	loanProviders.GET("/:id/earliest-unpaid", loanPaymentHandler.GetEarliestUnpaidMonth)
 	loanProviders.POST("/:id/pay-range", loanPaymentHandler.PayRange)
 	loanProviders.POST("/:id/pay-month", loanPaymentHandler.PayMonth)
 	loanProviders.POST("/:id/unpay-month", loanPaymentHandler.UnpayMonth)
+	loanProviders.GET("/:id/loans", loanHandler.GetLoansByProvider) // CL v2: Get loans for item-based modal
 
 	// Loan routes (dual auth with rate limiting)
 	loans := api.Group("/loans")
@@ -124,9 +136,12 @@ func RegisterRoutes(e *echo.Echo, dualAuth *middleware.DualAuthMiddleware, rateL
 	loans.GET("/commitments/:year/:month", loanHandler.GetMonthlyCommitments)
 	loans.GET("/trend", loanHandler.GetTrend)
 	loans.GET("/:id", loanHandler.GetLoan)
+	loans.GET("/:id/edit-check", loanHandler.GetEditCheck)     // Returns if provider can be changed
 	loans.GET("/:id/delete-check", loanHandler.GetDeleteCheck)
 	loans.PUT("/:id", loanHandler.UpdateLoan)
 	loans.DELETE("/:id", loanHandler.DeleteLoan)
+	loans.POST("/:id/pay-month", loanHandler.PayLoanMonth)       // CL v2: settle loan month via transactions
+	loans.GET("/:id/transactions", loanHandler.GetLoanTransactions) // CL v2: Get transactions for item-based modal
 
 	// Loan Payment routes (nested under loans)
 	loans.GET("/:loanId/payments", loanPaymentHandler.GetPaymentsByLoanID)

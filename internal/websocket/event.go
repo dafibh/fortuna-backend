@@ -24,15 +24,17 @@ const (
 	EntityTypeRecurring    EntityType = "recurring"
 	EntityTypeProjection   EntityType = "projection"
 	EntityTypeSettlement   EntityType = "settlement"
-	EntityTypeLoanPayment  EntityType = "loan_payment"
-	EntityTypeLoanProvider EntityType = "loan_provider"
+	EntityTypeLoanPayment      EntityType = "loan_payment"
+	EntityTypeLoanProvider     EntityType = "loan_provider"
+	EntityTypeTransactionGroup EntityType = "transaction_group"
 )
 
 // Additional event types for specific events
 const (
-	EventTypeSynced      EventType = "synced"
-	EventTypeBatchPaid   EventType = "batch_paid"
-	EventTypeBatchUnpaid EventType = "batch_unpaid"
+	EventTypeSynced          EventType = "synced"
+	EventTypeBatchPaid       EventType = "batch_paid"
+	EventTypeBatchUnpaid     EventType = "batch_unpaid"
+	EventTypeChildrenChanged EventType = "children_changed"
 )
 
 // Event represents a WebSocket event message sent to clients
@@ -117,4 +119,24 @@ func LoanPaymentBatchUnpaid(payload interface{}) Event {
 // LoanProviderUpdated creates a loan_provider.updated event
 func LoanProviderUpdated(payload interface{}) Event {
 	return NewEvent(EventTypeUpdated, EntityTypeLoanProvider, payload)
+}
+
+// TransactionGroupCreated creates a transaction_group.created event
+func TransactionGroupCreated(payload interface{}) Event {
+	return NewEvent(EventTypeCreated, EntityTypeTransactionGroup, payload)
+}
+
+// TransactionGroupUpdated creates a transaction_group.updated event
+func TransactionGroupUpdated(payload interface{}) Event {
+	return NewEvent(EventTypeUpdated, EntityTypeTransactionGroup, payload)
+}
+
+// TransactionGroupChildrenChanged creates a transaction_group.children_changed event
+func TransactionGroupChildrenChanged(payload interface{}) Event {
+	return NewEvent(EventTypeChildrenChanged, EntityTypeTransactionGroup, payload)
+}
+
+// TransactionGroupDeleted creates a transaction_group.deleted event
+func TransactionGroupDeleted(payload interface{}) Event {
+	return NewEvent(EventTypeDeleted, EntityTypeTransactionGroup, payload)
 }

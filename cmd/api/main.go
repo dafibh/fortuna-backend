@@ -83,6 +83,7 @@ func main() {
 	wishlistItemRepo := postgres.NewWishlistItemRepository(pool)
 	wishlistPriceRepo := postgres.NewWishlistPriceRepository(pool)
 	wishlistNoteRepo := postgres.NewWishlistNoteRepository(pool)
+	transactionGroupRepo := postgres.NewTransactionGroupRepository(pool)
 	apiTokenRepo := postgres.NewAPITokenRepository(pool)
 
 	// Initialize S3 image storage repository (optional - won't fail if not configured)
@@ -128,8 +129,12 @@ func main() {
 	recurringTemplateService.SetExclusionRepository(exclusionRepo)
 	transactionService.SetExclusionRepository(exclusionRepo)
 
+	transactionGroupService := service.NewTransactionGroupService(transactionGroupRepo, transactionRepo)
+
+	// Link transaction group repository to transaction service for auto-ungroup on date change
+	transactionService.SetTransactionGroupRepository(transactionGroupRepo)
 	loanProviderService := service.NewLoanProviderService(loanProviderRepo)
-	loanService := service.NewLoanService(pool, loanRepo, loanProviderRepo, loanPaymentRepo)
+	loanService := service.NewLoanService(pool, loanRepo, loanProviderRepo, transactionRepo, accountRepo)
 	loanPaymentService := service.NewLoanPaymentService(pool, loanPaymentRepo, loanRepo, loanProviderRepo)
 	wishlistService := service.NewWishlistService(wishlistRepo)
 	wishlistItemService := service.NewWishlistItemService(wishlistItemRepo, wishlistRepo)
@@ -172,12 +177,14 @@ func main() {
 	recurringTemplateService.SetEventPublisher(wsHub)
 	settlementService.SetEventPublisher(wsHub)
 	loanProviderService.SetEventPublisher(wsHub)
+	transactionGroupService.SetEventPublisher(wsHub)
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(authService)
 	profileHandler := handler.NewProfileHandler(profileService)
 	accountHandler := handler.NewAccountHandler(accountService, calculationService)
 	transactionHandler := handler.NewTransactionHandler(transactionService)
+	transactionHandler.SetTransactionGroupService(transactionGroupService)
 	monthHandler := handler.NewMonthHandler(monthService)
 	dashboardHandler := handler.NewDashboardHandler(dashboardService)
 	budgetCategoryHandler := handler.NewBudgetCategoryHandler(budgetCategoryService)
@@ -194,6 +201,7 @@ func main() {
 	wishlistNoteHandler := handler.NewWishlistNoteHandler(wishlistNoteService)
 	imageHandler := handler.NewImageHandler(imageService)
 	wsHandler := handler.NewWebSocketHandler(wsHub, wsJWTValidator, cfg.CORSOrigins)
+	transactionGroupHandler := handler.NewTransactionGroupHandler(transactionGroupService)
 	apiTokenHandler := handler.NewAPITokenHandler(apiTokenService, authService)
 
 	// Initialize projection sync service for daily background sync
@@ -250,7 +258,7 @@ func main() {
 	e.GET("/api/docs/*", echoSwagger.WrapHandler)
 
 	// Register API routes
-	handler.RegisterRoutes(e, dualAuthMiddleware, rateLimiter, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler, dashboardHandler, budgetCategoryHandler, budgetHandler, ccHandler, recurringTemplateHandler, loanProviderHandler, loanHandler, loanPaymentHandler, wishlistHandler, wishlistItemHandler, wishlistPriceHandler, wishlistNoteHandler, imageHandler, wsHandler, apiTokenHandler, settlementHandler)
+	handler.RegisterRoutes(e, dualAuthMiddleware, rateLimiter, authHandler, profileHandler, accountHandler, transactionHandler, monthHandler, dashboardHandler, budgetCategoryHandler, budgetHandler, ccHandler, recurringTemplateHandler, loanProviderHandler, loanHandler, loanPaymentHandler, wishlistHandler, wishlistItemHandler, wishlistPriceHandler, wishlistNoteHandler, imageHandler, wsHandler, apiTokenHandler, settlementHandler, transactionGroupHandler)
 
 	// Start server in goroutine
 	go func() {

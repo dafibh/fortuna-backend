@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/dafibh/fortuna/fortuna-backend/internal/domain"
+	"github.com/dafibh/fortuna/fortuna-backend/internal/websocket"
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
@@ -339,6 +340,7 @@ type MockTransactionRepository struct {
 	ByTransferPairID           map[uuid.UUID][]*domain.Transaction
 	NextID                     int32
 	CreateFn                   func(transaction *domain.Transaction) (*domain.Transaction, error)
+	CreateBatchTxFn            func(tx interface{}, transactions []*domain.Transaction) ([]*domain.Transaction, error)
 	GetByIDFn                  func(workspaceID int32, id int32) (*domain.Transaction, error)
 	GetByWSFn                  func(workspaceID int32, filters *domain.TransactionFilters) (*domain.PaginatedTransactions, error)
 	TogglePaidFn               func(workspaceID int32, id int32) (*domain.Transaction, error)
@@ -392,6 +394,22 @@ func (m *MockTransactionRepository) Create(transaction *domain.Transaction) (*do
 	m.Transactions[transaction.ID] = transaction
 	m.ByWorkspace[transaction.WorkspaceID] = append(m.ByWorkspace[transaction.WorkspaceID], transaction)
 	return transaction, nil
+}
+
+// CreateBatchTx creates multiple transactions within a database transaction (mock implementation)
+func (m *MockTransactionRepository) CreateBatchTx(tx interface{}, transactions []*domain.Transaction) ([]*domain.Transaction, error) {
+	if m.CreateBatchTxFn != nil {
+		return m.CreateBatchTxFn(tx, transactions)
+	}
+	created := make([]*domain.Transaction, len(transactions))
+	for i, t := range transactions {
+		result, err := m.Create(t)
+		if err != nil {
+			return nil, err
+		}
+		created[i] = result
+	}
+	return created, nil
 }
 
 // GetByID retrieves a transaction by its ID within a workspace
@@ -1090,6 +1108,135 @@ func (m *MockTransactionRepository) GetByDateRangeForAggregation(workspaceID int
 	return result, nil
 }
 
+// GetLoanTransactionsByMonth returns unpaid transactions for a specific loan and month
+func (m *MockTransactionRepository) GetLoanTransactionsByMonth(workspaceID int32, loanID int32, year, month int) ([]*domain.Transaction, error) {
+	var result []*domain.Transaction
+	for _, tx := range m.ByWorkspace[workspaceID] {
+		if tx.DeletedAt != nil || tx.IsPaid {
+			continue
+		}
+		if tx.LoanID == nil || *tx.LoanID != loanID {
+			continue
+		}
+		if tx.TransactionDate.Year() != year || int(tx.TransactionDate.Month()) != month {
+			continue
+		}
+		result = append(result, tx)
+	}
+	return result, nil
+}
+
+// BulkMarkPaid marks multiple transactions as paid by IDs
+func (m *MockTransactionRepository) BulkMarkPaid(workspaceID int32, ids []int32) ([]*domain.Transaction, error) {
+	var result []*domain.Transaction
+	idSet := make(map[int32]bool)
+	for _, id := range ids {
+		idSet[id] = true
+	}
+
+	for _, tx := range m.ByWorkspace[workspaceID] {
+		if tx.DeletedAt != nil {
+			continue
+		}
+		if idSet[tx.ID] {
+			tx.IsPaid = true
+			result = append(result, tx)
+		}
+	}
+	return result, nil
+}
+
+// GetByLoanID retrieves all transactions for a specific loan
+func (m *MockTransactionRepository) GetByLoanID(workspaceID int32, loanID int32) ([]*domain.Transaction, error) {
+	var result []*domain.Transaction
+	for _, tx := range m.ByWorkspace[workspaceID] {
+		if tx.DeletedAt != nil {
+			continue
+		}
+		if tx.LoanID != nil && *tx.LoanID == loanID {
+			result = append(result, tx)
+		}
+	}
+	return result, nil
+}
+
+func (m *MockTransactionRepository) OrphanPaidTransactionsByLoan(workspaceID int32, loanID int32) error {
+	for _, tx := range m.ByWorkspace[workspaceID] {
+		if tx.DeletedAt != nil {
+			continue
+		}
+		if tx.LoanID != nil && *tx.LoanID == loanID && tx.IsPaid {
+			tx.LoanID = nil
+		}
+	}
+	return nil
+}
+
+func (m *MockTransactionRepository) DeleteUnpaidTransactionsByLoan(workspaceID int32, loanID int32) error {
+	var remaining []*domain.Transaction
+	for _, tx := range m.ByWorkspace[workspaceID] {
+		// Keep transactions that are not for this loan or are paid
+		if tx.LoanID == nil || *tx.LoanID != loanID || tx.IsPaid {
+			remaining = append(remaining, tx)
+		} else {
+			// Remove from main map as well
+			delete(m.Transactions, tx.ID)
+		}
+	}
+	m.ByWorkspace[workspaceID] = remaining
+	return nil
+}
+
+func (m *MockTransactionRepository) GetLoanTransactionStats(workspaceID int32, loanID int32) (*domain.LoanTransactionStats, error) {
+	stats := &domain.LoanTransactionStats{}
+	for _, tx := range m.ByWorkspace[workspaceID] {
+		if tx.DeletedAt != nil {
+			continue
+		}
+		if tx.LoanID != nil && *tx.LoanID == loanID {
+			if tx.IsPaid {
+				stats.PaidCount++
+				stats.PaidTotal = stats.PaidTotal.Add(tx.Amount.Abs())
+			} else {
+				stats.UnpaidCount++
+				stats.UnpaidTotal = stats.UnpaidTotal.Add(tx.Amount.Abs())
+			}
+		}
+	}
+	return stats, nil
+}
+
+func (m *MockTransactionRepository) UpdatePayeesByLoan(workspaceID int32, loanID int32, newPayee string) (int64, error) {
+	var count int64
+	for _, tx := range m.ByWorkspace[workspaceID] {
+		if tx.DeletedAt != nil {
+			continue
+		}
+		if tx.LoanID != nil && *tx.LoanID == loanID {
+			tx.Name = newPayee
+			count++
+		}
+	}
+	return count, nil
+}
+
+func (m *MockTransactionRepository) HasPaidTransactionsByLoan(workspaceID int32, loanID int32) (bool, error) {
+	for _, tx := range m.ByWorkspace[workspaceID] {
+		if tx.DeletedAt != nil {
+			continue
+		}
+		if tx.LoanID != nil && *tx.LoanID == loanID && tx.IsPaid {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (m *MockTransactionRepository) GetLoanTrendData(workspaceID int32, startYear, startMonth, endYear, endMonth int32) ([]*domain.LoanTrendDataRow, error) {
+	// Mock implementation returns empty slice for tests
+	return []*domain.LoanTrendDataRow{}, nil
+}
+
 // MockMonthRepository is a mock implementation of domain.MonthRepository
 type MockMonthRepository struct {
 	Months                             map[int32]*domain.Month
@@ -1754,6 +1901,12 @@ func NewMockLoanProviderRepository() *MockLoanProviderRepository {
 	}
 }
 
+// AddProvider adds a provider directly to the mock (helper for tests)
+func (m *MockLoanProviderRepository) AddProvider(provider *domain.LoanProvider) {
+	m.Providers[provider.ID] = provider
+	m.ByWorkspace[provider.WorkspaceID] = append(m.ByWorkspace[provider.WorkspaceID], provider)
+}
+
 // Create creates a new loan provider
 func (m *MockLoanProviderRepository) Create(provider *domain.LoanProvider) (*domain.LoanProvider, error) {
 	if m.CreateFn != nil {
@@ -2032,6 +2185,22 @@ func (m *MockLoanRepository) UpdatePartial(workspaceID int32, id int32, itemName
 	return loan, nil
 }
 
+// UpdateEditableFields updates itemName, providerID, and notes of a loan
+func (m *MockLoanRepository) UpdateEditableFields(workspaceID int32, id int32, itemName string, providerID int32, notes *string) (*domain.Loan, error) {
+	loan, ok := m.Loans[id]
+	if !ok || loan.WorkspaceID != workspaceID {
+		return nil, domain.ErrLoanNotFound
+	}
+	if loan.DeletedAt != nil {
+		return nil, domain.ErrLoanNotFound
+	}
+	loan.ItemName = itemName
+	loan.ProviderID = providerID
+	loan.Notes = notes
+	loan.UpdatedAt = time.Now()
+	return loan, nil
+}
+
 // SoftDelete soft-deletes a loan
 func (m *MockLoanRepository) SoftDelete(workspaceID int32, id int32) error {
 	if m.DeleteFn != nil {
@@ -2113,6 +2282,21 @@ func (m *MockLoanRepository) GetActiveWithStats(workspaceID int32) ([]*domain.Lo
 func (m *MockLoanRepository) GetCompletedWithStats(workspaceID int32) ([]*domain.LoanWithStats, error) {
 	if m.CompletedWithStats != nil {
 		return m.CompletedWithStats, nil
+	}
+	return []*domain.LoanWithStats{}, nil
+}
+
+// GetByProviderWithStats retrieves all loans for a provider with payment statistics
+func (m *MockLoanRepository) GetByProviderWithStats(workspaceID int32, providerID int32) ([]*domain.LoanWithStats, error) {
+	// Filter LoansWithStats by providerID if available
+	if m.LoansWithStats != nil {
+		var result []*domain.LoanWithStats
+		for _, l := range m.LoansWithStats {
+			if l.ProviderID == providerID {
+				result = append(result, l)
+			}
+		}
+		return result, nil
 	}
 	return []*domain.LoanWithStats{}, nil
 }
@@ -3067,4 +3251,228 @@ func (m *MockAPITokenRepository) AddToken(token *domain.APIToken) {
 		m.ByHash[token.TokenHash] = token
 	}
 	m.ByWorkspace[token.WorkspaceID] = append(m.ByWorkspace[token.WorkspaceID], token)
+}
+
+// ==================== MockTransactionGroupRepository ====================
+
+// MockTransactionGroupRepository is a mock implementation of domain.TransactionGroupRepository
+type MockTransactionGroupRepository struct {
+	Groups                     map[int32]*domain.TransactionGroup
+	NextID                     int32
+	CreateFn                   func(group *domain.TransactionGroup) (*domain.TransactionGroup, error)
+	CreateWithAssignmentFn     func(group *domain.TransactionGroup, transactionIDs []int32) (*domain.TransactionGroup, error)
+	GetByIDFn                  func(workspaceID int32, id int32) (*domain.TransactionGroup, error)
+	GetGroupsByMonthFn         func(workspaceID int32, month string) ([]*domain.TransactionGroup, error)
+	UpdateNameFn               func(workspaceID int32, id int32, name string) (*domain.TransactionGroup, error)
+	DeleteFn                   func(workspaceID int32, id int32) error
+	AssignGroupToTransactionsFn   func(workspaceID int32, groupID int32, transactionIDs []int32) error
+	UnassignGroupFromTransactionsFn func(workspaceID int32, transactionIDs []int32) error
+	UnassignAllFromGroupFn          func(workspaceID int32, groupID int32) (int64, error)
+	DeleteGroupAndChildrenFn        func(workspaceID int32, groupID int32) (int32, error)
+	CountGroupChildrenFn            func(workspaceID int32, groupID int32) (int32, error)
+	GetUngroupedTransactionsByMonthFn          func(workspaceID int32, startDate, endDate time.Time) ([]*domain.Transaction, error)
+	GetConsolidatedProvidersByMonthFn           func(workspaceID int32, month string) ([]domain.AutoDetectionCandidate, error)
+	GetUngroupedTransactionIDsByProviderMonthFn func(workspaceID int32, providerID int32, month string) ([]int32, error)
+	GetAutoDetectedGroupByProviderMonthFn       func(workspaceID int32, providerID int32, month string) (*domain.TransactionGroup, error)
+}
+
+// NewMockTransactionGroupRepository creates a new MockTransactionGroupRepository
+func NewMockTransactionGroupRepository() *MockTransactionGroupRepository {
+	return &MockTransactionGroupRepository{
+		Groups: make(map[int32]*domain.TransactionGroup),
+		NextID: 1,
+	}
+}
+
+// AddGroup adds a group to the mock repository (helper for tests)
+func (m *MockTransactionGroupRepository) AddGroup(group *domain.TransactionGroup) {
+	m.Groups[group.ID] = group
+}
+
+func (m *MockTransactionGroupRepository) Create(group *domain.TransactionGroup) (*domain.TransactionGroup, error) {
+	if m.CreateFn != nil {
+		return m.CreateFn(group)
+	}
+	group.ID = m.NextID
+	m.NextID++
+	group.CreatedAt = time.Now()
+	group.UpdatedAt = time.Now()
+	m.Groups[group.ID] = group
+	return group, nil
+}
+
+func (m *MockTransactionGroupRepository) CreateWithAssignment(group *domain.TransactionGroup, transactionIDs []int32) (*domain.TransactionGroup, error) {
+	if m.CreateWithAssignmentFn != nil {
+		return m.CreateWithAssignmentFn(group, transactionIDs)
+	}
+	group.ID = m.NextID
+	m.NextID++
+	group.CreatedAt = time.Now()
+	group.UpdatedAt = time.Now()
+	group.ChildCount = int32(len(transactionIDs))
+	m.Groups[group.ID] = group
+	return group, nil
+}
+
+func (m *MockTransactionGroupRepository) GetByID(workspaceID int32, id int32) (*domain.TransactionGroup, error) {
+	if m.GetByIDFn != nil {
+		return m.GetByIDFn(workspaceID, id)
+	}
+	if group, ok := m.Groups[id]; ok && group.WorkspaceID == workspaceID {
+		return group, nil
+	}
+	return nil, domain.ErrGroupNotFound
+}
+
+func (m *MockTransactionGroupRepository) GetGroupsByMonth(workspaceID int32, month string) ([]*domain.TransactionGroup, error) {
+	if m.GetGroupsByMonthFn != nil {
+		return m.GetGroupsByMonthFn(workspaceID, month)
+	}
+	var result []*domain.TransactionGroup
+	for _, g := range m.Groups {
+		if g.WorkspaceID == workspaceID && g.Month == month {
+			result = append(result, g)
+		}
+	}
+	return result, nil
+}
+
+func (m *MockTransactionGroupRepository) UpdateName(workspaceID int32, id int32, name string) (*domain.TransactionGroup, error) {
+	if m.UpdateNameFn != nil {
+		return m.UpdateNameFn(workspaceID, id, name)
+	}
+	group, ok := m.Groups[id]
+	if !ok || group.WorkspaceID != workspaceID {
+		return nil, domain.ErrGroupNotFound
+	}
+	group.Name = name
+	group.UpdatedAt = time.Now()
+	return group, nil
+}
+
+func (m *MockTransactionGroupRepository) Delete(workspaceID int32, id int32) error {
+	if m.DeleteFn != nil {
+		return m.DeleteFn(workspaceID, id)
+	}
+	if _, ok := m.Groups[id]; !ok {
+		return domain.ErrGroupNotFound
+	}
+	delete(m.Groups, id)
+	return nil
+}
+
+func (m *MockTransactionGroupRepository) AssignGroupToTransactions(workspaceID int32, groupID int32, transactionIDs []int32) error {
+	if m.AssignGroupToTransactionsFn != nil {
+		return m.AssignGroupToTransactionsFn(workspaceID, groupID, transactionIDs)
+	}
+	return nil
+}
+
+func (m *MockTransactionGroupRepository) UnassignGroupFromTransactions(workspaceID int32, transactionIDs []int32) error {
+	if m.UnassignGroupFromTransactionsFn != nil {
+		return m.UnassignGroupFromTransactionsFn(workspaceID, transactionIDs)
+	}
+	return nil
+}
+
+func (m *MockTransactionGroupRepository) UnassignAllFromGroup(workspaceID int32, groupID int32) (int64, error) {
+	if m.UnassignAllFromGroupFn != nil {
+		return m.UnassignAllFromGroupFn(workspaceID, groupID)
+	}
+	var count int64
+	// Default: count children that belong to this group (simulated)
+	return count, nil
+}
+
+func (m *MockTransactionGroupRepository) DeleteGroupAndChildren(workspaceID int32, groupID int32) (int32, error) {
+	if m.DeleteGroupAndChildrenFn != nil {
+		return m.DeleteGroupAndChildrenFn(workspaceID, groupID)
+	}
+	group, ok := m.Groups[groupID]
+	if !ok || group.WorkspaceID != workspaceID {
+		return 0, domain.ErrGroupNotFound
+	}
+	count := group.ChildCount
+	delete(m.Groups, groupID)
+	return count, nil
+}
+
+func (m *MockTransactionGroupRepository) CountGroupChildren(workspaceID int32, groupID int32) (int32, error) {
+	if m.CountGroupChildrenFn != nil {
+		return m.CountGroupChildrenFn(workspaceID, groupID)
+	}
+	group, ok := m.Groups[groupID]
+	if !ok || group.WorkspaceID != workspaceID {
+		return 0, domain.ErrGroupNotFound
+	}
+	return group.ChildCount, nil
+}
+
+func (m *MockTransactionGroupRepository) GetUngroupedTransactionsByMonth(workspaceID int32, startDate, endDate time.Time) ([]*domain.Transaction, error) {
+	if m.GetUngroupedTransactionsByMonthFn != nil {
+		return m.GetUngroupedTransactionsByMonthFn(workspaceID, startDate, endDate)
+	}
+	return nil, nil
+}
+
+func (m *MockTransactionGroupRepository) GetConsolidatedProvidersByMonth(workspaceID int32, month string) ([]domain.AutoDetectionCandidate, error) {
+	if m.GetConsolidatedProvidersByMonthFn != nil {
+		return m.GetConsolidatedProvidersByMonthFn(workspaceID, month)
+	}
+	return nil, nil
+}
+
+func (m *MockTransactionGroupRepository) GetUngroupedTransactionIDsByProviderMonth(workspaceID int32, providerID int32, month string) ([]int32, error) {
+	if m.GetUngroupedTransactionIDsByProviderMonthFn != nil {
+		return m.GetUngroupedTransactionIDsByProviderMonthFn(workspaceID, providerID, month)
+	}
+	return nil, nil
+}
+
+func (m *MockTransactionGroupRepository) GetAutoDetectedGroupByProviderMonth(workspaceID int32, providerID int32, month string) (*domain.TransactionGroup, error) {
+	if m.GetAutoDetectedGroupByProviderMonthFn != nil {
+		return m.GetAutoDetectedGroupByProviderMonthFn(workspaceID, providerID, month)
+	}
+	return nil, domain.ErrGroupNotFound
+}
+
+// ==================== MockEventPublisher ====================
+
+// MockEventPublisher captures published WebSocket events for test assertions
+type MockEventPublisher struct {
+	Events []PublishedEvent
+}
+
+// PublishedEvent stores a captured event with its workspace ID
+type PublishedEvent struct {
+	WorkspaceID int32
+	Event       websocket.Event
+}
+
+// NewMockEventPublisher creates a new MockEventPublisher
+func NewMockEventPublisher() *MockEventPublisher {
+	return &MockEventPublisher{
+		Events: make([]PublishedEvent, 0),
+	}
+}
+
+// Publish captures the event for later assertion
+func (m *MockEventPublisher) Publish(workspaceID int32, event websocket.Event) {
+	m.Events = append(m.Events, PublishedEvent{
+		WorkspaceID: workspaceID,
+		Event:       event,
+	})
+}
+
+// LastEvent returns the most recently published event, or nil if none
+func (m *MockEventPublisher) LastEvent() *PublishedEvent {
+	if len(m.Events) == 0 {
+		return nil
+	}
+	return &m.Events[len(m.Events)-1]
+}
+
+// Reset clears all captured events
+func (m *MockEventPublisher) Reset() {
+	m.Events = m.Events[:0]
 }

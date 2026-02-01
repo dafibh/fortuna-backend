@@ -119,6 +119,18 @@ func (s *LoanPaymentService) GetUnpaidPaymentsByMonth(workspaceID int32, year, m
 	return s.paymentRepo.GetUnpaidByMonth(workspaceID, year, month)
 }
 
+// GetEarliestUnpaidMonth retrieves the earliest unpaid month for a provider.
+// Returns nil if there are no unpaid months (all payments are complete).
+func (s *LoanPaymentService) GetEarliestUnpaidMonth(workspaceID int32, providerID int32) (*domain.EarliestUnpaidMonth, error) {
+	// Validate provider exists and belongs to workspace
+	_, err := s.providerRepo.GetByID(workspaceID, providerID)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.paymentRepo.GetEarliestUnpaidMonth(workspaceID, providerID)
+}
+
 // PayMonth atomically marks all loan payments for a specific provider-month as paid.
 // Validates sequential enforcement: payments must be made in order (earliest unpaid month first).
 // Only works for providers with payment_mode = 'consolidated_monthly'.

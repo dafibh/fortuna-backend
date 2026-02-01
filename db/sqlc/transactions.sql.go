@@ -11,6 +11,124 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const batchMarkLoanTransactionsPaid = `-- name: BatchMarkLoanTransactionsPaid :many
+UPDATE transactions
+SET is_paid = true, updated_at = NOW()
+WHERE workspace_id = $1
+  AND id = ANY($2::int[])
+  AND loan_id IS NOT NULL
+  AND deleted_at IS NULL
+RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, loan_id, group_id
+`
+
+type BatchMarkLoanTransactionsPaidParams struct {
+	WorkspaceID int32   `json:"workspace_id"`
+	Column2     []int32 `json:"column_2"`
+}
+
+// Bulk mark loan transactions as paid by IDs with timestamp
+func (q *Queries) BatchMarkLoanTransactionsPaid(ctx context.Context, arg BatchMarkLoanTransactionsPaidParams) ([]Transaction, error) {
+	rows, err := q.db.Query(ctx, batchMarkLoanTransactionsPaid, arg.WorkspaceID, arg.Column2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Transaction{}
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.AccountID,
+			&i.Name,
+			&i.Amount,
+			&i.Type,
+			&i.TransactionDate,
+			&i.IsPaid,
+			&i.Notes,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.TransferPairID,
+			&i.CategoryID,
+			&i.IsCcPayment,
+			&i.BilledAt,
+			&i.SettlementIntent,
+			&i.Source,
+			&i.TemplateID,
+			&i.IsProjected,
+			&i.LoanID,
+			&i.GroupID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const batchMarkLoanTransactionsUnpaid = `-- name: BatchMarkLoanTransactionsUnpaid :many
+UPDATE transactions
+SET is_paid = false, updated_at = NOW()
+WHERE workspace_id = $1
+  AND id = ANY($2::int[])
+  AND loan_id IS NOT NULL
+  AND deleted_at IS NULL
+RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, loan_id, group_id
+`
+
+type BatchMarkLoanTransactionsUnpaidParams struct {
+	WorkspaceID int32   `json:"workspace_id"`
+	Column2     []int32 `json:"column_2"`
+}
+
+// Bulk mark loan transactions as unpaid by IDs
+func (q *Queries) BatchMarkLoanTransactionsUnpaid(ctx context.Context, arg BatchMarkLoanTransactionsUnpaidParams) ([]Transaction, error) {
+	rows, err := q.db.Query(ctx, batchMarkLoanTransactionsUnpaid, arg.WorkspaceID, arg.Column2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Transaction{}
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.AccountID,
+			&i.Name,
+			&i.Amount,
+			&i.Type,
+			&i.TransactionDate,
+			&i.IsPaid,
+			&i.Notes,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.TransferPairID,
+			&i.CategoryID,
+			&i.IsCcPayment,
+			&i.BilledAt,
+			&i.SettlementIntent,
+			&i.Source,
+			&i.TemplateID,
+			&i.IsProjected,
+			&i.LoanID,
+			&i.GroupID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const batchToggleToBilled = `-- name: BatchToggleToBilled :many
 UPDATE transactions
 SET billed_at = NOW(),
@@ -19,7 +137,7 @@ WHERE id = ANY($1::int[])
   AND workspace_id = $2
   AND billed_at IS NULL
   AND deleted_at IS NULL
-RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected
+RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, loan_id, group_id
 `
 
 type BatchToggleToBilledParams struct {
@@ -58,6 +176,67 @@ func (q *Queries) BatchToggleToBilled(ctx context.Context, arg BatchToggleToBill
 			&i.Source,
 			&i.TemplateID,
 			&i.IsProjected,
+			&i.LoanID,
+			&i.GroupID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const bulkMarkTransactionsPaid = `-- name: BulkMarkTransactionsPaid :many
+UPDATE transactions
+SET is_paid = true, updated_at = NOW()
+WHERE workspace_id = $1
+  AND id = ANY($2::int[])
+  AND deleted_at IS NULL
+RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, loan_id, group_id
+`
+
+type BulkMarkTransactionsPaidParams struct {
+	WorkspaceID int32   `json:"workspace_id"`
+	Column2     []int32 `json:"column_2"`
+}
+
+// Bulk mark transactions as paid by IDs (works for both bank and CC transactions)
+// For CC transactions, this also effectively sets cc_state to 'settled' since it's computed from is_paid
+func (q *Queries) BulkMarkTransactionsPaid(ctx context.Context, arg BulkMarkTransactionsPaidParams) ([]Transaction, error) {
+	rows, err := q.db.Query(ctx, bulkMarkTransactionsPaid, arg.WorkspaceID, arg.Column2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Transaction{}
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.AccountID,
+			&i.Name,
+			&i.Amount,
+			&i.Type,
+			&i.TransactionDate,
+			&i.IsPaid,
+			&i.Notes,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.TransferPairID,
+			&i.CategoryID,
+			&i.IsCcPayment,
+			&i.BilledAt,
+			&i.SettlementIntent,
+			&i.Source,
+			&i.TemplateID,
+			&i.IsProjected,
+			&i.LoanID,
+			&i.GroupID,
 		); err != nil {
 			return nil, err
 		}
@@ -78,7 +257,7 @@ WHERE id = ANY($1::int[])
   AND billed_at IS NOT NULL
   AND is_paid = false
   AND deleted_at IS NULL
-RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected
+RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, loan_id, group_id
 `
 
 type BulkSettleTransactionsParams struct {
@@ -117,6 +296,8 @@ func (q *Queries) BulkSettleTransactions(ctx context.Context, arg BulkSettleTran
 			&i.Source,
 			&i.TemplateID,
 			&i.IsProjected,
+			&i.LoanID,
+			&i.GroupID,
 		); err != nil {
 			return nil, err
 		}
@@ -164,10 +345,10 @@ INSERT INTO transactions (
     workspace_id, account_id, name, amount, type,
     transaction_date, is_paid, notes, transfer_pair_id, category_id, is_cc_payment,
     billed_at, settlement_intent,
-    source, template_id, is_projected
+    source, template_id, is_projected, loan_id
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
-) RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
+) RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, loan_id, group_id
 `
 
 type CreateTransactionParams struct {
@@ -187,6 +368,7 @@ type CreateTransactionParams struct {
 	Source           pgtype.Text        `json:"source"`
 	TemplateID       pgtype.Int4        `json:"template_id"`
 	IsProjected      pgtype.Bool        `json:"is_projected"`
+	LoanID           pgtype.Int4        `json:"loan_id"`
 }
 
 func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionParams) (Transaction, error) {
@@ -207,6 +389,7 @@ func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionPa
 		arg.Source,
 		arg.TemplateID,
 		arg.IsProjected,
+		arg.LoanID,
 	)
 	var i Transaction
 	err := row.Scan(
@@ -230,6 +413,8 @@ func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionPa
 		&i.Source,
 		&i.TemplateID,
 		&i.IsProjected,
+		&i.LoanID,
+		&i.GroupID,
 	)
 	return i, err
 }
@@ -271,6 +456,25 @@ type DeleteProjectionsByTemplateParams struct {
 // Paid projections are preserved and orphaned instead
 func (q *Queries) DeleteProjectionsByTemplate(ctx context.Context, arg DeleteProjectionsByTemplateParams) error {
 	_, err := q.db.Exec(ctx, deleteProjectionsByTemplate, arg.WorkspaceID, arg.TemplateID)
+	return err
+}
+
+const deleteUnpaidTransactionsByLoan = `-- name: DeleteUnpaidTransactionsByLoan :exec
+DELETE FROM transactions
+WHERE workspace_id = $1
+  AND loan_id = $2
+  AND is_paid = false
+`
+
+type DeleteUnpaidTransactionsByLoanParams struct {
+	WorkspaceID int32       `json:"workspace_id"`
+	LoanID      pgtype.Int4 `json:"loan_id"`
+}
+
+// Hard delete unpaid transactions for a loan
+// Used when deleting a loan (unpaid future payments are removed)
+func (q *Queries) DeleteUnpaidTransactionsByLoan(ctx context.Context, arg DeleteUnpaidTransactionsByLoanParams) error {
+	_, err := q.db.Exec(ctx, deleteUnpaidTransactionsByLoan, arg.WorkspaceID, arg.LoanID)
 	return err
 }
 
@@ -323,7 +527,7 @@ func (q *Queries) GetAccountTransactionSummaries(ctx context.Context, workspaceI
 }
 
 const getBilledCCByMonth = `-- name: GetBilledCCByMonth :many
-SELECT t.id, t.workspace_id, account_id, t.name, amount, type, transaction_date, is_paid, notes, t.created_at, t.updated_at, t.deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, a.id, a.workspace_id, a.name, account_type, template, initial_balance, a.created_at, a.updated_at, a.deleted_at FROM transactions t
+SELECT t.id, t.workspace_id, account_id, t.name, amount, type, transaction_date, is_paid, notes, t.created_at, t.updated_at, t.deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, loan_id, group_id, a.id, a.workspace_id, a.name, account_type, template, initial_balance, a.created_at, a.updated_at, a.deleted_at FROM transactions t
 JOIN accounts a ON t.account_id = a.id
 WHERE t.workspace_id = $1
   AND a.template = 'credit_card'
@@ -362,6 +566,8 @@ type GetBilledCCByMonthRow struct {
 	Source           pgtype.Text        `json:"source"`
 	TemplateID       pgtype.Int4        `json:"template_id"`
 	IsProjected      pgtype.Bool        `json:"is_projected"`
+	LoanID           pgtype.Int4        `json:"loan_id"`
+	GroupID          pgtype.Int4        `json:"group_id"`
 	ID_2             int32              `json:"id_2"`
 	WorkspaceID_2    int32              `json:"workspace_id_2"`
 	Name_2           string             `json:"name_2"`
@@ -404,6 +610,8 @@ func (q *Queries) GetBilledCCByMonth(ctx context.Context, arg GetBilledCCByMonth
 			&i.Source,
 			&i.TemplateID,
 			&i.IsProjected,
+			&i.LoanID,
+			&i.GroupID,
 			&i.ID_2,
 			&i.WorkspaceID_2,
 			&i.Name_2,
@@ -473,7 +681,7 @@ func (q *Queries) GetCCMetrics(ctx context.Context, arg GetCCMetricsParams) (Get
 }
 
 const getDeferredForSettlement = `-- name: GetDeferredForSettlement :many
-SELECT t.id, t.workspace_id, account_id, t.name, amount, type, transaction_date, is_paid, notes, t.created_at, t.updated_at, t.deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, a.id, a.workspace_id, a.name, account_type, template, initial_balance, a.created_at, a.updated_at, a.deleted_at FROM transactions t
+SELECT t.id, t.workspace_id, account_id, t.name, amount, type, transaction_date, is_paid, notes, t.created_at, t.updated_at, t.deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, loan_id, group_id, a.id, a.workspace_id, a.name, account_type, template, initial_balance, a.created_at, a.updated_at, a.deleted_at FROM transactions t
 JOIN accounts a ON t.account_id = a.id
 WHERE t.workspace_id = $1
   AND a.template = 'credit_card'
@@ -505,6 +713,8 @@ type GetDeferredForSettlementRow struct {
 	Source           pgtype.Text        `json:"source"`
 	TemplateID       pgtype.Int4        `json:"template_id"`
 	IsProjected      pgtype.Bool        `json:"is_projected"`
+	LoanID           pgtype.Int4        `json:"loan_id"`
+	GroupID          pgtype.Int4        `json:"group_id"`
 	ID_2             int32              `json:"id_2"`
 	WorkspaceID_2    int32              `json:"workspace_id_2"`
 	Name_2           string             `json:"name_2"`
@@ -547,6 +757,8 @@ func (q *Queries) GetDeferredForSettlement(ctx context.Context, workspaceID int3
 			&i.Source,
 			&i.TemplateID,
 			&i.IsProjected,
+			&i.LoanID,
+			&i.GroupID,
 			&i.ID_2,
 			&i.WorkspaceID_2,
 			&i.Name_2,
@@ -567,8 +779,41 @@ func (q *Queries) GetDeferredForSettlement(ctx context.Context, workspaceID int3
 	return items, nil
 }
 
+const getEarliestUnpaidLoanMonth = `-- name: GetEarliestUnpaidLoanMonth :one
+SELECT
+    EXTRACT(YEAR FROM t.transaction_date)::INTEGER as year,
+    EXTRACT(MONTH FROM t.transaction_date)::INTEGER as month
+FROM transactions t
+JOIN loans l ON t.loan_id = l.id AND l.deleted_at IS NULL
+WHERE t.workspace_id = $1
+  AND l.provider_id = $2
+  AND t.loan_id IS NOT NULL
+  AND t.is_paid = false
+  AND t.deleted_at IS NULL
+ORDER BY t.transaction_date ASC
+LIMIT 1
+`
+
+type GetEarliestUnpaidLoanMonthParams struct {
+	WorkspaceID int32 `json:"workspace_id"`
+	ProviderID  int32 `json:"provider_id"`
+}
+
+type GetEarliestUnpaidLoanMonthRow struct {
+	Year  int32 `json:"year"`
+	Month int32 `json:"month"`
+}
+
+// Get earliest unpaid month for a provider (for sequential enforcement)
+func (q *Queries) GetEarliestUnpaidLoanMonth(ctx context.Context, arg GetEarliestUnpaidLoanMonthParams) (GetEarliestUnpaidLoanMonthRow, error) {
+	row := q.db.QueryRow(ctx, getEarliestUnpaidLoanMonth, arg.WorkspaceID, arg.ProviderID)
+	var i GetEarliestUnpaidLoanMonthRow
+	err := row.Scan(&i.Year, &i.Month)
+	return i, err
+}
+
 const getImmediateForSettlement = `-- name: GetImmediateForSettlement :many
-SELECT t.id, t.workspace_id, account_id, t.name, amount, type, transaction_date, is_paid, notes, t.created_at, t.updated_at, t.deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, a.id, a.workspace_id, a.name, account_type, template, initial_balance, a.created_at, a.updated_at, a.deleted_at FROM transactions t
+SELECT t.id, t.workspace_id, account_id, t.name, amount, type, transaction_date, is_paid, notes, t.created_at, t.updated_at, t.deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, loan_id, group_id, a.id, a.workspace_id, a.name, account_type, template, initial_balance, a.created_at, a.updated_at, a.deleted_at FROM transactions t
 JOIN accounts a ON t.account_id = a.id
 WHERE t.workspace_id = $1
   AND a.template = 'credit_card'
@@ -608,6 +853,8 @@ type GetImmediateForSettlementRow struct {
 	Source           pgtype.Text        `json:"source"`
 	TemplateID       pgtype.Int4        `json:"template_id"`
 	IsProjected      pgtype.Bool        `json:"is_projected"`
+	LoanID           pgtype.Int4        `json:"loan_id"`
+	GroupID          pgtype.Int4        `json:"group_id"`
 	ID_2             int32              `json:"id_2"`
 	WorkspaceID_2    int32              `json:"workspace_id_2"`
 	Name_2           string             `json:"name_2"`
@@ -650,6 +897,8 @@ func (q *Queries) GetImmediateForSettlement(ctx context.Context, arg GetImmediat
 			&i.Source,
 			&i.TemplateID,
 			&i.IsProjected,
+			&i.LoanID,
+			&i.GroupID,
 			&i.ID_2,
 			&i.WorkspaceID_2,
 			&i.Name_2,
@@ -659,6 +908,294 @@ func (q *Queries) GetImmediateForSettlement(ctx context.Context, arg GetImmediat
 			&i.CreatedAt_2,
 			&i.UpdatedAt_2,
 			&i.DeletedAt_2,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getLatestPaidLoanMonth = `-- name: GetLatestPaidLoanMonth :one
+SELECT
+    EXTRACT(YEAR FROM t.transaction_date)::INTEGER as year,
+    EXTRACT(MONTH FROM t.transaction_date)::INTEGER as month
+FROM transactions t
+JOIN loans l ON t.loan_id = l.id AND l.deleted_at IS NULL
+WHERE t.workspace_id = $1
+  AND l.provider_id = $2
+  AND t.loan_id IS NOT NULL
+  AND t.is_paid = true
+  AND t.deleted_at IS NULL
+ORDER BY t.transaction_date DESC
+LIMIT 1
+`
+
+type GetLatestPaidLoanMonthParams struct {
+	WorkspaceID int32 `json:"workspace_id"`
+	ProviderID  int32 `json:"provider_id"`
+}
+
+type GetLatestPaidLoanMonthRow struct {
+	Year  int32 `json:"year"`
+	Month int32 `json:"month"`
+}
+
+// Get latest paid month for a provider (for reverse sequential enforcement on unpay)
+func (q *Queries) GetLatestPaidLoanMonth(ctx context.Context, arg GetLatestPaidLoanMonthParams) (GetLatestPaidLoanMonthRow, error) {
+	row := q.db.QueryRow(ctx, getLatestPaidLoanMonth, arg.WorkspaceID, arg.ProviderID)
+	var i GetLatestPaidLoanMonthRow
+	err := row.Scan(&i.Year, &i.Month)
+	return i, err
+}
+
+const getLoanPaymentsFromTransactions = `-- name: GetLoanPaymentsFromTransactions :many
+SELECT
+    t.id,
+    t.loan_id,
+    ROW_NUMBER() OVER (PARTITION BY t.loan_id ORDER BY t.transaction_date ASC, t.id ASC)::INTEGER as payment_number,
+    t.amount,
+    EXTRACT(YEAR FROM t.transaction_date)::INTEGER as due_year,
+    EXTRACT(MONTH FROM t.transaction_date)::INTEGER as due_month,
+    t.is_paid as paid,
+    CASE WHEN t.is_paid = true THEN t.updated_at ELSE NULL END as paid_date,
+    t.created_at,
+    t.updated_at
+FROM transactions t
+WHERE t.loan_id = $1
+  AND t.deleted_at IS NULL
+ORDER BY t.transaction_date ASC, t.id ASC
+`
+
+type GetLoanPaymentsFromTransactionsRow struct {
+	ID            int32              `json:"id"`
+	LoanID        pgtype.Int4        `json:"loan_id"`
+	PaymentNumber int32              `json:"payment_number"`
+	Amount        pgtype.Numeric     `json:"amount"`
+	DueYear       int32              `json:"due_year"`
+	DueMonth      int32              `json:"due_month"`
+	Paid          bool               `json:"paid"`
+	PaidDate      interface{}        `json:"paid_date"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
+// Convert loan transactions to LoanPayment format for frontend compatibility
+// Derives payment_number from row order, extracts year/month from transaction_date
+// Note: Only uses loan_id since service layer already verified loan ownership
+func (q *Queries) GetLoanPaymentsFromTransactions(ctx context.Context, loanID pgtype.Int4) ([]GetLoanPaymentsFromTransactionsRow, error) {
+	rows, err := q.db.Query(ctx, getLoanPaymentsFromTransactions, loanID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetLoanPaymentsFromTransactionsRow{}
+	for rows.Next() {
+		var i GetLoanPaymentsFromTransactionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.LoanID,
+			&i.PaymentNumber,
+			&i.Amount,
+			&i.DueYear,
+			&i.DueMonth,
+			&i.Paid,
+			&i.PaidDate,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getLoanTransactionStats = `-- name: GetLoanTransactionStats :one
+SELECT
+    COUNT(*) FILTER (WHERE is_paid = true)::INTEGER as paid_count,
+    COUNT(*) FILTER (WHERE is_paid = false)::INTEGER as unpaid_count,
+    COALESCE(SUM(ABS(amount)) FILTER (WHERE is_paid = true), 0)::NUMERIC(12,2) as paid_total,
+    COALESCE(SUM(ABS(amount)) FILTER (WHERE is_paid = false), 0)::NUMERIC(12,2) as unpaid_total
+FROM transactions
+WHERE workspace_id = $1
+  AND loan_id = $2
+  AND deleted_at IS NULL
+`
+
+type GetLoanTransactionStatsParams struct {
+	WorkspaceID int32       `json:"workspace_id"`
+	LoanID      pgtype.Int4 `json:"loan_id"`
+}
+
+type GetLoanTransactionStatsRow struct {
+	PaidCount   int32          `json:"paid_count"`
+	UnpaidCount int32          `json:"unpaid_count"`
+	PaidTotal   pgtype.Numeric `json:"paid_total"`
+	UnpaidTotal pgtype.Numeric `json:"unpaid_total"`
+}
+
+// Get paid/unpaid transaction counts for delete confirmation
+func (q *Queries) GetLoanTransactionStats(ctx context.Context, arg GetLoanTransactionStatsParams) (GetLoanTransactionStatsRow, error) {
+	row := q.db.QueryRow(ctx, getLoanTransactionStats, arg.WorkspaceID, arg.LoanID)
+	var i GetLoanTransactionStatsRow
+	err := row.Scan(
+		&i.PaidCount,
+		&i.UnpaidCount,
+		&i.PaidTotal,
+		&i.UnpaidTotal,
+	)
+	return i, err
+}
+
+const getLoanTransactionsByMonth = `-- name: GetLoanTransactionsByMonth :many
+
+SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, loan_id, group_id FROM transactions
+WHERE workspace_id = $1
+  AND loan_id = $2
+  AND EXTRACT(YEAR FROM transaction_date)::INTEGER = $3::INTEGER
+  AND EXTRACT(MONTH FROM transaction_date)::INTEGER = $4::INTEGER
+  AND deleted_at IS NULL
+  AND is_paid = false
+ORDER BY transaction_date
+`
+
+type GetLoanTransactionsByMonthParams struct {
+	WorkspaceID int32       `json:"workspace_id"`
+	LoanID      pgtype.Int4 `json:"loan_id"`
+	Year        int32       `json:"year"`
+	Month       int32       `json:"month"`
+}
+
+// ========================================
+// Loan Transaction Operations (CL v2)
+// ========================================
+// Get unpaid transactions for a specific loan and month
+func (q *Queries) GetLoanTransactionsByMonth(ctx context.Context, arg GetLoanTransactionsByMonthParams) ([]Transaction, error) {
+	rows, err := q.db.Query(ctx, getLoanTransactionsByMonth,
+		arg.WorkspaceID,
+		arg.LoanID,
+		arg.Year,
+		arg.Month,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Transaction{}
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.AccountID,
+			&i.Name,
+			&i.Amount,
+			&i.Type,
+			&i.TransactionDate,
+			&i.IsPaid,
+			&i.Notes,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.TransferPairID,
+			&i.CategoryID,
+			&i.IsCcPayment,
+			&i.BilledAt,
+			&i.SettlementIntent,
+			&i.Source,
+			&i.TemplateID,
+			&i.IsProjected,
+			&i.LoanID,
+			&i.GroupID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getLoanTrendData = `-- name: GetLoanTrendData :many
+SELECT
+    EXTRACT(YEAR FROM t.transaction_date)::INTEGER as year,
+    EXTRACT(MONTH FROM t.transaction_date)::INTEGER as month,
+    l.provider_id,
+    lp.name as provider_name,
+    COALESCE(SUM(ABS(t.amount)), 0)::NUMERIC(12,2) as total_amount,
+    BOOL_AND(t.is_paid) as all_paid
+FROM transactions t
+JOIN loans l ON t.loan_id = l.id AND l.deleted_at IS NULL
+JOIN loan_providers lp ON l.provider_id = lp.id AND lp.deleted_at IS NULL
+WHERE t.workspace_id = $1
+  AND t.loan_id IS NOT NULL
+  AND t.deleted_at IS NULL
+  AND (
+    -- Filter by date range: from start to end month (inclusive)
+    (EXTRACT(YEAR FROM t.transaction_date) * 12 + EXTRACT(MONTH FROM t.transaction_date)) >=
+    (CAST($2 AS INTEGER) * 12 + CAST($3 AS INTEGER))
+    AND
+    (EXTRACT(YEAR FROM t.transaction_date) * 12 + EXTRACT(MONTH FROM t.transaction_date)) <=
+    (CAST($4 AS INTEGER) * 12 + CAST($5 AS INTEGER))
+  )
+GROUP BY
+    EXTRACT(YEAR FROM t.transaction_date),
+    EXTRACT(MONTH FROM t.transaction_date),
+    l.provider_id,
+    lp.name
+ORDER BY year ASC, month ASC, lp.name ASC
+`
+
+type GetLoanTrendDataParams struct {
+	WorkspaceID int32 `json:"workspace_id"`
+	StartYear   int32 `json:"start_year"`
+	StartMonth  int32 `json:"start_month"`
+	EndYear     int32 `json:"end_year"`
+	EndMonth    int32 `json:"end_month"`
+}
+
+type GetLoanTrendDataRow struct {
+	Year         int32          `json:"year"`
+	Month        int32          `json:"month"`
+	ProviderID   int32          `json:"provider_id"`
+	ProviderName string         `json:"provider_name"`
+	TotalAmount  pgtype.Numeric `json:"total_amount"`
+	AllPaid      bool           `json:"all_paid"`
+}
+
+// Aggregate loan transactions by month and provider for trend visualization
+// Returns monthly totals with provider breakdown
+func (q *Queries) GetLoanTrendData(ctx context.Context, arg GetLoanTrendDataParams) ([]GetLoanTrendDataRow, error) {
+	rows, err := q.db.Query(ctx, getLoanTrendData,
+		arg.WorkspaceID,
+		arg.StartYear,
+		arg.StartMonth,
+		arg.EndYear,
+		arg.EndMonth,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetLoanTrendDataRow{}
+	for rows.Next() {
+		var i GetLoanTrendDataRow
+		if err := rows.Scan(
+			&i.Year,
+			&i.Month,
+			&i.ProviderID,
+			&i.ProviderName,
+			&i.TotalAmount,
+			&i.AllPaid,
 		); err != nil {
 			return nil, err
 		}
@@ -718,7 +1255,7 @@ func (q *Queries) GetMonthlyTransactionSummaries(ctx context.Context, workspaceI
 }
 
 const getOverdueCC = `-- name: GetOverdueCC :many
-SELECT t.id, t.workspace_id, account_id, t.name, amount, type, transaction_date, is_paid, notes, t.created_at, t.updated_at, t.deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, a.id, a.workspace_id, a.name, account_type, template, initial_balance, a.created_at, a.updated_at, a.deleted_at FROM transactions t
+SELECT t.id, t.workspace_id, account_id, t.name, amount, type, transaction_date, is_paid, notes, t.created_at, t.updated_at, t.deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, loan_id, group_id, a.id, a.workspace_id, a.name, account_type, template, initial_balance, a.created_at, a.updated_at, a.deleted_at FROM transactions t
 JOIN accounts a ON t.account_id = a.id
 WHERE t.workspace_id = $1
   AND a.template = 'credit_card'
@@ -751,6 +1288,8 @@ type GetOverdueCCRow struct {
 	Source           pgtype.Text        `json:"source"`
 	TemplateID       pgtype.Int4        `json:"template_id"`
 	IsProjected      pgtype.Bool        `json:"is_projected"`
+	LoanID           pgtype.Int4        `json:"loan_id"`
+	GroupID          pgtype.Int4        `json:"group_id"`
 	ID_2             int32              `json:"id_2"`
 	WorkspaceID_2    int32              `json:"workspace_id_2"`
 	Name_2           string             `json:"name_2"`
@@ -793,6 +1332,8 @@ func (q *Queries) GetOverdueCC(ctx context.Context, workspaceID int32) ([]GetOve
 			&i.Source,
 			&i.TemplateID,
 			&i.IsProjected,
+			&i.LoanID,
+			&i.GroupID,
 			&i.ID_2,
 			&i.WorkspaceID_2,
 			&i.Name_2,
@@ -813,8 +1354,88 @@ func (q *Queries) GetOverdueCC(ctx context.Context, workspaceID int32) ([]GetOve
 	return items, nil
 }
 
+const getPaidLoanPaymentsByProviderMonth = `-- name: GetPaidLoanPaymentsByProviderMonth :many
+SELECT
+    t.id,
+    t.loan_id,
+    ROW_NUMBER() OVER (PARTITION BY t.loan_id ORDER BY t.transaction_date ASC, t.id ASC)::INTEGER as payment_number,
+    t.amount,
+    EXTRACT(YEAR FROM t.transaction_date)::INTEGER as due_year,
+    EXTRACT(MONTH FROM t.transaction_date)::INTEGER as due_month,
+    t.is_paid as paid,
+    CASE WHEN t.is_paid = true THEN t.updated_at ELSE NULL END as paid_date,
+    t.created_at,
+    t.updated_at
+FROM transactions t
+JOIN loans l ON t.loan_id = l.id AND l.deleted_at IS NULL
+WHERE t.workspace_id = $1
+  AND l.provider_id = $2
+  AND EXTRACT(YEAR FROM t.transaction_date)::INTEGER = CAST($3 AS INTEGER)
+  AND EXTRACT(MONTH FROM t.transaction_date)::INTEGER = CAST($4 AS INTEGER)
+  AND t.is_paid = true
+  AND t.deleted_at IS NULL
+ORDER BY t.transaction_date ASC, t.id ASC
+`
+
+type GetPaidLoanPaymentsByProviderMonthParams struct {
+	WorkspaceID int32 `json:"workspace_id"`
+	ProviderID  int32 `json:"provider_id"`
+	Year        int32 `json:"year"`
+	Month       int32 `json:"month"`
+}
+
+type GetPaidLoanPaymentsByProviderMonthRow struct {
+	ID            int32              `json:"id"`
+	LoanID        pgtype.Int4        `json:"loan_id"`
+	PaymentNumber int32              `json:"payment_number"`
+	Amount        pgtype.Numeric     `json:"amount"`
+	DueYear       int32              `json:"due_year"`
+	DueMonth      int32              `json:"due_month"`
+	Paid          bool               `json:"paid"`
+	PaidDate      interface{}        `json:"paid_date"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
+// Get paid loan payments for a specific provider and month (for unpay-month action)
+func (q *Queries) GetPaidLoanPaymentsByProviderMonth(ctx context.Context, arg GetPaidLoanPaymentsByProviderMonthParams) ([]GetPaidLoanPaymentsByProviderMonthRow, error) {
+	rows, err := q.db.Query(ctx, getPaidLoanPaymentsByProviderMonth,
+		arg.WorkspaceID,
+		arg.ProviderID,
+		arg.Year,
+		arg.Month,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetPaidLoanPaymentsByProviderMonthRow{}
+	for rows.Next() {
+		var i GetPaidLoanPaymentsByProviderMonthRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.LoanID,
+			&i.PaymentNumber,
+			&i.Amount,
+			&i.DueYear,
+			&i.DueMonth,
+			&i.Paid,
+			&i.PaidDate,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getPendingCCByMonth = `-- name: GetPendingCCByMonth :many
-SELECT t.id, t.workspace_id, account_id, t.name, amount, type, transaction_date, is_paid, notes, t.created_at, t.updated_at, t.deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, a.id, a.workspace_id, a.name, account_type, template, initial_balance, a.created_at, a.updated_at, a.deleted_at FROM transactions t
+SELECT t.id, t.workspace_id, account_id, t.name, amount, type, transaction_date, is_paid, notes, t.created_at, t.updated_at, t.deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, loan_id, group_id, a.id, a.workspace_id, a.name, account_type, template, initial_balance, a.created_at, a.updated_at, a.deleted_at FROM transactions t
 JOIN accounts a ON t.account_id = a.id
 WHERE t.workspace_id = $1
   AND a.template = 'credit_card'
@@ -852,6 +1473,8 @@ type GetPendingCCByMonthRow struct {
 	Source           pgtype.Text        `json:"source"`
 	TemplateID       pgtype.Int4        `json:"template_id"`
 	IsProjected      pgtype.Bool        `json:"is_projected"`
+	LoanID           pgtype.Int4        `json:"loan_id"`
+	GroupID          pgtype.Int4        `json:"group_id"`
 	ID_2             int32              `json:"id_2"`
 	WorkspaceID_2    int32              `json:"workspace_id_2"`
 	Name_2           string             `json:"name_2"`
@@ -894,6 +1517,8 @@ func (q *Queries) GetPendingCCByMonth(ctx context.Context, arg GetPendingCCByMon
 			&i.Source,
 			&i.TemplateID,
 			&i.IsProjected,
+			&i.LoanID,
+			&i.GroupID,
 			&i.ID_2,
 			&i.WorkspaceID_2,
 			&i.Name_2,
@@ -915,7 +1540,7 @@ func (q *Queries) GetPendingCCByMonth(ctx context.Context, arg GetPendingCCByMon
 }
 
 const getPendingDeferredCC = `-- name: GetPendingDeferredCC :many
-SELECT t.id, t.workspace_id, account_id, t.name, amount, type, transaction_date, is_paid, notes, t.created_at, t.updated_at, t.deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, a.id, a.workspace_id, a.name, account_type, template, initial_balance, a.created_at, a.updated_at, a.deleted_at FROM transactions t
+SELECT t.id, t.workspace_id, account_id, t.name, amount, type, transaction_date, is_paid, notes, t.created_at, t.updated_at, t.deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, loan_id, group_id, a.id, a.workspace_id, a.name, account_type, template, initial_balance, a.created_at, a.updated_at, a.deleted_at FROM transactions t
 JOIN accounts a ON t.account_id = a.id
 WHERE t.workspace_id = $1
   AND a.template = 'credit_card'
@@ -955,6 +1580,8 @@ type GetPendingDeferredCCRow struct {
 	Source           pgtype.Text        `json:"source"`
 	TemplateID       pgtype.Int4        `json:"template_id"`
 	IsProjected      pgtype.Bool        `json:"is_projected"`
+	LoanID           pgtype.Int4        `json:"loan_id"`
+	GroupID          pgtype.Int4        `json:"group_id"`
 	ID_2             int32              `json:"id_2"`
 	WorkspaceID_2    int32              `json:"workspace_id_2"`
 	Name_2           string             `json:"name_2"`
@@ -998,6 +1625,8 @@ func (q *Queries) GetPendingDeferredCC(ctx context.Context, arg GetPendingDeferr
 			&i.Source,
 			&i.TemplateID,
 			&i.IsProjected,
+			&i.LoanID,
+			&i.GroupID,
 			&i.ID_2,
 			&i.WorkspaceID_2,
 			&i.Name_2,
@@ -1020,7 +1649,7 @@ func (q *Queries) GetPendingDeferredCC(ctx context.Context, arg GetPendingDeferr
 
 const getProjectionsByTemplate = `-- name: GetProjectionsByTemplate :many
 
-SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected FROM transactions
+SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, loan_id, group_id FROM transactions
 WHERE workspace_id = $1
   AND template_id = $2
   AND is_projected = true
@@ -1067,6 +1696,8 @@ func (q *Queries) GetProjectionsByTemplate(ctx context.Context, arg GetProjectio
 			&i.Source,
 			&i.TemplateID,
 			&i.IsProjected,
+			&i.LoanID,
+			&i.GroupID,
 		); err != nil {
 			return nil, err
 		}
@@ -1121,7 +1752,7 @@ func (q *Queries) GetRecentlyUsedCategories(ctx context.Context, workspaceID int
 }
 
 const getTransactionByID = `-- name: GetTransactionByID :one
-SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected FROM transactions
+SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, loan_id, group_id FROM transactions
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
 `
 
@@ -1154,12 +1785,14 @@ func (q *Queries) GetTransactionByID(ctx context.Context, arg GetTransactionByID
 		&i.Source,
 		&i.TemplateID,
 		&i.IsProjected,
+		&i.LoanID,
+		&i.GroupID,
 	)
 	return i, err
 }
 
 const getTransactionsByIDs = `-- name: GetTransactionsByIDs :many
-SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected FROM transactions
+SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, loan_id, group_id FROM transactions
 WHERE workspace_id = $1
   AND id = ANY($2::int[])
   AND deleted_at IS NULL
@@ -1202,6 +1835,65 @@ func (q *Queries) GetTransactionsByIDs(ctx context.Context, arg GetTransactionsB
 			&i.Source,
 			&i.TemplateID,
 			&i.IsProjected,
+			&i.LoanID,
+			&i.GroupID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTransactionsByLoanID = `-- name: GetTransactionsByLoanID :many
+SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, loan_id, group_id FROM transactions
+WHERE workspace_id = $1
+  AND loan_id = $2
+  AND deleted_at IS NULL
+ORDER BY transaction_date ASC
+`
+
+type GetTransactionsByLoanIDParams struct {
+	WorkspaceID int32       `json:"workspace_id"`
+	LoanID      pgtype.Int4 `json:"loan_id"`
+}
+
+// Get all transactions for a specific loan (both paid and unpaid) for item-based modal
+func (q *Queries) GetTransactionsByLoanID(ctx context.Context, arg GetTransactionsByLoanIDParams) ([]Transaction, error) {
+	rows, err := q.db.Query(ctx, getTransactionsByLoanID, arg.WorkspaceID, arg.LoanID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Transaction{}
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.AccountID,
+			&i.Name,
+			&i.Amount,
+			&i.Type,
+			&i.TransactionDate,
+			&i.IsPaid,
+			&i.Notes,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.TransferPairID,
+			&i.CategoryID,
+			&i.IsCcPayment,
+			&i.BilledAt,
+			&i.SettlementIntent,
+			&i.Source,
+			&i.TemplateID,
+			&i.IsProjected,
+			&i.LoanID,
+			&i.GroupID,
 		); err != nil {
 			return nil, err
 		}
@@ -1214,7 +1906,7 @@ func (q *Queries) GetTransactionsByIDs(ctx context.Context, arg GetTransactionsB
 }
 
 const getTransactionsByWorkspace = `-- name: GetTransactionsByWorkspace :many
-SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected FROM transactions
+SELECT id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, loan_id, group_id FROM transactions
 WHERE workspace_id = $1
   AND deleted_at IS NULL
   AND ($2::INTEGER IS NULL OR account_id = $2)
@@ -1273,6 +1965,8 @@ func (q *Queries) GetTransactionsByWorkspace(ctx context.Context, arg GetTransac
 			&i.Source,
 			&i.TemplateID,
 			&i.IsProjected,
+			&i.LoanID,
+			&i.GroupID,
 		); err != nil {
 			return nil, err
 		}
@@ -1306,9 +2000,13 @@ SELECT
     t.source,
     t.template_id,
     t.is_projected,
-    bc.name AS category_name
+    t.loan_id,
+    t.group_id,
+    bc.name AS category_name,
+    tg.name AS group_name
 FROM transactions t
 LEFT JOIN budget_categories bc ON t.category_id = bc.id AND bc.deleted_at IS NULL
+LEFT JOIN transaction_groups tg ON t.group_id = tg.id
 WHERE t.workspace_id = $1
   AND t.deleted_at IS NULL
   AND t.transaction_date >= $2::DATE
@@ -1343,7 +2041,10 @@ type GetTransactionsForAggregationRow struct {
 	Source           pgtype.Text        `json:"source"`
 	TemplateID       pgtype.Int4        `json:"template_id"`
 	IsProjected      pgtype.Bool        `json:"is_projected"`
+	LoanID           pgtype.Int4        `json:"loan_id"`
+	GroupID          pgtype.Int4        `json:"group_id"`
 	CategoryName     pgtype.Text        `json:"category_name"`
+	GroupName        pgtype.Text        `json:"group_name"`
 }
 
 // Returns all transactions in a date range with category name for aggregation (no pagination)
@@ -1378,7 +2079,10 @@ func (q *Queries) GetTransactionsForAggregation(ctx context.Context, arg GetTran
 			&i.Source,
 			&i.TemplateID,
 			&i.IsProjected,
+			&i.LoanID,
+			&i.GroupID,
 			&i.CategoryName,
+			&i.GroupName,
 		); err != nil {
 			return nil, err
 		}
@@ -1412,9 +2116,13 @@ SELECT
     t.source,
     t.template_id,
     t.is_projected,
-    bc.name AS category_name
+    t.loan_id,
+    t.group_id,
+    bc.name AS category_name,
+    tg.name AS group_name
 FROM transactions t
 LEFT JOIN budget_categories bc ON t.category_id = bc.id AND bc.deleted_at IS NULL
+LEFT JOIN transaction_groups tg ON t.group_id = tg.id
 WHERE t.workspace_id = $1
   AND t.deleted_at IS NULL
   AND ($2::INTEGER IS NULL OR t.account_id = $2)
@@ -1456,10 +2164,13 @@ type GetTransactionsWithCategoryRow struct {
 	Source           pgtype.Text        `json:"source"`
 	TemplateID       pgtype.Int4        `json:"template_id"`
 	IsProjected      pgtype.Bool        `json:"is_projected"`
+	LoanID           pgtype.Int4        `json:"loan_id"`
+	GroupID          pgtype.Int4        `json:"group_id"`
 	CategoryName     pgtype.Text        `json:"category_name"`
+	GroupName        pgtype.Text        `json:"group_name"`
 }
 
-// Returns transactions with category name joined for display
+// Returns transactions with category name and group name joined for display
 func (q *Queries) GetTransactionsWithCategory(ctx context.Context, arg GetTransactionsWithCategoryParams) ([]GetTransactionsWithCategoryRow, error) {
 	rows, err := q.db.Query(ctx, getTransactionsWithCategory,
 		arg.WorkspaceID,
@@ -1498,7 +2209,10 @@ func (q *Queries) GetTransactionsWithCategory(ctx context.Context, arg GetTransa
 			&i.Source,
 			&i.TemplateID,
 			&i.IsProjected,
+			&i.LoanID,
+			&i.GroupID,
 			&i.CategoryName,
+			&i.GroupName,
 		); err != nil {
 			return nil, err
 		}
@@ -1508,6 +2222,109 @@ func (q *Queries) GetTransactionsWithCategory(ctx context.Context, arg GetTransa
 		return nil, err
 	}
 	return items, nil
+}
+
+const getUnpaidLoanPaymentsByProviderMonth = `-- name: GetUnpaidLoanPaymentsByProviderMonth :many
+SELECT
+    t.id,
+    t.loan_id,
+    ROW_NUMBER() OVER (PARTITION BY t.loan_id ORDER BY t.transaction_date ASC, t.id ASC)::INTEGER as payment_number,
+    t.amount,
+    EXTRACT(YEAR FROM t.transaction_date)::INTEGER as due_year,
+    EXTRACT(MONTH FROM t.transaction_date)::INTEGER as due_month,
+    t.is_paid as paid,
+    CASE WHEN t.is_paid = true THEN t.updated_at ELSE NULL END as paid_date,
+    t.created_at,
+    t.updated_at
+FROM transactions t
+JOIN loans l ON t.loan_id = l.id AND l.deleted_at IS NULL
+WHERE t.workspace_id = $1
+  AND l.provider_id = $2
+  AND EXTRACT(YEAR FROM t.transaction_date)::INTEGER = CAST($3 AS INTEGER)
+  AND EXTRACT(MONTH FROM t.transaction_date)::INTEGER = CAST($4 AS INTEGER)
+  AND t.is_paid = false
+  AND t.deleted_at IS NULL
+ORDER BY t.transaction_date ASC, t.id ASC
+`
+
+type GetUnpaidLoanPaymentsByProviderMonthParams struct {
+	WorkspaceID int32 `json:"workspace_id"`
+	ProviderID  int32 `json:"provider_id"`
+	Year        int32 `json:"year"`
+	Month       int32 `json:"month"`
+}
+
+type GetUnpaidLoanPaymentsByProviderMonthRow struct {
+	ID            int32              `json:"id"`
+	LoanID        pgtype.Int4        `json:"loan_id"`
+	PaymentNumber int32              `json:"payment_number"`
+	Amount        pgtype.Numeric     `json:"amount"`
+	DueYear       int32              `json:"due_year"`
+	DueMonth      int32              `json:"due_month"`
+	Paid          bool               `json:"paid"`
+	PaidDate      interface{}        `json:"paid_date"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
+// Get unpaid loan payments for a specific provider and month (for pay-month action)
+func (q *Queries) GetUnpaidLoanPaymentsByProviderMonth(ctx context.Context, arg GetUnpaidLoanPaymentsByProviderMonthParams) ([]GetUnpaidLoanPaymentsByProviderMonthRow, error) {
+	rows, err := q.db.Query(ctx, getUnpaidLoanPaymentsByProviderMonth,
+		arg.WorkspaceID,
+		arg.ProviderID,
+		arg.Year,
+		arg.Month,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetUnpaidLoanPaymentsByProviderMonthRow{}
+	for rows.Next() {
+		var i GetUnpaidLoanPaymentsByProviderMonthRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.LoanID,
+			&i.PaymentNumber,
+			&i.Amount,
+			&i.DueYear,
+			&i.DueMonth,
+			&i.Paid,
+			&i.PaidDate,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const hasPaidTransactionsByLoan = `-- name: HasPaidTransactionsByLoan :one
+SELECT EXISTS (
+    SELECT 1 FROM transactions
+    WHERE workspace_id = $1
+      AND loan_id = $2
+      AND is_paid = true
+      AND deleted_at IS NULL
+)::BOOLEAN as has_paid
+`
+
+type HasPaidTransactionsByLoanParams struct {
+	WorkspaceID int32       `json:"workspace_id"`
+	LoanID      pgtype.Int4 `json:"loan_id"`
+}
+
+// Check if any transactions for this loan are paid (for provider change validation)
+func (q *Queries) HasPaidTransactionsByLoan(ctx context.Context, arg HasPaidTransactionsByLoanParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasPaidTransactionsByLoan, arg.WorkspaceID, arg.LoanID)
+	var has_paid bool
+	err := row.Scan(&has_paid)
+	return has_paid, err
 }
 
 const orphanActualsByTemplate = `-- name: OrphanActualsByTemplate :exec
@@ -1528,6 +2345,28 @@ type OrphanActualsByTemplateParams struct {
 // Unlink actual transactions from template (keep them, clear template_id)
 func (q *Queries) OrphanActualsByTemplate(ctx context.Context, arg OrphanActualsByTemplateParams) error {
 	_, err := q.db.Exec(ctx, orphanActualsByTemplate, arg.WorkspaceID, arg.TemplateID)
+	return err
+}
+
+const orphanPaidTransactionsByLoan = `-- name: OrphanPaidTransactionsByLoan :exec
+UPDATE transactions
+SET loan_id = NULL,
+    updated_at = NOW()
+WHERE workspace_id = $1
+  AND loan_id = $2
+  AND is_paid = true
+  AND deleted_at IS NULL
+`
+
+type OrphanPaidTransactionsByLoanParams struct {
+	WorkspaceID int32       `json:"workspace_id"`
+	LoanID      pgtype.Int4 `json:"loan_id"`
+}
+
+// Unlink paid transactions from loan (keep them, clear loan_id)
+// Used when deleting a loan to preserve payment history
+func (q *Queries) OrphanPaidTransactionsByLoan(ctx context.Context, arg OrphanPaidTransactionsByLoanParams) error {
+	_, err := q.db.Exec(ctx, orphanPaidTransactionsByLoan, arg.WorkspaceID, arg.LoanID)
 	return err
 }
 
@@ -1722,7 +2561,7 @@ UPDATE transactions
 SET billed_at = CASE WHEN billed_at IS NULL THEN NOW() ELSE NULL END,
     updated_at = NOW()
 WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL
-RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected
+RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, loan_id, group_id
 `
 
 type ToggleBilledStatusParams struct {
@@ -1759,6 +2598,8 @@ func (q *Queries) ToggleBilledStatus(ctx context.Context, arg ToggleBilledStatus
 		&i.Source,
 		&i.TemplateID,
 		&i.IsProjected,
+		&i.LoanID,
+		&i.GroupID,
 	)
 	return i, err
 }
@@ -1767,7 +2608,7 @@ const toggleTransactionPaidStatus = `-- name: ToggleTransactionPaidStatus :one
 UPDATE transactions
 SET is_paid = NOT is_paid, updated_at = NOW()
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
-RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected
+RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, loan_id, group_id
 `
 
 type ToggleTransactionPaidStatusParams struct {
@@ -1799,6 +2640,8 @@ func (q *Queries) ToggleTransactionPaidStatus(ctx context.Context, arg ToggleTra
 		&i.Source,
 		&i.TemplateID,
 		&i.IsProjected,
+		&i.LoanID,
+		&i.GroupID,
 	)
 	return i, err
 }
@@ -1821,7 +2664,7 @@ SET
     is_projected = $15,
     updated_at = NOW()
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
-RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected
+RETURNING id, workspace_id, account_id, name, amount, type, transaction_date, is_paid, notes, created_at, updated_at, deleted_at, transfer_pair_id, category_id, is_cc_payment, billed_at, settlement_intent, source, template_id, is_projected, loan_id, group_id
 `
 
 type UpdateTransactionParams struct {
@@ -1882,6 +2725,33 @@ func (q *Queries) UpdateTransaction(ctx context.Context, arg UpdateTransactionPa
 		&i.Source,
 		&i.TemplateID,
 		&i.IsProjected,
+		&i.LoanID,
+		&i.GroupID,
 	)
 	return i, err
+}
+
+const updateTransactionPayeesByLoan = `-- name: UpdateTransactionPayeesByLoan :execrows
+UPDATE transactions
+SET name = $3,
+    updated_at = NOW()
+WHERE workspace_id = $1
+  AND loan_id = $2
+  AND deleted_at IS NULL
+`
+
+type UpdateTransactionPayeesByLoanParams struct {
+	WorkspaceID int32       `json:"workspace_id"`
+	LoanID      pgtype.Int4 `json:"loan_id"`
+	Name        string      `json:"name"`
+}
+
+// Cascade item name/provider change to transaction payees
+// Pattern: "[Provider] ([Item Name])"
+func (q *Queries) UpdateTransactionPayeesByLoan(ctx context.Context, arg UpdateTransactionPayeesByLoanParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateTransactionPayeesByLoan, arg.WorkspaceID, arg.LoanID, arg.Name)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

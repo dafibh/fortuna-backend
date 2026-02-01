@@ -71,6 +71,18 @@ func (r *LoanRepository) createLoan(ctx context.Context, q *sqlc.Queries, loan *
 		notes.Valid = true
 	}
 
+	accountID := pgtype.Int4{}
+	if loan.AccountID > 0 {
+		accountID.Int32 = loan.AccountID
+		accountID.Valid = true
+	}
+
+	settlementIntent := pgtype.Text{}
+	if loan.SettlementIntent != nil {
+		settlementIntent.String = *loan.SettlementIntent
+		settlementIntent.Valid = true
+	}
+
 	created, err := q.CreateLoan(ctx, sqlc.CreateLoanParams{
 		WorkspaceID:       loan.WorkspaceID,
 		ProviderID:        loan.ProviderID,
@@ -82,6 +94,8 @@ func (r *LoanRepository) createLoan(ctx context.Context, q *sqlc.Queries, loan *
 		MonthlyPayment:    monthlyPayment,
 		FirstPaymentYear:  loan.FirstPaymentYear,
 		FirstPaymentMonth: loan.FirstPaymentMonth,
+		AccountID:         accountID,
+		SettlementIntent:  settlementIntent,
 		Notes:             notes,
 	})
 	if err != nil {
@@ -233,6 +247,33 @@ func (r *LoanRepository) UpdatePartial(workspaceID int32, id int32, itemName str
 	return sqlcLoanToDomain(updated), nil
 }
 
+// UpdateEditableFields updates item name, provider, and notes
+// Provider can only change if no payments have been made (validated at service layer)
+func (r *LoanRepository) UpdateEditableFields(workspaceID int32, id int32, itemName string, providerID int32, notes *string) (*domain.Loan, error) {
+	ctx := context.Background()
+
+	pgNotes := pgtype.Text{}
+	if notes != nil {
+		pgNotes.String = *notes
+		pgNotes.Valid = true
+	}
+
+	updated, err := r.queries.UpdateLoanEditableFields(ctx, sqlc.UpdateLoanEditableFieldsParams{
+		ID:          id,
+		WorkspaceID: workspaceID,
+		ItemName:    itemName,
+		ProviderID:  providerID,
+		Notes:       pgNotes,
+	})
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, domain.ErrLoanNotFound
+		}
+		return nil, err
+	}
+	return sqlcLoanToDomain(updated), nil
+}
+
 // SoftDelete marks a loan as deleted
 func (r *LoanRepository) SoftDelete(workspaceID int32, id int32) error {
 	ctx := context.Background()
@@ -254,6 +295,7 @@ func (r *LoanRepository) CountActiveLoansByProvider(workspaceID int32, providerI
 }
 
 // GetAllWithStats retrieves all loans with payment statistics
+// CL v2: Uses transactions with loan_id instead of loan_payments table
 func (r *LoanRepository) GetAllWithStats(workspaceID int32) ([]*domain.LoanWithStats, error) {
 	ctx := context.Background()
 	rows, err := r.queries.GetLoansWithStats(ctx, workspaceID)
@@ -262,12 +304,13 @@ func (r *LoanRepository) GetAllWithStats(workspaceID int32) ([]*domain.LoanWithS
 	}
 	result := make([]*domain.LoanWithStats, len(rows))
 	for i, row := range rows {
-		result[i] = sqlcLoanWithStatsRowToDomain(row)
+		result[i] = sqlcLoansWithStatsRowToDomain(row)
 	}
 	return result, nil
 }
 
 // GetActiveWithStats retrieves active loans (remaining_balance > 0) with payment statistics
+// CL v2: Uses transactions with loan_id instead of loan_payments table
 func (r *LoanRepository) GetActiveWithStats(workspaceID int32) ([]*domain.LoanWithStats, error) {
 	ctx := context.Background()
 	rows, err := r.queries.GetActiveLoansWithStats(ctx, workspaceID)
@@ -282,6 +325,7 @@ func (r *LoanRepository) GetActiveWithStats(workspaceID int32) ([]*domain.LoanWi
 }
 
 // GetCompletedWithStats retrieves completed loans (remaining_balance = 0) with payment statistics
+// CL v2: Uses transactions with loan_id instead of loan_payments table
 func (r *LoanRepository) GetCompletedWithStats(workspaceID int32) ([]*domain.LoanWithStats, error) {
 	ctx := context.Background()
 	rows, err := r.queries.GetCompletedLoansWithStats(ctx, workspaceID)
@@ -291,6 +335,24 @@ func (r *LoanRepository) GetCompletedWithStats(workspaceID int32) ([]*domain.Loa
 	result := make([]*domain.LoanWithStats, len(rows))
 	for i, row := range rows {
 		result[i] = sqlcCompletedLoansWithStatsRowToDomain(row)
+	}
+	return result, nil
+}
+
+// GetByProviderWithStats retrieves all loans for a provider with payment statistics
+// CL v2: Uses transactions with loan_id for stats, ordered by unpaid first then item name
+func (r *LoanRepository) GetByProviderWithStats(workspaceID int32, providerID int32) ([]*domain.LoanWithStats, error) {
+	ctx := context.Background()
+	rows, err := r.queries.GetLoansWithStatsByProvider(ctx, sqlc.GetLoansWithStatsByProviderParams{
+		WorkspaceID: workspaceID,
+		ProviderID:  providerID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*domain.LoanWithStats, len(rows))
+	for i, row := range rows {
+		result[i] = sqlcLoansWithStatsByProviderRowToDomain(row)
 	}
 	return result, nil
 }
@@ -320,6 +382,16 @@ func sqlcLoanToDomain(l sqlc.Loan) *domain.Loan {
 		loan.PurchaseDate = time.Time{}
 	}
 
+	// Handle account ID
+	if l.AccountID.Valid {
+		loan.AccountID = l.AccountID.Int32
+	}
+
+	// Handle settlement intent
+	if l.SettlementIntent.Valid {
+		loan.SettlementIntent = &l.SettlementIntent.String
+	}
+
 	// Handle notes
 	if l.Notes.Valid {
 		loan.Notes = &l.Notes.String
@@ -333,24 +405,40 @@ func sqlcLoanToDomain(l sqlc.Loan) *domain.Loan {
 	return loan
 }
 
-func sqlcLoanWithStatsRowToDomain(row sqlc.GetLoansWithStatsRow) *domain.LoanWithStats {
-	loan := &domain.Loan{
-		ID:                row.ID,
-		WorkspaceID:       row.WorkspaceID,
-		ProviderID:        row.ProviderID,
-		ItemName:          row.ItemName,
-		TotalAmount:       pgNumericToDecimal(row.TotalAmount),
-		NumMonths:         row.NumMonths,
-		InterestRate:      pgNumericToDecimal(row.InterestRate),
-		MonthlyPayment:    pgNumericToDecimal(row.MonthlyPayment),
-		FirstPaymentYear:  row.FirstPaymentYear,
-		FirstPaymentMonth: row.FirstPaymentMonth,
-		CreatedAt:         row.CreatedAt.Time,
-		UpdatedAt:         row.UpdatedAt.Time,
+// CL v2: Helper functions for converting stats rows from transaction-based queries
+
+func sqlcLoansWithStatsRowToDomain(row sqlc.GetLoansWithStatsRow) *domain.LoanWithStats {
+	loan := &domain.LoanWithStats{
+		Loan: domain.Loan{
+			ID:                row.ID,
+			WorkspaceID:       row.WorkspaceID,
+			ProviderID:        row.ProviderID,
+			ItemName:          row.ItemName,
+			TotalAmount:       pgNumericToDecimal(row.TotalAmount),
+			NumMonths:         row.NumMonths,
+			InterestRate:      pgNumericToDecimal(row.InterestRate),
+			MonthlyPayment:    pgNumericToDecimal(row.MonthlyPayment),
+			FirstPaymentYear:  row.FirstPaymentYear,
+			FirstPaymentMonth: row.FirstPaymentMonth,
+			CreatedAt:         row.CreatedAt.Time,
+			UpdatedAt:         row.UpdatedAt.Time,
+		},
+		LastPaymentYear:  row.LastPaymentYear,
+		LastPaymentMonth: row.LastPaymentMonth,
+		TotalCount:       row.TotalCount,
+		PaidCount:        row.PaidCount,
+		RemainingBalance: pgNumericToDecimal(row.RemainingBalance),
 	}
 
+	// Handle optional fields
 	if row.PurchaseDate.Valid {
 		loan.PurchaseDate = row.PurchaseDate.Time
+	}
+	if row.AccountID.Valid {
+		loan.AccountID = row.AccountID.Int32
+	}
+	if row.SettlementIntent.Valid {
+		loan.SettlementIntent = &row.SettlementIntent.String
 	}
 	if row.Notes.Valid {
 		loan.Notes = &row.Notes.String
@@ -359,41 +447,45 @@ func sqlcLoanWithStatsRowToDomain(row sqlc.GetLoansWithStatsRow) *domain.LoanWit
 		loan.DeletedAt = &row.DeletedAt.Time
 	}
 
-	// Calculate progress
-	var progress float64
-	if row.TotalCount > 0 {
-		progress = float64(row.PaidCount) / float64(row.TotalCount) * 100
+	// Calculate progress percentage
+	if loan.TotalCount > 0 {
+		loan.Progress = float64(loan.PaidCount) / float64(loan.TotalCount) * 100
 	}
 
-	return &domain.LoanWithStats{
-		Loan:             *loan,
-		LastPaymentYear:  row.LastPaymentYear,
-		LastPaymentMonth: row.LastPaymentMonth,
-		TotalCount:       row.TotalCount,
-		PaidCount:        row.PaidCount,
-		RemainingBalance: pgNumericToDecimal(row.RemainingBalance),
-		Progress:         progress,
-	}
+	return loan
 }
 
 func sqlcActiveLoansWithStatsRowToDomain(row sqlc.GetActiveLoansWithStatsRow) *domain.LoanWithStats {
-	loan := &domain.Loan{
-		ID:                row.ID,
-		WorkspaceID:       row.WorkspaceID,
-		ProviderID:        row.ProviderID,
-		ItemName:          row.ItemName,
-		TotalAmount:       pgNumericToDecimal(row.TotalAmount),
-		NumMonths:         row.NumMonths,
-		InterestRate:      pgNumericToDecimal(row.InterestRate),
-		MonthlyPayment:    pgNumericToDecimal(row.MonthlyPayment),
-		FirstPaymentYear:  row.FirstPaymentYear,
-		FirstPaymentMonth: row.FirstPaymentMonth,
-		CreatedAt:         row.CreatedAt.Time,
-		UpdatedAt:         row.UpdatedAt.Time,
+	loan := &domain.LoanWithStats{
+		Loan: domain.Loan{
+			ID:                row.ID,
+			WorkspaceID:       row.WorkspaceID,
+			ProviderID:        row.ProviderID,
+			ItemName:          row.ItemName,
+			TotalAmount:       pgNumericToDecimal(row.TotalAmount),
+			NumMonths:         row.NumMonths,
+			InterestRate:      pgNumericToDecimal(row.InterestRate),
+			MonthlyPayment:    pgNumericToDecimal(row.MonthlyPayment),
+			FirstPaymentYear:  row.FirstPaymentYear,
+			FirstPaymentMonth: row.FirstPaymentMonth,
+			CreatedAt:         row.CreatedAt.Time,
+			UpdatedAt:         row.UpdatedAt.Time,
+		},
+		LastPaymentYear:  row.LastPaymentYear,
+		LastPaymentMonth: row.LastPaymentMonth,
+		TotalCount:       row.TotalCount,
+		PaidCount:        row.PaidCount,
+		RemainingBalance: pgNumericToDecimal(row.RemainingBalance),
 	}
 
 	if row.PurchaseDate.Valid {
 		loan.PurchaseDate = row.PurchaseDate.Time
+	}
+	if row.AccountID.Valid {
+		loan.AccountID = row.AccountID.Int32
+	}
+	if row.SettlementIntent.Valid {
+		loan.SettlementIntent = &row.SettlementIntent.String
 	}
 	if row.Notes.Valid {
 		loan.Notes = &row.Notes.String
@@ -401,41 +493,44 @@ func sqlcActiveLoansWithStatsRowToDomain(row sqlc.GetActiveLoansWithStatsRow) *d
 	if row.DeletedAt.Valid {
 		loan.DeletedAt = &row.DeletedAt.Time
 	}
-
-	var progress float64
-	if row.TotalCount > 0 {
-		progress = float64(row.PaidCount) / float64(row.TotalCount) * 100
+	if loan.TotalCount > 0 {
+		loan.Progress = float64(loan.PaidCount) / float64(loan.TotalCount) * 100
 	}
 
-	return &domain.LoanWithStats{
-		Loan:             *loan,
-		LastPaymentYear:  row.LastPaymentYear,
-		LastPaymentMonth: row.LastPaymentMonth,
-		TotalCount:       row.TotalCount,
-		PaidCount:        row.PaidCount,
-		RemainingBalance: pgNumericToDecimal(row.RemainingBalance),
-		Progress:         progress,
-	}
+	return loan
 }
 
 func sqlcCompletedLoansWithStatsRowToDomain(row sqlc.GetCompletedLoansWithStatsRow) *domain.LoanWithStats {
-	loan := &domain.Loan{
-		ID:                row.ID,
-		WorkspaceID:       row.WorkspaceID,
-		ProviderID:        row.ProviderID,
-		ItemName:          row.ItemName,
-		TotalAmount:       pgNumericToDecimal(row.TotalAmount),
-		NumMonths:         row.NumMonths,
-		InterestRate:      pgNumericToDecimal(row.InterestRate),
-		MonthlyPayment:    pgNumericToDecimal(row.MonthlyPayment),
-		FirstPaymentYear:  row.FirstPaymentYear,
-		FirstPaymentMonth: row.FirstPaymentMonth,
-		CreatedAt:         row.CreatedAt.Time,
-		UpdatedAt:         row.UpdatedAt.Time,
+	loan := &domain.LoanWithStats{
+		Loan: domain.Loan{
+			ID:                row.ID,
+			WorkspaceID:       row.WorkspaceID,
+			ProviderID:        row.ProviderID,
+			ItemName:          row.ItemName,
+			TotalAmount:       pgNumericToDecimal(row.TotalAmount),
+			NumMonths:         row.NumMonths,
+			InterestRate:      pgNumericToDecimal(row.InterestRate),
+			MonthlyPayment:    pgNumericToDecimal(row.MonthlyPayment),
+			FirstPaymentYear:  row.FirstPaymentYear,
+			FirstPaymentMonth: row.FirstPaymentMonth,
+			CreatedAt:         row.CreatedAt.Time,
+			UpdatedAt:         row.UpdatedAt.Time,
+		},
+		LastPaymentYear:  row.LastPaymentYear,
+		LastPaymentMonth: row.LastPaymentMonth,
+		TotalCount:       row.TotalCount,
+		PaidCount:        row.PaidCount,
+		RemainingBalance: pgNumericToDecimal(row.RemainingBalance),
 	}
 
 	if row.PurchaseDate.Valid {
 		loan.PurchaseDate = row.PurchaseDate.Time
+	}
+	if row.AccountID.Valid {
+		loan.AccountID = row.AccountID.Int32
+	}
+	if row.SettlementIntent.Valid {
+		loan.SettlementIntent = &row.SettlementIntent.String
 	}
 	if row.Notes.Valid {
 		loan.Notes = &row.Notes.String
@@ -443,19 +538,54 @@ func sqlcCompletedLoansWithStatsRowToDomain(row sqlc.GetCompletedLoansWithStatsR
 	if row.DeletedAt.Valid {
 		loan.DeletedAt = &row.DeletedAt.Time
 	}
-
-	var progress float64
-	if row.TotalCount > 0 {
-		progress = float64(row.PaidCount) / float64(row.TotalCount) * 100
+	if loan.TotalCount > 0 {
+		loan.Progress = float64(loan.PaidCount) / float64(loan.TotalCount) * 100
 	}
 
-	return &domain.LoanWithStats{
-		Loan:             *loan,
+	return loan
+}
+
+func sqlcLoansWithStatsByProviderRowToDomain(row sqlc.GetLoansWithStatsByProviderRow) *domain.LoanWithStats {
+	loan := &domain.LoanWithStats{
+		Loan: domain.Loan{
+			ID:                row.ID,
+			WorkspaceID:       row.WorkspaceID,
+			ProviderID:        row.ProviderID,
+			ItemName:          row.ItemName,
+			TotalAmount:       pgNumericToDecimal(row.TotalAmount),
+			NumMonths:         row.NumMonths,
+			InterestRate:      pgNumericToDecimal(row.InterestRate),
+			MonthlyPayment:    pgNumericToDecimal(row.MonthlyPayment),
+			FirstPaymentYear:  row.FirstPaymentYear,
+			FirstPaymentMonth: row.FirstPaymentMonth,
+			CreatedAt:         row.CreatedAt.Time,
+			UpdatedAt:         row.UpdatedAt.Time,
+		},
 		LastPaymentYear:  row.LastPaymentYear,
 		LastPaymentMonth: row.LastPaymentMonth,
 		TotalCount:       row.TotalCount,
 		PaidCount:        row.PaidCount,
 		RemainingBalance: pgNumericToDecimal(row.RemainingBalance),
-		Progress:         progress,
 	}
+
+	if row.PurchaseDate.Valid {
+		loan.PurchaseDate = row.PurchaseDate.Time
+	}
+	if row.AccountID.Valid {
+		loan.AccountID = row.AccountID.Int32
+	}
+	if row.SettlementIntent.Valid {
+		loan.SettlementIntent = &row.SettlementIntent.String
+	}
+	if row.Notes.Valid {
+		loan.Notes = &row.Notes.String
+	}
+	if row.DeletedAt.Valid {
+		loan.DeletedAt = &row.DeletedAt.Time
+	}
+	if loan.TotalCount > 0 {
+		loan.Progress = float64(loan.PaidCount) / float64(loan.TotalCount) * 100
+	}
+
+	return loan
 }

@@ -92,6 +92,13 @@ func (r *TransactionRepository) Create(transaction *domain.Transaction) (*domain
 	isProjected.Bool = transaction.IsProjected
 	isProjected.Valid = true
 
+	// Loan Integration (v2)
+	var loanID pgtype.Int4
+	if transaction.LoanID != nil {
+		loanID.Int32 = *transaction.LoanID
+		loanID.Valid = true
+	}
+
 	created, err := r.queries.CreateTransaction(ctx, sqlc.CreateTransactionParams{
 		WorkspaceID:      transaction.WorkspaceID,
 		AccountID:        transaction.AccountID,
@@ -109,6 +116,7 @@ func (r *TransactionRepository) Create(transaction *domain.Transaction) (*domain
 		Source:           source,
 		TemplateID:       templateID,
 		IsProjected:      isProjected,
+		LoanID:           loanID,
 	})
 	if err != nil {
 		return nil, err
@@ -431,6 +439,13 @@ func (r *TransactionRepository) createTransactionWithTx(ctx context.Context, qtx
 	isProjected.Bool = transaction.IsProjected
 	isProjected.Valid = true
 
+	// Loan Integration (v2)
+	var loanID pgtype.Int4
+	if transaction.LoanID != nil {
+		loanID.Int32 = *transaction.LoanID
+		loanID.Valid = true
+	}
+
 	created, err := qtx.CreateTransaction(ctx, sqlc.CreateTransactionParams{
 		WorkspaceID:      transaction.WorkspaceID,
 		AccountID:        transaction.AccountID,
@@ -448,11 +463,30 @@ func (r *TransactionRepository) createTransactionWithTx(ctx context.Context, qtx
 		Source:           source,
 		TemplateID:       templateID,
 		IsProjected:      isProjected,
+		LoanID:           loanID,
 	})
 	if err != nil {
 		return nil, err
 	}
 	return sqlcTransactionToDomain(created), nil
+}
+
+// CreateBatchTx creates multiple transactions within an existing database transaction
+// Used by loan service to create loan payment transactions atomically with loan creation
+func (r *TransactionRepository) CreateBatchTx(tx interface{}, transactions []*domain.Transaction) ([]*domain.Transaction, error) {
+	ctx := context.Background()
+	pgxTx := tx.(pgx.Tx)
+	qtx := r.queries.WithTx(pgxTx)
+
+	created := make([]*domain.Transaction, len(transactions))
+	for i, transaction := range transactions {
+		result, err := r.createTransactionWithTx(ctx, qtx, transaction)
+		if err != nil {
+			return nil, err
+		}
+		created[i] = result
+	}
+	return created, nil
 }
 
 // SoftDeleteTransferPair soft deletes both transactions in a transfer pair
@@ -697,6 +731,14 @@ func sqlcTransactionToDomain(t sqlc.Transaction) *domain.Transaction {
 		transaction.TemplateID = &t.TemplateID.Int32
 	}
 	transaction.IsProjected = t.IsProjected.Bool
+	// Loan Integration (v2)
+	if t.LoanID.Valid {
+		transaction.LoanID = &t.LoanID.Int32
+	}
+	// Transaction Grouping
+	if t.GroupID.Valid {
+		transaction.GroupID = &t.GroupID.Int32
+	}
 	return transaction
 }
 
@@ -752,6 +794,17 @@ func sqlcTransactionWithCategoryToDomain(t sqlc.GetTransactionsWithCategoryRow) 
 		transaction.TemplateID = &t.TemplateID.Int32
 	}
 	transaction.IsProjected = t.IsProjected.Bool
+	// Loan Integration (v2)
+	if t.LoanID.Valid {
+		transaction.LoanID = &t.LoanID.Int32
+	}
+	// Transaction Grouping
+	if t.GroupID.Valid {
+		transaction.GroupID = &t.GroupID.Int32
+	}
+	if t.GroupName.Valid {
+		transaction.GroupName = &t.GroupName.String
+	}
 	return transaction
 }
 
@@ -1077,6 +1130,17 @@ func sqlcAggregationRowToDomain(row sqlc.GetTransactionsForAggregationRow) *doma
 	if row.IsProjected.Valid {
 		transaction.IsProjected = row.IsProjected.Bool
 	}
+	// Loan Integration (v2)
+	if row.LoanID.Valid {
+		transaction.LoanID = &row.LoanID.Int32
+	}
+	// Transaction Grouping
+	if row.GroupID.Valid {
+		transaction.GroupID = &row.GroupID.Int32
+	}
+	if row.GroupName.Valid {
+		transaction.GroupName = &row.GroupName.String
+	}
 
 	return transaction
 }
@@ -1246,6 +1310,127 @@ func sqlcPendingDeferredRowToDomain(row sqlc.GetPendingDeferredCCRow) *domain.Tr
 	return transaction
 }
 
+// GetLoanTransactionsByMonth returns unpaid transactions for a specific loan and month
+func (r *TransactionRepository) GetLoanTransactionsByMonth(workspaceID int32, loanID int32, year, month int) ([]*domain.Transaction, error) {
+	rows, err := r.queries.GetLoanTransactionsByMonth(context.Background(), sqlc.GetLoanTransactionsByMonthParams{
+		WorkspaceID: workspaceID,
+		LoanID:      pgtype.Int4{Int32: loanID, Valid: true},
+		Year:        int32(year),
+		Month:       int32(month),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	transactions := make([]*domain.Transaction, len(rows))
+	for i, row := range rows {
+		transactions[i] = sqlcTransactionToDomain(row)
+	}
+
+	return transactions, nil
+}
+
+// BulkMarkPaid marks multiple transactions as paid by IDs
+// Works for both bank and CC transactions - CC state transitions to 'settled' automatically
+func (r *TransactionRepository) BulkMarkPaid(workspaceID int32, ids []int32) ([]*domain.Transaction, error) {
+	if len(ids) == 0 {
+		return []*domain.Transaction{}, nil
+	}
+
+	rows, err := r.queries.BulkMarkTransactionsPaid(context.Background(), sqlc.BulkMarkTransactionsPaidParams{
+		WorkspaceID: workspaceID,
+		Column2:     ids,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	transactions := make([]*domain.Transaction, len(rows))
+	for i, row := range rows {
+		transactions[i] = sqlcTransactionToDomain(row)
+	}
+
+	return transactions, nil
+}
+
+// GetByLoanID retrieves all transactions for a specific loan
+func (r *TransactionRepository) GetByLoanID(workspaceID int32, loanID int32) ([]*domain.Transaction, error) {
+	rows, err := r.queries.GetTransactionsByLoanID(context.Background(), sqlc.GetTransactionsByLoanIDParams{
+		WorkspaceID: workspaceID,
+		LoanID:      pgtype.Int4{Int32: loanID, Valid: true},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	transactions := make([]*domain.Transaction, len(rows))
+	for i, row := range rows {
+		transactions[i] = sqlcTransactionToDomain(row)
+	}
+
+	return transactions, nil
+}
+
+// OrphanPaidTransactionsByLoan unlinks paid transactions from a loan (keeps them, clears loan_id)
+// Used when deleting a loan to preserve payment history
+func (r *TransactionRepository) OrphanPaidTransactionsByLoan(workspaceID int32, loanID int32) error {
+	ctx := context.Background()
+	return r.queries.OrphanPaidTransactionsByLoan(ctx, sqlc.OrphanPaidTransactionsByLoanParams{
+		WorkspaceID: workspaceID,
+		LoanID:      pgtype.Int4{Int32: loanID, Valid: true},
+	})
+}
+
+// DeleteUnpaidTransactionsByLoan hard deletes unpaid transactions for a loan
+// Used when deleting a loan (unpaid future payments are removed)
+func (r *TransactionRepository) DeleteUnpaidTransactionsByLoan(workspaceID int32, loanID int32) error {
+	ctx := context.Background()
+	return r.queries.DeleteUnpaidTransactionsByLoan(ctx, sqlc.DeleteUnpaidTransactionsByLoanParams{
+		WorkspaceID: workspaceID,
+		LoanID:      pgtype.Int4{Int32: loanID, Valid: true},
+	})
+}
+
+// GetLoanTransactionStats returns paid/unpaid transaction counts for loan deletion confirmation
+func (r *TransactionRepository) GetLoanTransactionStats(workspaceID int32, loanID int32) (*domain.LoanTransactionStats, error) {
+	ctx := context.Background()
+	row, err := r.queries.GetLoanTransactionStats(ctx, sqlc.GetLoanTransactionStatsParams{
+		WorkspaceID: workspaceID,
+		LoanID:      pgtype.Int4{Int32: loanID, Valid: true},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &domain.LoanTransactionStats{
+		PaidCount:   row.PaidCount,
+		UnpaidCount: row.UnpaidCount,
+		PaidTotal:   pgNumericToDecimal(row.PaidTotal),
+		UnpaidTotal: pgNumericToDecimal(row.UnpaidTotal),
+	}, nil
+}
+
+// UpdatePayeesByLoan updates payee (name) for all transactions belonging to a loan
+// Used when loan item name or provider changes to cascade the update
+func (r *TransactionRepository) UpdatePayeesByLoan(workspaceID int32, loanID int32, newPayee string) (int64, error) {
+	ctx := context.Background()
+	return r.queries.UpdateTransactionPayeesByLoan(ctx, sqlc.UpdateTransactionPayeesByLoanParams{
+		WorkspaceID: workspaceID,
+		LoanID:      pgtype.Int4{Int32: loanID, Valid: true},
+		Name:        newPayee,
+	})
+}
+
+// HasPaidTransactionsByLoan checks if any transactions for this loan are paid
+// Used to validate if provider change is allowed (only when no payments made)
+func (r *TransactionRepository) HasPaidTransactionsByLoan(workspaceID int32, loanID int32) (bool, error) {
+	ctx := context.Background()
+	return r.queries.HasPaidTransactionsByLoan(ctx, sqlc.HasPaidTransactionsByLoanParams{
+		WorkspaceID: workspaceID,
+		LoanID:      pgtype.Int4{Int32: loanID, Valid: true},
+	})
+}
+
 // sqlcOverdueRowToDomain converts a GetOverdueCCRow to domain.Transaction
 func sqlcOverdueRowToDomain(row sqlc.GetOverdueCCRow) *domain.Transaction {
 	transaction := &domain.Transaction{
@@ -1299,4 +1484,34 @@ func sqlcOverdueRowToDomain(row sqlc.GetOverdueCCRow) *domain.Transaction {
 	}
 
 	return transaction
+}
+
+// GetLoanTrendData retrieves aggregated loan transaction data for trend visualization
+func (r *TransactionRepository) GetLoanTrendData(workspaceID int32, startYear, startMonth, endYear, endMonth int32) ([]*domain.LoanTrendDataRow, error) {
+	ctx := context.Background()
+
+	rows, err := r.queries.GetLoanTrendData(ctx, sqlc.GetLoanTrendDataParams{
+		WorkspaceID: workspaceID,
+		StartYear:   startYear,
+		StartMonth:  startMonth,
+		EndYear:     endYear,
+		EndMonth:    endMonth,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*domain.LoanTrendDataRow, len(rows))
+	for i, row := range rows {
+		result[i] = &domain.LoanTrendDataRow{
+			Year:         row.Year,
+			Month:        row.Month,
+			ProviderID:   row.ProviderID,
+			ProviderName: row.ProviderName,
+			TotalAmount:  pgNumericToDecimal(row.TotalAmount),
+			AllPaid:      row.AllPaid,
+		}
+	}
+
+	return result, nil
 }

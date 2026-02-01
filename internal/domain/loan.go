@@ -8,12 +8,16 @@ import (
 )
 
 var (
-	ErrLoanNotFound        = errors.New("loan not found")
-	ErrLoanItemNameEmpty   = errors.New("loan item name is required")
-	ErrLoanItemNameTooLong = errors.New("loan item name must be 200 characters or less")
-	ErrLoanAmountInvalid   = errors.New("loan amount must be positive")
-	ErrLoanMonthsInvalid   = errors.New("number of months must be at least 1")
-	ErrLoanProviderInvalid = errors.New("loan provider is required")
+	ErrLoanNotFound                      = errors.New("loan not found")
+	ErrLoanItemNameEmpty                 = errors.New("loan item name is required")
+	ErrLoanItemNameTooLong               = errors.New("loan item name must be 200 characters or less")
+	ErrLoanAmountInvalid                 = errors.New("loan amount must be positive")
+	ErrLoanMonthsInvalid                 = errors.New("number of months must be at least 1")
+	ErrLoanProviderInvalid               = errors.New("loan provider is required")
+	ErrLoanAccountInvalid                = errors.New("account is required")
+	ErrNoTransactionsToSettle            = errors.New("no unpaid transactions found for this month")
+	ErrLoanPaymentAtomicityFailed        = errors.New("failed to settle all transactions atomically")
+	ErrCannotChangeProviderAfterPayments = errors.New("cannot change provider after payments are made")
 )
 
 type Loan struct {
@@ -28,6 +32,8 @@ type Loan struct {
 	MonthlyPayment    decimal.Decimal `json:"monthlyPayment"`
 	FirstPaymentYear  int32           `json:"firstPaymentYear"`
 	FirstPaymentMonth int32           `json:"firstPaymentMonth"`
+	AccountID         int32           `json:"accountId"`
+	SettlementIntent  *string         `json:"settlementIntent,omitempty"` // "immediate" or "deferred", nil for non-CC
 	Notes             *string         `json:"notes,omitempty"`
 	CreatedAt         time.Time       `json:"createdAt"`
 	UpdatedAt         time.Time       `json:"updatedAt"`
@@ -70,6 +76,9 @@ func (l *Loan) Validate() error {
 	if l.ProviderID <= 0 {
 		return ErrLoanProviderInvalid
 	}
+	if l.AccountID <= 0 {
+		return ErrLoanAccountInvalid
+	}
 	return nil
 }
 
@@ -100,6 +109,7 @@ type ProviderBreakdown struct {
 	ID     int32           `json:"id"`
 	Name   string          `json:"name"`
 	Amount decimal.Decimal `json:"amount"`
+	IsPaid bool            `json:"isPaid"`
 }
 
 // MonthlyTrend represents aggregated loan data for a single month
@@ -134,10 +144,13 @@ type LoanRepository interface {
 	GetCompletedByWorkspace(workspaceID int32, currentYear, currentMonth int) ([]*Loan, error)
 	Update(loan *Loan) (*Loan, error)
 	UpdatePartial(workspaceID int32, id int32, itemName string, notes *string) (*Loan, error)
+	UpdateEditableFields(workspaceID int32, id int32, itemName string, providerID int32, notes *string) (*Loan, error)
 	SoftDelete(workspaceID int32, id int32) error
 	CountActiveLoansByProvider(workspaceID int32, providerID int32, currentYear, currentMonth int) (int64, error)
 	// Stats methods - joins with loan_payments for aggregated data
 	GetAllWithStats(workspaceID int32) ([]*LoanWithStats, error)
 	GetActiveWithStats(workspaceID int32) ([]*LoanWithStats, error)
 	GetCompletedWithStats(workspaceID int32) ([]*LoanWithStats, error)
+	// Get loans by provider with stats (for item-based modal)
+	GetByProviderWithStats(workspaceID int32, providerID int32) ([]*LoanWithStats, error)
 }

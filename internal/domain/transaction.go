@@ -77,6 +77,13 @@ type Transaction struct {
 	TemplateID  *int32 `json:"templateId"`  // FK to recurring_templates, nullable
 	IsProjected bool   `json:"isProjected"` // true = future projection
 	IsModified  bool   `json:"isModified"`  // true if projected instance differs from template
+
+	// Loan Integration (v2)
+	LoanID *int32 `json:"loanId"` // FK to loans, nullable
+
+	// Transaction Grouping
+	GroupID   *int32  `json:"groupId"`
+	GroupName *string `json:"groupName,omitempty"`
 }
 
 // TransferResult represents the result of creating a transfer
@@ -182,8 +189,27 @@ type OverdueGroup struct {
 	Transactions  []*Transaction  `json:"transactions"`
 }
 
+// LoanTransactionStats holds paid/unpaid transaction counts for loan deletion confirmation
+type LoanTransactionStats struct {
+	PaidCount    int32           `json:"paidCount"`
+	UnpaidCount  int32           `json:"unpaidCount"`
+	PaidTotal    decimal.Decimal `json:"paidTotal"`
+	UnpaidTotal  decimal.Decimal `json:"unpaidTotal"`
+}
+
+// LoanTrendDataRow represents aggregated loan transaction data for trend visualization
+type LoanTrendDataRow struct {
+	Year         int32           `json:"year"`
+	Month        int32           `json:"month"`
+	ProviderID   int32           `json:"providerId"`
+	ProviderName string          `json:"providerName"`
+	TotalAmount  decimal.Decimal `json:"totalAmount"`
+	AllPaid      bool            `json:"allPaid"`
+}
+
 type TransactionRepository interface {
 	Create(transaction *Transaction) (*Transaction, error)
+	CreateBatchTx(tx interface{}, transactions []*Transaction) ([]*Transaction, error) // Batch create within DB transaction
 	GetByID(workspaceID int32, id int32) (*Transaction, error)
 	GetByWorkspace(workspaceID int32, filters *TransactionFilters) (*PaginatedTransactions, error)
 	TogglePaid(workspaceID int32, id int32) (*Transaction, error)
@@ -224,4 +250,19 @@ type TransactionRepository interface {
 
 	// Aggregation operations (no pagination)
 	GetByDateRangeForAggregation(workspaceID int32, startDate, endDate time.Time) ([]*Transaction, error)
+
+	// Loan transaction operations (CL v2)
+	GetLoanTransactionsByMonth(workspaceID int32, loanID int32, year, month int) ([]*Transaction, error)
+	BulkMarkPaid(workspaceID int32, ids []int32) ([]*Transaction, error)
+	// Get all transactions for a loan (for item-based modal)
+	GetByLoanID(workspaceID int32, loanID int32) ([]*Transaction, error)
+	// Loan deletion operations - orphan paid, delete unpaid
+	OrphanPaidTransactionsByLoan(workspaceID int32, loanID int32) error
+	DeleteUnpaidTransactionsByLoan(workspaceID int32, loanID int32) error
+	GetLoanTransactionStats(workspaceID int32, loanID int32) (*LoanTransactionStats, error)
+	// Loan edit cascade operations
+	UpdatePayeesByLoan(workspaceID int32, loanID int32, newPayee string) (int64, error)
+	HasPaidTransactionsByLoan(workspaceID int32, loanID int32) (bool, error)
+	// Loan trend data aggregation
+	GetLoanTrendData(workspaceID int32, startYear, startMonth, endYear, endMonth int32) ([]*LoanTrendDataRow, error)
 }

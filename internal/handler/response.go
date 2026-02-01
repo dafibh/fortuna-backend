@@ -29,8 +29,10 @@ const (
 	ErrorTypeUnauthorized = "https://fortuna.app/errors/unauthorized"
 	ErrorTypeForbidden    = "https://fortuna.app/errors/forbidden"
 	ErrorTypeConflict     = "https://fortuna.app/errors/conflict"
-	ErrorTypeUnavailable  = "https://fortuna.app/errors/unavailable"
-	ErrorTypeInternal     = "https://fortuna.app/errors/internal"
+	ErrorTypeUnavailable      = "https://fortuna.app/errors/unavailable"
+	ErrorTypeInternal         = "https://fortuna.app/errors/internal"
+	ErrorTypeMonthBoundary    = "https://fortuna.app/errors/month-boundary-violation"
+	ErrorTypeAlreadyGrouped   = "https://fortuna.app/errors/already-grouped"
 )
 
 // NewValidationError creates a validation error response

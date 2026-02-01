@@ -2200,3 +2200,221 @@ func TestCalculateMonthsOverdue_NilBilledAt(t *testing.T) {
 		t.Errorf("Expected 0 months for nil BilledAt, got %d", months)
 	}
 }
+
+// ==================== Auto-Ungroup on Date Change ====================
+
+func TestUpdateTransaction_AutoUngroupOnDateChange(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	groupRepo := testutil.NewMockTransactionGroupRepository()
+
+	transactionService := NewTransactionService(transactionRepo, accountRepo, categoryRepo)
+	transactionService.SetTransactionGroupRepository(groupRepo)
+
+	workspaceID := int32(1)
+	accountID := int32(1)
+	transactionID := int32(10)
+	groupID := int32(5)
+
+	accountRepo.AddAccount(&domain.Account{
+		ID:          accountID,
+		WorkspaceID: workspaceID,
+		Name:        "Test Account",
+		Template:    domain.TemplateBank,
+	})
+
+	// Group in January
+	groupRepo.AddGroup(&domain.TransactionGroup{
+		ID:          groupID,
+		WorkspaceID: workspaceID,
+		Name:        "Jan Group",
+		Month:       "2026-01",
+		ChildCount:  2,
+		TotalAmount: decimal.NewFromFloat(100.00),
+	})
+
+	// Transaction in January, in the group
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:              transactionID,
+		WorkspaceID:     workspaceID,
+		AccountID:       accountID,
+		Name:            "Grocery",
+		Amount:          decimal.NewFromFloat(50.00),
+		Type:            domain.TransactionTypeExpense,
+		TransactionDate: time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC),
+		IsPaid:          true,
+		GroupID:         &groupID,
+	})
+
+	// Track unassign calls
+	unassignCalled := false
+	groupRepo.UnassignGroupFromTransactionsFn = func(wsID int32, txIDs []int32) error {
+		unassignCalled = true
+		g := groupRepo.Groups[groupID]
+		g.ChildCount--
+		return nil
+	}
+
+	// Update transaction date to February (different month)
+	input := UpdateTransactionInput{
+		AccountID:       accountID,
+		Name:            "Grocery",
+		Amount:          decimal.NewFromFloat(50.00),
+		Type:            domain.TransactionTypeExpense,
+		TransactionDate: time.Date(2026, 2, 15, 0, 0, 0, 0, time.UTC),
+	}
+
+	updated, err := transactionService.UpdateTransaction(workspaceID, transactionID, input)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if !unassignCalled {
+		t.Error("Expected UnassignGroupFromTransactions to be called")
+	}
+
+	if updated.GroupID != nil {
+		t.Error("Expected GroupID to be nil after auto-ungroup")
+	}
+}
+
+func TestUpdateTransaction_NoUngroupWhenSameMonth(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	groupRepo := testutil.NewMockTransactionGroupRepository()
+
+	transactionService := NewTransactionService(transactionRepo, accountRepo, categoryRepo)
+	transactionService.SetTransactionGroupRepository(groupRepo)
+
+	workspaceID := int32(1)
+	accountID := int32(1)
+	transactionID := int32(10)
+	groupID := int32(5)
+
+	accountRepo.AddAccount(&domain.Account{
+		ID:          accountID,
+		WorkspaceID: workspaceID,
+		Name:        "Test Account",
+		Template:    domain.TemplateBank,
+	})
+
+	groupRepo.AddGroup(&domain.TransactionGroup{
+		ID:          groupID,
+		WorkspaceID: workspaceID,
+		Name:        "Jan Group",
+		Month:       "2026-01",
+		ChildCount:  2,
+	})
+
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:              transactionID,
+		WorkspaceID:     workspaceID,
+		AccountID:       accountID,
+		Name:            "Grocery",
+		Amount:          decimal.NewFromFloat(50.00),
+		Type:            domain.TransactionTypeExpense,
+		TransactionDate: time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC),
+		IsPaid:          true,
+		GroupID:         &groupID,
+	})
+
+	unassignCalled := false
+	groupRepo.UnassignGroupFromTransactionsFn = func(wsID int32, txIDs []int32) error {
+		unassignCalled = true
+		return nil
+	}
+
+	// Update date within same month
+	input := UpdateTransactionInput{
+		AccountID:       accountID,
+		Name:            "Grocery",
+		Amount:          decimal.NewFromFloat(50.00),
+		Type:            domain.TransactionTypeExpense,
+		TransactionDate: time.Date(2026, 1, 25, 0, 0, 0, 0, time.UTC),
+	}
+
+	updated, err := transactionService.UpdateTransaction(workspaceID, transactionID, input)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if unassignCalled {
+		t.Error("UnassignGroupFromTransactions should NOT be called for same-month date change")
+	}
+
+	if updated.GroupID == nil || *updated.GroupID != groupID {
+		t.Error("Expected GroupID to remain unchanged")
+	}
+}
+
+func TestUpdateTransaction_AutoDeleteEmptyGroupOnDateChange(t *testing.T) {
+	transactionRepo := testutil.NewMockTransactionRepository()
+	accountRepo := testutil.NewMockAccountRepository()
+	categoryRepo := testutil.NewMockBudgetCategoryRepository()
+	groupRepo := testutil.NewMockTransactionGroupRepository()
+
+	transactionService := NewTransactionService(transactionRepo, accountRepo, categoryRepo)
+	transactionService.SetTransactionGroupRepository(groupRepo)
+
+	workspaceID := int32(1)
+	accountID := int32(1)
+	transactionID := int32(10)
+	groupID := int32(5)
+
+	accountRepo.AddAccount(&domain.Account{
+		ID:          accountID,
+		WorkspaceID: workspaceID,
+		Name:        "Test Account",
+		Template:    domain.TemplateBank,
+	})
+
+	// Group with only 1 child
+	groupRepo.AddGroup(&domain.TransactionGroup{
+		ID:          groupID,
+		WorkspaceID: workspaceID,
+		Name:        "Solo Group",
+		Month:       "2026-01",
+		ChildCount:  1,
+		TotalAmount: decimal.NewFromFloat(50.00),
+	})
+
+	transactionRepo.AddTransaction(&domain.Transaction{
+		ID:              transactionID,
+		WorkspaceID:     workspaceID,
+		AccountID:       accountID,
+		Name:            "Grocery",
+		Amount:          decimal.NewFromFloat(50.00),
+		Type:            domain.TransactionTypeExpense,
+		TransactionDate: time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC),
+		IsPaid:          true,
+		GroupID:         &groupID,
+	})
+
+	groupRepo.UnassignGroupFromTransactionsFn = func(wsID int32, txIDs []int32) error {
+		g := groupRepo.Groups[groupID]
+		g.ChildCount = 0
+		g.TotalAmount = decimal.Zero
+		return nil
+	}
+
+	// Move to February
+	input := UpdateTransactionInput{
+		AccountID:       accountID,
+		Name:            "Grocery",
+		Amount:          decimal.NewFromFloat(50.00),
+		Type:            domain.TransactionTypeExpense,
+		TransactionDate: time.Date(2026, 2, 15, 0, 0, 0, 0, time.UTC),
+	}
+
+	_, err := transactionService.UpdateTransaction(workspaceID, transactionID, input)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// Verify group was deleted from repo
+	if _, ok := groupRepo.Groups[groupID]; ok {
+		t.Error("Expected group to be auto-deleted when last child is ungrouped")
+	}
+}
